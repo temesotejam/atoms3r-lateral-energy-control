@@ -1795,7 +1795,8 @@ bool ExperimentRunner::beginQIdentPulse(uint32_t now_ms, uint32_t t_test_ms, int
     return false;
   }
   q_ident_pulse_authorized_ = true;
-  const int16_t command_current_mA = static_cast<int16_t>(direction * Config::Q_IDENT_CURRENT_MA);
+  const int16_t command_current_mA = static_cast<int16_t>(
+      Config::MOTOR_DRIVER_POLARITY * direction * Config::Q_IDENT_CURRENT_MA);
   if (!roller_->setCurrentMa(command_current_mA)) {
     q_ident_pulse_authorized_ = false;
     stopMotor();
@@ -2247,7 +2248,8 @@ bool ExperimentRunner::beginEnergyControlV0Pulse(uint32_t now_ms, uint32_t t_tes
     return false;
   }
   energy_control_v0_pulse_authorized_ = true;
-  const int16_t command_current_mA = static_cast<int16_t>(direction * Config::Q_IDENT_CURRENT_MA);
+  const int16_t command_current_mA = static_cast<int16_t>(
+      Config::MOTOR_DRIVER_POLARITY * direction * Config::Q_IDENT_CURRENT_MA);
   if (!roller_->setCurrentMa(command_current_mA)) {
     energy_control_v0_pulse_authorized_ = false;
     stopMotor();
@@ -2409,7 +2411,7 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   const uint32_t begin_t0_us = micros();
   energy_control_autonomous_pulse_authorized_ = true;
   const int16_t command_current_mA = static_cast<int16_t>(
-      direction * energy_control_autonomous_input_current_mA_);
+      Config::MOTOR_DRIVER_POLARITY * direction * energy_control_autonomous_input_current_mA_);
   const uint32_t set_current_t0_us = micros();
   const bool set_current_ok = roller_->setCurrentMa(command_current_mA);
   const uint32_t set_current_us = static_cast<uint32_t>(micros() - set_current_t0_us);
@@ -2464,7 +2466,7 @@ bool ExperimentRunner::beginEnergyControlAutonomousStartKickPulse(uint32_t now_m
   const uint32_t begin_t0_us = micros();
   energy_control_autonomous_pulse_authorized_ = true;
   const int16_t command_current_mA = static_cast<int16_t>(
-      direction * energy_control_autonomous_input_current_mA_);
+      Config::MOTOR_DRIVER_POLARITY * direction * energy_control_autonomous_input_current_mA_);
   const uint32_t set_current_t0_us = micros();
   const bool set_current_ok = roller_->setCurrentMa(command_current_mA);
   const uint32_t set_current_us = static_cast<uint32_t>(micros() - set_current_t0_us);

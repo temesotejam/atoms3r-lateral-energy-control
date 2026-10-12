@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Free-foot Runtime V2",
-  "version": "0.47.43-pitch-only-foot-zero-rwlog-v54",
+  "version": "0.47.44-reversed-motor-mount-rwlog-v54",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

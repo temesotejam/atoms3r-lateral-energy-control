@@ -290,6 +290,12 @@ static constexpr float ENERGY_CONTROL_AUTONOMOUS_TARGET_CHOICES_DEG[3] = {8.0f, 
 static constexpr int16_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_CURRENT_MA = 1200;
 static constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_PULSE_MS = 100;
 static constexpr int8_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_DIRECTION = -1;
+// Trial mounting: the Roller485 has been installed front-to-back reversed.
+// Multiply only the signed driver current; control-side motion directions and
+// the signed residual-current model stay in the original body coordinates.
+static constexpr int8_t MOTOR_DRIVER_POLARITY = -1;
+static_assert(MOTOR_DRIVER_POLARITY == 1 || MOTOR_DRIVER_POLARITY == -1,
+              "Motor polarity must be +1 or -1");
 // Normal autonomous output deliberately does not use the Q_IDENT 5--25 ms
 // experiment limits.  Width zero is a documented no-output decision.
 static constexpr int16_t ENERGY_CONTROL_AUTONOMOUS_CURRENT_MA = 1200;

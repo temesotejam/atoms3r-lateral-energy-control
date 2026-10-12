@@ -13,11 +13,12 @@
     <header class="hero">
       <p class="eyebrow">ATOMS3R / FREE-FOOT AMPLITUDE CONTROL</p>
       <h1>Free-foot Runtime V2<br><span>左右足角度・制御・ログを統合</span></h1>
-      <p class="lead">Free-foot Runtime V2 / 0.47.43。ZEROへ戻る途中の直前ピークに対する設定割合の角度で設定電流（100〜1200 mA）/ 100 msを固定で出す、自由足の切り替え試験版です。15秒間の振幅と足角度を記録します。</p>
+      <p class="lead">Free-foot Runtime V2 / 0.47.44。前後逆向きに取り付けたモータ向けに電流符号を反転した試験版です。直前ピークに対する設定割合の角度で設定電流（100〜1200 mA）/ 100 msを出し、15秒間の振幅と足角度を記録します。</p>
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v54</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
       <h2>今回の構成</h2>
+      <p><strong>この版はモータを前後逆向きに取り付けた機体専用です。</strong>標準の取り付け向きでは作用方向が逆になります。</p>
 <p>始動後、物理ピークを確認した後、WebUIで設定した直前ピーク角の0〜100%の位置で、方向に応じて設定電流（100〜1200 mA）を毎回100 ms指令します。目標角8°・10°・12°の選択値はログ上の比較用で、この版ではパルス幅を調節しません。yaw自動補正は停止したままです。</p>
       <p>元の逆算幅も診断ログに残します。MEKF左右角の絶対値が16°に達したらESTOPします。振幅が増え続ける場合は手動STOPまたは給電遮断でも止めてください。<a href="https://github.com/temesotejam/atoms3r-zero-cross-fixed-100ms-test/blob/main/README.md">試験の目的と変更内容</a></p>
       <p>横揺れのMEKF推定、設定角度での入力、15秒測定、開始・終了のLED同期、足角度観測を維持します。足角度は制御入力には使用しません。</p>
@@ -30,13 +31,13 @@
       <h2>書き込みと測定</h2>
       <p>書き込み時はPCをインターネットにつながるWi-Fiまたは有線LANへ接続し、AtomS3RをUSBでつないでください。PC版ChromeまたはEdgeで下のボタンを押します。機体のWi-Fiへ切り替えるのは書き込み完了後です。</p>
       <esp-web-install-button manifest="manifest-freefoot-runtime-v2.json">
-        <button slot="activate" class="primary">0.47.43 ピーク割合調整・電流調整・100 ms固定試験版を書き込む</button>
+        <button slot="activate" class="primary">0.47.44 モータ前後逆向き取り付け用を書き込む</button>
         <span slot="unsupported" class="warning">PC版ChromeまたはEdgeを使用してください。</span>
       </esp-web-install-button>
       <ol>
         <li>測定時はバッテリーで起動し、Wi-Fi <code>AtomS3CAM_Q1_SHADOW</code>（パスワード <code>12345678</code>）へ接続します。</li>
         <li><a href="http://192.168.4.1/">http://192.168.4.1/</a>を開きます。起動時のUSB待機8秒＋従来の10秒後のLED点灯を目安に胴体と両足を直立させ、左右の白マーカーが見える状態で2秒以上静止してください。</li>
-        <li>書き換え後はWebUIを再読み込みし、0.47.43と指令電流と入力割合の設定欄を確認します。左右のpitchを基準に合わせ、rollと足を2秒以上静止させてゼロ点を確定します。入力割合（0〜100%、初期値50%）を設定して「15秒測定を開始」を押します。</li>
+        <li>書き換え後はWebUIを再読み込みし、0.47.44と指令電流と入力割合の設定欄を確認します。左右のpitchを基準に合わせ、rollと足を2秒以上静止させてゼロ点を確定します。入力割合（0〜100%、初期値50%）を設定して「15秒測定を開始」を押します。</li>
         <li>測定終了後は「今回の測定目標」を確認し、「RWLOGを取得・再開」と足角度CSVで保存します。</li>
         <li>次の測定には「ログを消去・次の測定へ」を使い、目標角を選び直せます。足角度のゼロ点は同じ起動中は保持され、胴体の測定ゼロ点は各Run開始時に取得します。</li>
       </ol>

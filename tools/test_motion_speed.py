@@ -41,6 +41,7 @@ cpp=r'''
 static unsigned commands=0,stops=0,zero_events=0,peak_events=0,outputs=0,rejected=0;
 static bool roller_ok=true,write_ok=true,quiet=false;
 static int16_t expected_current=1200;
+static int16_t last_driver_current=0;
 static PsramLogger::EnergyControlAutonomousPeakEvent last_peak;
 static PsramLogger::EnergyControlAutonomousZeroCrossEvent last_zero;
 template<class T> void emit(const T& v){if(quiet)return;assert(std::fwrite(&v,sizeof(v),1,stdout)==1);}
@@ -51,7 +52,7 @@ for name in ['EnergyControlAutonomousPeakEvent','EnergyControlAutonomousZeroCros
 cpp+=serializer('solver_audit::Record',block(audit,'struct Record'))
 cpp+=r'''
 bool Roller485Manager::ok()const{return roller_ok;}
-bool Roller485Manager::setCurrentMa(int16_t v){++commands;emit(v);return write_ok;}
+bool Roller485Manager::setCurrentMa(int16_t v){++commands;last_driver_current=v;emit(v);return write_ok;}
 bool Roller485Manager::stop(){++stops;return true;}
 RollerTelemetry Roller485Manager::telemetrySnapshot()const{
   RollerTelemetry t;t.battery_mV=7660;t.actual_current_mA=12;t.speed_rpm=-12.5f;
@@ -96,10 +97,12 @@ int main(){
    p.energy_control_autonomous_input_current_mA_=selected;expected_current=selected;
    host_us=14000000;
    assert(p.beginEnergyControlAutonomousPulse(millis(),13000,1,100));
-   assert(p.status_.motor_cmd_mA==selected && p.status_.pulse_width_ms_setting==100);
+   assert(last_driver_current==-selected && p.status_.motor_cmd_mA==-selected);
+   assert(p.status_.pulse_direction==1 && p.status_.pulse_width_ms_setting==100);
    p.stopActivePulse(millis());p.energy_control_autonomous_phase_=Phase::STRONG_START_KICK;
    assert(p.beginEnergyControlAutonomousStartKickPulse(millis(),Config::ENERGY_CONTROL_AUTONOMOUS_START_KICK_DIRECTION));
-   assert(abs(p.status_.motor_cmd_mA)==selected && p.status_.pulse_width_ms_setting==100);
+   assert(last_driver_current==selected && p.status_.motor_cmd_mA==selected);
+   assert(p.status_.pulse_direction==-1 && p.status_.pulse_width_ms_setting==100);
  }
  expected_current=1200;
  // Real percentage decisions at different peaks, both directions,
@@ -124,6 +127,8 @@ int main(){
    p.updateDisplayedAngles(imu.reading_);p.updateEnergyControlAutonomousMotion(millis());
    if(outputs!=n+1) std::fprintf(stderr,"lead=%g side=%d speed=%g outputs=%u reason=%u valid=%d before=%g after=%g phase=%u\n",lead,side,speed,outputs,last_zero.reason,last_zero.valid,last_zero.detector_angle_before_deg,last_zero.detector_angle_after_deg,unsigned(p.energy_control_autonomous_half_cycle_state_));
    assert(outputs==n+1 && p.status_.pulse_active);
+   assert(p.status_.motor_cmd_mA==Config::MOTOR_DRIVER_POLARITY * p.status_.pulse_direction * 1200);
+   assert(last_driver_current==p.status_.motor_cmd_mA);
    assert(last_zero.pulse_width_ms==100 && last_zero.command_current_mA==1200);
    assert(last_zero.physical_next_peak_side==-side);
    assert(fabsf(last_zero.detector_crossing_alpha-.5f)<1e-5f);

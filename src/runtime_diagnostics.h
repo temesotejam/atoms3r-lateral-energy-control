@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define RUNTIME_VERSION "0.47.43-pitch-only-foot-zero-rwlog-v54"
+#define RUNTIME_VERSION "0.47.44-reversed-motor-mount-rwlog-v54"
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

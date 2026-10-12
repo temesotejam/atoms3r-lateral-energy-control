@@ -70,7 +70,9 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='0.47.43-pitch-only-foot-zero-rwlog-v54'
+assert metadata['firmware_revision']=='0.47.44-reversed-motor-mount-rwlog-v54'
+assert metadata['motor_driver_polarity']==-1
+assert 'motor_cmd_mA_is_signed_current_sent_to_Roller485' in metadata['motor_direction_semantics']
 assert metadata['autonomous_input_advance_us']==0
 assert metadata['autonomous_total_timing_projection_us']==0
 assert metadata['autonomous_timing_compensation_us']==0
