@@ -29,4 +29,4 @@ pio pkg install -e atoms3cam
 pio run -e atoms3cam
 ```
 
-ビルド済みバイナリとWeb書き込みページはGitHub Actionsで作成します。実機での閉ループ性能は、このリポジトリの自動試験だけでは確認できません。
+ビルド済みバイナリはGitHub Actionsの `build` 実行結果から取得できます。Web書き込みページを使う場合は、リポジトリの Settings → Pages で GitHub Actions を公開元として有効にし、`pages` ワークフローを実行してください。Pagesを有効にするまではサイト公開を保留します。実機での閉ループ性能は、このリポジトリの自動試験だけでは確認できません。

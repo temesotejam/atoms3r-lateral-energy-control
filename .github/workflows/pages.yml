@@ -11,7 +11,38 @@ concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
+  pages-ready:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.detect.outputs.enabled }}
+    steps:
+      - id: detect
+        name: Check whether GitHub Pages is enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os, urllib.error, urllib.request
+          url = 'https://api.github.com/repos/' + os.environ['GH_REPO'] + '/pages'
+          request = urllib.request.Request(url, headers={
+              'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+              'Accept': 'application/vnd.github+json'})
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  enabled = response.status == 200
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+              enabled = False
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('enabled=' + str(enabled).lower() + '\n')
+          print('GitHub Pages is enabled' if enabled else
+                'GitHub Pages is not enabled; site deployment will wait for repository setup')
+          PY
   build-site:
+    needs: pages-ready
+    if: needs.pages-ready.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
