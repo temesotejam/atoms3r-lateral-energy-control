@@ -44,11 +44,6 @@ FootSnapshot FootObserver::snapshot() const {
   portENTER_CRITICAL(&mux_); const auto copy = status_; portEXIT_CRITICAL(&mux_);
   return copy;
 }
-bool FootObserver::readyToStart() const {
-  const auto s = snapshot();
-  return s.available && s.zero_ready && s.latest.right_valid && s.latest.left_valid &&
-      esp_timer_get_time() - s.latest.delivered_us < 500000;
-}
 void FootObserver::beginRun(uint16_t id, uint64_t epoch) {
   portENTER_CRITICAL(&mux_);
   recording_run_id_ = id; log_epoch_us_ = epoch;

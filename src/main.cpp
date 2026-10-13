@@ -113,7 +113,6 @@ static bool controlStep(void*) {
     if (runner.status().state == ExperimentState::READY_TO_MEASURE) {
       if (!log_export.ready()) error = "export_worker_unavailable";
       else if (!imu.acquisitionHealthy() || imu.stale(millis())) error = "imu_not_healthy";
-      else if (!feet.readyToStart()) error = "foot_camera_and_upright_zero_required";
       else {
         ok = runner.setEnergyControlAutonomousInputPeakPercent(start_input_peak_percent) &&
             runner.setEnergyControlAutonomousInputCurrentMa(start_input_current_mA) &&
@@ -163,12 +162,12 @@ static bool controlStep(void*) {
   // The existing LED sync pattern has exclusive authority during every run.
   if (!runner.running()) {
     RuntimeDiag::phase(RuntimeDiag::Lane::Control, RuntimeDiag::Phase::ControlIdle);
-    const auto foot = feet.snapshot();
-    const bool prompt = millis() - boot_ms >= 10000 && !foot.zero_ready;
+    const uint32_t hold_ms = stable ? (esp_timer_get_time() - upright_since_us) / 1000 : 0;
+    const bool upright_confirmed = hold_ms >= appcfg::kAutoZeroStableMs;
+    const bool prompt = millis() - boot_ms >= 10000 && !upright_confirmed;
     digitalWrite(Config::SYNC_LED_PIN, prompt ? HIGH : LOW);
-    imu.setStartupGuideState(foot.zero_ready ? "upright_and_foot_ready" :
-        (stable ? "hold_upright_for_foot_zero" : "stand_upright"), foot.zero_ready,
-        stable ? (esp_timer_get_time() - upright_since_us) / 1000 : 0);
+    imu.setStartupGuideState(upright_confirmed ? "upright_ready_camera_optional" :
+        (stable ? "hold_upright" : "stand_upright"), upright_confirmed, hold_ms);
   }
   updateAcquisitionContext();
   return runner.running();

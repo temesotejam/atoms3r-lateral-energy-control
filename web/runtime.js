@@ -152,18 +152,14 @@ function render(s) {
   $('right').textContent = f.right_valid && (!stale || terminal) ? format(f.right_deg) + '°' : '—';
   $('left').textContent = f.left_valid && (!stale || terminal) ? format(f.left_deg) + '°' : '—';
   $('fps').textContent = terminal ? '停止中' : `${format(stale ? 0 : f.fps, 1)} / 15 fps`;
-  $('foot-status').textContent = `${f.zero_ready ? 'ゼロ点確定' : 'ゼロ点待ち（' + (f.zero_samples ?? 0) + '枚）'} · 記録${f.frames ?? 0}枚 · 画像取得失敗${f.failures ?? 0}回` +
+  $('foot-status').textContent = `足角度（任意） · ${f.zero_ready ? 'ゼロ点確定' : 'ゼロ点未確定（' + (f.zero_samples ?? 0) + '枚）'} · 記録${f.frames ?? 0}枚 · 画像取得失敗${f.failures ?? 0}回` +
     footIssues(f, stale, terminal);
   if (s.running) $('guide').textContent = '測定中。画面は更新されます。足角度は制御入力に使用しません。';
   else if (s.downloadable) $('guide').textContent = 'ログを保存してください。次の測定には「ログを消去・次の測定へ」を使います。';
-  else if (!f.available) $('guide').textContent = 'カメラを初期化できませんでした。診断情報を保存してください。';
-  else if (stale || f.frame_valid === false || f.frame_timestamp_valid === false) $('guide').textContent = 'カメラ画像の更新を確認しています。この状態が続く場合は診断JSONを保存してください。';
-  else if (!f.zero_ready && f.zero_reason === 'position_mismatch') $('guide').textContent = 'ゼロ点候補が基準位置から大きく外れています。両足を直立させ、「検出画像を確認」で白四角を選んでいるか確認してください。';
-  else if (!f.zero_ready && f.zero_reason === 'marker_moving') $('guide').textContent = '足の位置が動いているためゼロ点を取り直しています。胴体と両足を静止させてください。';
-  else if (!f.zero_ready && f.zero_reason === 'marker_invalid') $('guide').textContent = '左右の白四角を確認しています。「検出画像を確認」で選択位置を確認できます。';
-  else if (!f.zero_ready) $('guide').textContent = `左右のpitchを基準へ近づけ、前後のrollと両足を2秒以上静止させてください。pitch基準差 ${format(s.upright.pitch_error_deg, 1)}°（5°以内）/ 角速度 ${format(s.upright.gyro_dps, 1)}°/s`;
-  else if (!f.right_valid || !f.left_valid) $('guide').textContent = '未検出の足があります。マーカーの見え方を確認してください。この姿勢の診断JSONを保存すると原因の確認に使えます。';
-  else $('guide').textContent = s.ready ? '直立姿勢を保ち、測定を開始してください。' : 'IMUの初期化・静止確認を待っています。';
+  else if (s.ready) $('guide').textContent = f.zero_ready && f.right_valid && f.left_valid && !stale
+    ? '直立姿勢を保ち、測定を開始してください。'
+    : '測定を開始できます。カメラ・足マーカーは任意です。足角度が取得できない区間は無効として記録します。';
+  else $('guide').textContent = `IMUとモータの準備、直立姿勢を確認してください。足マーカーは開始条件ではありません。pitch基準差 ${format(s.upright?.pitch_error_deg, 1)}°（5°以内）/ 角速度 ${format(s.upright?.gyro_dps, 1)}°/s`;
   $('diagnostic-view').textContent = JSON.stringify(s, null, 2);
   if ($('usb-diag')) $('usb-diag').checked = s.usb_diagnostics === true;
   $('mekf-axes').textContent = s.mekf?.valid && s.mekf.fresh

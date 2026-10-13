@@ -48,7 +48,7 @@ jobs:
           cp bmi270-build-patch.json madgwick-build-patch.json dist/
           python "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --chip esp32s3 merge_bin -o dist/merged-firmware.bin 0x0000 dist/bootloader.bin 0x8000 dist/partitions.bin 0xe000 dist/boot_app0.bin 0x10000 dist/firmware.bin
           printf '%s\n' "$GITHUB_SHA" > dist/build-sha.txt
-          printf '%s\n' '0.47.44 reversed front-to-back Roller485 mounting: signed driver current polarity -1 for all pulse outputs; logical motion direction unchanged; adjustable 100-1200mA/100ms at selected peak percentage; MEKF, 15s, RWLOG v54' > dist/FLASH_LAYOUT.txt
+          printf '%s\n' '0.47.45 optional foot camera / reversed front-to-back Roller485 mounting: signed driver current polarity -1 for all pulse outputs; logical motion direction unchanged; adjustable 100-1200mA/100ms at selected peak percentage; MEKF, 15s, RWLOG v54' > dist/FLASH_LAYOUT.txt
           (cd dist && sha256sum *.bin > SHA256SUMS.txt)
           git diff --exit-code
       - uses: actions/upload-artifact@v4

@@ -431,6 +431,7 @@ PsramString PsramLogger::buildMetadataJson() const {
       (q_ident_mode_ ? "rwlog_q_ident_fixed_schedule" :
        (passive_capture_ ? "rwlog_passive_absolute_roll_free_decay" : "rwlog_dynamic_beta_vbat_hold_time_compare")))) + "\",";
   json += "\"firmware_revision\":\"" RUNTIME_VERSION "\",";
+  json += "\"foot_camera_required_for_autonomous_start\":false,";
   json += "\"steering\":{\"revision\":\"amplitude_only_04730\",\"enabled\":false,\"profile\":\"disabled\",\"feedback_enabled\":false,\"heading_enabled\":false,\"response_check_enabled\":false,\"targets\":\"selected_target_for_both_sides;command_target_latched_until_response_peak\",\"previous_peak_target_gate\":\"disabled_in_04731;retired_8deg_residual\",\"v53_fields\":\"heading_and_difference_unavailable;delta_and_cycles_zero;gyro_valid_false\",\"reason_codes\":{\"8\":\"disabled\"}},";
   const auto placement = RuntimeDiag::executionSnapshot();
   json += "\"execution_placement\":{\"revision\":\"core_isolation_04724\",\"camera_init_call_core\":" + String(placement.camera_init_core);

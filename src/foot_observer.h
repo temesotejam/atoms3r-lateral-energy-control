@@ -48,7 +48,6 @@ class FootObserver {
   static constexpr uint32_t kPreviewWidth = 160, kPreviewHeight = 120;
   static constexpr uint32_t kPreviewBytes = kPreviewWidth * kPreviewHeight;
   bool begin(OneShotCamera& camera, RunControlWorker& control);
-  bool readyToStart() const;
   void beginRun(uint16_t id, uint64_t log_epoch_us);
   void finishRun();
   void clearRun();

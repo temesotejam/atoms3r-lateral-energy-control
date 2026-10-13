@@ -183,7 +183,7 @@ void WebUi::status() {
   json += ",\"network\":{\"phase\":\"" + String(offline_.name()) + "\",\"last_error\":\"" + String(offline_.error()) + "\"}";
   json += ",\"usb_diagnostics\":" + String(RuntimeDiag::enabled() ? "true" : "false");
   json += ",\"running\":" + String(s.running ? "true" : "false");
-  json += ",\"ready\":" + String(s.ready && fresh && export_->ready() && feet_->readyToStart() ? "true" : "false");
+  json += ",\"ready\":" + String(s.ready && fresh && s.imu_ok && s.roller_ok && export_->ready() ? "true" : "false");
   json += ",\"controller_fresh\":" + String(fresh ? "true" : "false");
   json += ",\"run_id\":" + String(s.run_id) + ",\"samples\":" + String(s.sample_count);
   json += ",\"remaining_ms\":" + String(s.remaining_ms) + ",\"elapsed_ms\":" + String(s.measure_elapsed_ms);

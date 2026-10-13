@@ -4,10 +4,10 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <style>
 :root{font-family:system-ui,sans-serif;color:#1d293d;background:#eef2f5;font-size:16px}*{box-sizing:border-box}body{max-width:950px;margin:auto;padding:20px}h1{font-size:1.65rem;margin-bottom:4px}h2{font-size:1.08rem}p{line-height:1.6}.muted{color:#546477;font-size:.88rem}.card{background:white;border-radius:14px;padding:20px;margin:16px 0;border:1px solid #d9e1e8}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.value{font-size:2rem;font-variant-numeric:tabular-nums;margin:4px 0}.label{font-size:.85rem;color:#546477}button{padding:13px 18px;border:0;border-radius:8px;background:#174b8e;color:white;font:inherit;cursor:pointer;margin:4px 4px 4px 0}button:disabled{opacity:.4;cursor:default}#stop{background:#b62032}#clear,#cancel{background:#58677a}code,pre{font-family:ui-monospace,monospace}pre{white-space:pre-wrap;font-size:.78rem;overflow-wrap:anywhere}#connection{font-weight:600}progress{width:100%;height:24px}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px 4px;border-bottom:1px solid #e1e6eb}canvas{width:100%;height:120px;background:#f3f6fa;border-radius:8px}#message{min-height:26px;color:#9c2636}a{color:#174b8e}
 </style>
-<h1>AtomS3R Free-foot</h1><div class="muted">0.47.44 · モータ前後逆向き取り付け用（電流符号を反転） · 最大角割合と指令電流を調整可能 · 入力時間 100 ms固定</div>
+<h1>AtomS3R Free-foot</h1><div class="muted">0.47.45 · モータ前後逆向き取り付け用（電流符号を反転） · カメラ認識は任意 · 最大角割合と指令電流を調整可能 · 入力時間 100 ms固定</div>
 <p id="connection">接続を確認中…</p>
 <section class="card"><div class="grid"><div><div class="label">状態</div><div class="value" id="state">—</div></div><div><div class="label">残り時間</div><div class="value" id="remaining">—</div></div><div><div class="label">胴体の左右揺動 · MEKF</div><div class="value" id="pitch">—</div></div><div><div class="label">指令 / 実測電流</div><div class="value" style="font-size:1.5rem" id="current">—</div></div></div>
-<p id="guide">起動後は静止させてください。LEDが点灯したら左右のpitchを基準に合わせ、rollと両足を2秒以上静止させます。</p>
+<p id="guide">起動後は静止させてください。LEDが点灯したら左右のpitchを基準に合わせ、機体を静止させます。足のマーカー認識は測定開始に不要です。</p>
 <p><label for="target">比較用の記録角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
 <p class="muted" id="target-help">選択値はログに保存します。この試験版では選択値に関係なく入力時間は100 ms固定です。</p>
 <p class="muted" id="run-target" role="status">記録角度は測定開始時に保存します。パルス幅は固定です。</p>
@@ -22,7 +22,7 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p class="muted">運転中もWi-Fiを維持し、Web更新を休止して本体で制御・観測・記録します。前後90°以上の傾斜で停止します。横倒しは姿勢STOPの対象にしません。姿勢を戻しても再始動しません。Wi-Fi接続と画面を保ったままお待ちください。終了後にWeb表示が復帰したらログを保存してください。Web復帰だけではログは消えません。本体の電源断・再起動では未取得のログが失われます。</p>
 <section class="card"><h2>左右足角度 · 胴体に対する相対角</h2><div class="grid"><div><div class="label">右足 · 上段マーカー A</div><div class="value" id="right">—</div></div><div><div class="label">左足 · 下段マーカー B</div><div class="value" id="left">—</div></div><div><div class="label">カメラ実測 / 目標</div><div class="value" style="font-size:1.5rem" id="fps">— / 15 fps</div></div></div>
 <canvas id="markers" width="640" height="120" aria-label="マーカー検出位置。上段が右足、下段が左足。"></canvas>
-<p class="muted" id="foot-status">ゼロ点は起動ごとに1回だけ確定します。</p><p class="muted">角度の正方向はマーカーが左へ動く方向です。検出失敗・古い画像・設定範囲外を区別して表示し、その状態もログに保存します。候補を区別できないときは角度を無効にします。足を地面に固定して胴体を前後に傾けると、この相対角は変わります。</p><details><summary>検出画像を確認</summary><p class="muted">待機中に更新される1枚の画像です。測定完了後は測定前の画像を保持します。ログ保存後に「次の測定へ」進むと画像更新を再開します。線は検出に使った帯、丸は選択位置、黄色は未確定の位置・別候補です。</p><button id="preview" disabled>検出画像を取得</button><button id="preview-save" disabled>画像付き診断を保存</button><p class="muted" id="preview-status">画像はまだ取得していません。</p><canvas id="preview-image" width="640" height="480" style="height:auto;display:none" aria-label="カメラ画像と同じフレームの検出位置"></canvas></details></section>
+<p class="muted" id="foot-status">足角度は任意です。マーカーが見えれば起動ごとにゼロ点を確定します。</p><p class="muted">角度の正方向はマーカーが左へ動く方向です。検出失敗・古い画像・設定範囲外を区別して表示し、その状態もログに保存します。候補を区別できないときは角度を無効にします。足を地面に固定して胴体を前後に傾けると、この相対角は変わります。</p><details><summary>検出画像を確認</summary><p class="muted">待機中に更新される1枚の画像です。測定完了後は測定前の画像を保持します。ログ保存後に「次の測定へ」進むと画像更新を再開します。線は検出に使った帯、丸は選択位置、黄色は未確定の位置・別候補です。</p><button id="preview" disabled>検出画像を取得</button><button id="preview-save" disabled>画像付き診断を保存</button><p class="muted" id="preview-status">画像はまだ取得していません。</p><canvas id="preview-image" width="640" height="480" style="height:auto;display:none" aria-label="カメラ画像と同じフレームの検出位置"></canvas></details></section>
 <section class="card"><h2>前後傾斜と足角度の比較</h2>
 <p id="mekf-axes" class="muted">MEKFの更新を待っています。</p>
 <p>両足を地面に固定して、胴体と両足が直立した姿勢を基準にします。基準の後、胴体を前後の片方向へ約5°・10°・15°・20°と傾け、10°・直立へ戻す順に、設定範囲内で記録してください。各姿勢で約3秒間静止します。</p>
@@ -289,18 +289,14 @@ function render(s) {
   $('right').textContent = f.right_valid && (!stale || terminal) ? format(f.right_deg) + '°' : '—';
   $('left').textContent = f.left_valid && (!stale || terminal) ? format(f.left_deg) + '°' : '—';
   $('fps').textContent = terminal ? '停止中' : `${format(stale ? 0 : f.fps, 1)} / 15 fps`;
-  $('foot-status').textContent = `${f.zero_ready ? 'ゼロ点確定' : 'ゼロ点待ち（' + (f.zero_samples ?? 0) + '枚）'} · 記録${f.frames ?? 0}枚 · 画像取得失敗${f.failures ?? 0}回` +
+  $('foot-status').textContent = `足角度（任意） · ${f.zero_ready ? 'ゼロ点確定' : 'ゼロ点未確定（' + (f.zero_samples ?? 0) + '枚）'} · 記録${f.frames ?? 0}枚 · 画像取得失敗${f.failures ?? 0}回` +
     footIssues(f, stale, terminal);
   if (s.running) $('guide').textContent = '測定中。画面は更新されます。足角度は制御入力に使用しません。';
   else if (s.downloadable) $('guide').textContent = 'ログを保存してください。次の測定には「ログを消去・次の測定へ」を使います。';
-  else if (!f.available) $('guide').textContent = 'カメラを初期化できませんでした。診断情報を保存してください。';
-  else if (stale || f.frame_valid === false || f.frame_timestamp_valid === false) $('guide').textContent = 'カメラ画像の更新を確認しています。この状態が続く場合は診断JSONを保存してください。';
-  else if (!f.zero_ready && f.zero_reason === 'position_mismatch') $('guide').textContent = 'ゼロ点候補が基準位置から大きく外れています。両足を直立させ、「検出画像を確認」で白四角を選んでいるか確認してください。';
-  else if (!f.zero_ready && f.zero_reason === 'marker_moving') $('guide').textContent = '足の位置が動いているためゼロ点を取り直しています。胴体と両足を静止させてください。';
-  else if (!f.zero_ready && f.zero_reason === 'marker_invalid') $('guide').textContent = '左右の白四角を確認しています。「検出画像を確認」で選択位置を確認できます。';
-  else if (!f.zero_ready) $('guide').textContent = `左右のpitchを基準へ近づけ、前後のrollと両足を2秒以上静止させてください。pitch基準差 ${format(s.upright.pitch_error_deg, 1)}°（5°以内）/ 角速度 ${format(s.upright.gyro_dps, 1)}°/s`;
-  else if (!f.right_valid || !f.left_valid) $('guide').textContent = '未検出の足があります。マーカーの見え方を確認してください。この姿勢の診断JSONを保存すると原因の確認に使えます。';
-  else $('guide').textContent = s.ready ? '直立姿勢を保ち、測定を開始してください。' : 'IMUの初期化・静止確認を待っています。';
+  else if (s.ready) $('guide').textContent = f.zero_ready && f.right_valid && f.left_valid && !stale
+    ? '直立姿勢を保ち、測定を開始してください。'
+    : '測定を開始できます。カメラ・足マーカーは任意です。足角度が取得できない区間は無効として記録します。';
+  else $('guide').textContent = `IMUとモータの準備、直立姿勢を確認してください。足マーカーは開始条件ではありません。pitch基準差 ${format(s.upright?.pitch_error_deg, 1)}°（5°以内）/ 角速度 ${format(s.upright?.gyro_dps, 1)}°/s`;
   $('diagnostic-view').textContent = JSON.stringify(s, null, 2);
   if ($('usb-diag')) $('usb-diag').checked = s.usb_diagnostics === true;
   $('mekf-axes').textContent = s.mekf?.valid && s.mekf.fresh
