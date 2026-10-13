@@ -66,7 +66,7 @@ int main(int argc,char** argv){
   assert(!feet.copyPreview(frozen.data(),copied));
   PsramLogger logger;assert(logger.begin());
   assert(sizeof(PsramLogger)<4096);
-  assert(PsramLogger::eventStorageBytes()==190144);
+  assert(PsramLogger::eventStorageBytes()==203456); // energy-unit peak and zero-cross diagnostics
   logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f);
   LogSample row{};row.motor_cmd_mA=300;row.roller_actual_current_mA=270;
   row.roll_mekf_abs_cdeg=1234;row.pitch_mekf_abs_cdeg=567;
