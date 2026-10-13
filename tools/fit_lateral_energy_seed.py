@@ -28,6 +28,10 @@ def solve(a,b):
 def least_squares(x,y):
     return solve([[sum(r[i]*r[j] for r in x) for j in range(len(x[0]))] for i in range(len(x[0]))],
                  [sum(r[i]*v for r,v in zip(x,y)) for i in range(len(x[0]))])
+def stable(value):
+    # Different libm implementations differ by a few ulps. The firmware seed
+    # stores ten significant digits, so publish the same precision here.
+    return float(format(value,'.10g'))
 def fit(rows,side):
     selected=[r for group in rows for r in group if r[0]==side]
     aa,bb=(6.730502640,.187441879) if side>0 else (7.691200794,.194970900)
@@ -48,9 +52,10 @@ def fit(rows,side):
         error=sum((sum(a*b for a,b in zip(r,full))-v)**2 for r,v in zip(x,y))
         possibilities.append((error,full))
     error,response=min(possibilities)
-    return dict(side=side,count=len(selected),free_offset_j=offset,free_omega2_j_per_rad2_s2=kinetic,
-        work_omega_q_j_per_rad_s_A_s=response[0],work_q2_j_per_A2_s2=response[1],
-        endpoint_energy_rmse_j=math.sqrt(error/len(selected)),
+    return dict(side=side,count=len(selected),free_offset_j=stable(offset),
+        free_omega2_j_per_rad2_s2=stable(kinetic),
+        work_omega_q_j_per_rad_s_A_s=stable(response[0]),work_q2_j_per_A2_s2=stable(response[1]),
+        endpoint_energy_rmse_j=stable(math.sqrt(error/len(selected))),
         rate_support_min_dps=min(r[1] for r in selected),rate_support_max_dps=max(r[1] for r in selected),
         charge_support_min_mA_s=min(r[2] for r in selected),
         charge_support_max_mA_s=max(r[2] for r in selected))
