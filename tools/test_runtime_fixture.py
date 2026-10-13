@@ -70,7 +70,10 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='0.47.45-camera-optional-rwlog-v54'
+assert metadata['firmware_revision']=='1.0.0-lateral-energy-mekf-rwlog-v54'
+assert metadata['energy_control_autonomous_revision']=='lateral_energy_inverse_v1_20261013'
+assert metadata['legacy_rate_and_Q1_models_active'] is False
+assert metadata['lateral_energy_coefficient_status'].startswith('provisional_204_closed_loop')
 assert metadata['foot_camera_required_for_autonomous_start'] is False
 assert metadata['motor_driver_polarity']==-1
 assert 'motor_cmd_mA_is_signed_current_sent_to_Roller485' in metadata['motor_direction_semantics']
@@ -108,6 +111,9 @@ assert metadata['terminal_state']['last_error']=='imu_acquisition_overflow_backl
 assert metadata['control_work_profile']['pulse_on']['log_row']['mean_us']==777
 assert len(metadata['energy_control_autonomous_peak_events']) == 256
 assert len(metadata['energy_control_autonomous_zero_cross_events']) == 256
+assert 'target_energy_j' in metadata['energy_control_autonomous_peak_events'][0]
+assert 'kinetic_energy_j' in metadata['energy_control_autonomous_zero_cross_events'][0]
+assert 'energy_model_extrapolated' in metadata['energy_control_autonomous_zero_cross_events'][0]
 assert len(metadata['foot_frames']) == 768
 assert metadata['foot_observation']['detector'] == 'sparse_rows_identity_v3'
 assert metadata['foot_observation']['weak_candidate_confirmation']==dict(frames=3,min_x_step_px=20,min_y_step_px=16,
