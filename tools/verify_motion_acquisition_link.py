@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check 0.47.25's linked function placement/size; not a timing guarantee."""
+"""Check linked motion, acquisition and lateral energy placement/size."""
 import argparse
 import json
 from pathlib import Path
@@ -10,8 +10,7 @@ MOTION_METHODS = '''resetEnergyControlAutonomousPeakTracker updateEnergyControlA
 updateEnergyControlAutonomousPeakTracker recordEnergyControlAutonomousPeak
 updateEnergyControlAutonomousAtZeroCross updateEnergyControlAutonomousPulse
 beginEnergyControlAutonomousPulse beginEnergyControlAutonomousStartKickPulse
-energyControlPotentialJ energyControlAutonomousGainForSide
-energyControlAutonomousCorrectionParameters energyControlAutonomousCorrectedPrediction
+energyControlAutonomousGainForSide energyControlAutonomousCorrectionParameters
 predictedChargeMaS predictCurrentGoalMa predictRiseTauS predictBetaMin
 updatePulseModelPrediction startTimingProbe maybeFinalizeTimingProbe stopActivePulse
 stopMotor update logSampleIfDue logSampleNow'''.split()
@@ -21,7 +20,8 @@ ACQUISITION_METHODS = 'acquisitionLoop captureSensor recordPollProfile publishSa
 INLINE_HELPERS = ('energyControlAutonomousGainForSide',
                   'energyControlAutonomousCorrectionParameters', 'predictBetaMin')
 REQUIRED = tuple('ExperimentRunner::'+n+'(' for n in MOTION_METHODS if n not in INLINE_HELPERS) + tuple(
-    'ImuManager::'+n+'(' for n in ACQUISITION_METHODS) + ('imu_i2c::read(',)
+    'ImuManager::'+n+'(' for n in ACQUISITION_METHODS) + (
+    'imu_i2c::read(', 'lateral_energy::potential(')
 PREFIXES = REQUIRED + tuple('ExperimentRunner::'+n+'(' for n in INLINE_HELPERS) + (
     'direct_q::target(', 'direct_q::width(', 'ImuPollProfile::record(')
 LIMIT = 24576
@@ -45,7 +45,7 @@ def audit(table):
     size = sum(s['bytes'] for s in symbols.values())
     if size > LIMIT:
         raise ValueError('Motion/acquisition code exceeds 24 KiB: '+str(size))
-    return dict(revision='motion_acquisition_04725', symbols=symbols,
+    return dict(revision='lateral_energy_motion_link_v1', symbols=symbols,
                 function_code_bytes=size, function_code_limit_bytes=LIMIT,
                 scope='function bodies, including emitted lambdas; excludes literals and total IRAM',
                 external_calls_and_data_may_use_flash=True, hardware_timing_verified=False)
