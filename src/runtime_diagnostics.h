@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define RUNTIME_VERSION "1.0.0-lateral-energy-mekf-rwlog-v54"
+#define RUNTIME_VERSION "1.0.1-lateral-energy-mekf-rwlog-v54-normal-sign-test"
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

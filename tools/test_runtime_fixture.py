@@ -70,12 +70,13 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.0-lateral-energy-mekf-rwlog-v54'
+assert metadata['firmware_revision']=='1.0.1-lateral-energy-mekf-rwlog-v54-normal-sign-test'
 assert metadata['energy_control_autonomous_revision']=='lateral_energy_inverse_v1_20261013'
 assert metadata['legacy_rate_and_Q1_models_active'] is False
 assert metadata['lateral_energy_coefficient_status'].startswith('provisional_204_closed_loop')
 assert metadata['foot_camera_required_for_autonomous_start'] is False
 assert metadata['motor_driver_polarity']==-1
+assert metadata['normal_autonomous_motor_output_sign']==-1
 assert 'motor_cmd_mA_is_signed_current_sent_to_Roller485' in metadata['motor_direction_semantics']
 assert metadata['autonomous_input_advance_us']==0
 assert metadata['autonomous_total_timing_projection_us']==0

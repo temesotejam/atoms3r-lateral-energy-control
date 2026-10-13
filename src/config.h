@@ -295,6 +295,9 @@ static constexpr int8_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_DIRECTION = -1;
 static constexpr int8_t MOTOR_DRIVER_POLARITY = -1;
 static_assert(MOTOR_DRIVER_POLARITY == 1 || MOTOR_DRIVER_POLARITY == -1,
               "Motor polarity must be +1 or -1");
+// Sign-only trial: reverse normal autonomous motor output while leaving the
+// start kick and every energy/width calculation unchanged.
+static constexpr int8_t ENERGY_CONTROL_AUTONOMOUS_NORMAL_OUTPUT_SIGN = -1;
 // Normal autonomous output deliberately does not use the Q_IDENT 5--25 ms
 // experiment limits.  Width zero is a documented no-output decision.
 static constexpr int16_t ENERGY_CONTROL_AUTONOMOUS_CURRENT_MA = 300;

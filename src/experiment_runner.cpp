@@ -2417,6 +2417,7 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   const uint32_t begin_t0_us = micros();
   energy_control_autonomous_pulse_authorized_ = true;
   const int16_t command_current_mA = static_cast<int16_t>(
+      Config::ENERGY_CONTROL_AUTONOMOUS_NORMAL_OUTPUT_SIGN *
       Config::MOTOR_DRIVER_POLARITY * direction * energy_control_autonomous_input_current_mA_);
   const uint32_t set_current_t0_us = micros();
   const bool set_current_ok = roller_->setCurrentMa(command_current_mA);

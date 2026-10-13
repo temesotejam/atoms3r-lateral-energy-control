@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.0-lateral-energy-mekf-rwlog-v54",
+  "version": "1.0.1-lateral-energy-mekf-rwlog-v54-normal-sign-test",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

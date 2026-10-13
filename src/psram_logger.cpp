@@ -488,7 +488,8 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_autonomous_target_choices_deg\":\"8.0,10.0,12.0\",";
   json += "\"energy_control_autonomous_start_kick\":\"startup_only;configured_current_mA;100ms;command_direction=-1\",";
   json += "\"motor_driver_polarity\":" + String(Config::MOTOR_DRIVER_POLARITY) + ",";
-  json += "\"motor_direction_semantics\":\"pulse_direction_and_q_command_direction_are_body_motion_logical;motor_cmd_mA_is_signed_current_sent_to_Roller485_after_mount_polarity;roller_actual_current_mA_is_driver_readback\",";
+  json += "\"normal_autonomous_motor_output_sign\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_NORMAL_OUTPUT_SIGN) + ",";
+  json += "\"motor_direction_semantics\":\"pulse_direction_and_q_command_direction_are_body_motion_logical;normal_autonomous_output_uses_mount_polarity_times_trial_sign;start_kick_unchanged;motor_cmd_mA_is_signed_current_sent_to_Roller485;roller_actual_current_mA_is_driver_readback\",";
   json += "\"energy_control_autonomous_startup_pump\":false,";
   json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);measurement_start_reference;no_delay_projection;no_output_scaling\",";
   json += "\"energy_control_autonomous_rate_coordinate\":\"(gy_dps-mekf_bias_y_dps)*mekf_gyro_y_scale;live_MEKF_bias;historical_Q1_rate_support_rescaled\",";
