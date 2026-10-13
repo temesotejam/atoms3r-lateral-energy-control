@@ -1,6 +1,6 @@
 {
-  "name": "AtomS3R Free-foot Runtime V2",
-  "version": "0.47.45-camera-optional-rwlog-v54",
+  "name": "AtomS3R Lateral Energy Control",
+  "version": "1.0.0-lateral-energy-mekf-rwlog-v54",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

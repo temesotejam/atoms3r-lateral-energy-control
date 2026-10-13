@@ -22,7 +22,7 @@ vm.runInContext(code,context);
   assert.strictEqual(vm.runInContext('latest',context),null);
   assert.strictEqual(element('start').disabled,true);
   assert.match(element('connection').textContent,/状態データ/);
-  const valid={input_peak_percent:50,input_current_mA:1200,state:'READY_TO_MEASURE',export_phase:'empty',running:false,ready:true,downloadable:false,
+  const valid={input_peak_percent:0,input_current_mA:1200,state:'READY_TO_MEASURE',export_phase:'empty',running:false,ready:true,downloadable:false,
     controller_fresh:true,command:{pending:false,completed:0,submitted:0},
     foot:{available:true,zero_ready:true,age_ms:80,frame_valid:true,frame_timestamp_valid:true,
       right_valid:true,left_valid:true,right_in_range:true,left_in_range:true,
@@ -33,7 +33,7 @@ vm.runInContext(code,context);
   assert.strictEqual(element('start').disabled,false);
   assert(!code.includes('steering-status'));
   const html=fs.readFileSync('web/index.html','utf8');
-  assert.match(html,/入力時間は100 ms固定/);
+  assert.match(html,/ZEROクロスで必要な入力時間を計算/);
   assert.doesNotMatch(html,/±0.2|応答確認|ジャイロ方位/);
   assert.strictEqual(element('right').textContent,'8.00°'); // Tilting does not invalidate a locked zero.
   assert.strictEqual(element('left').textContent,'-6.00°');

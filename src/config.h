@@ -123,7 +123,7 @@ static constexpr char ATTITUDE_VALIDATION_REVISION[] = "v46aj_fixed_3ms_compensa
 // V46ak changes observation only. ATTITUDE_VALIDATION_REVISION intentionally remains V46aj.
 static constexpr char AMPLITUDE_CONTROL_OBSERVATION_REVISION[] = "v46ak_pre_input_state_observation_20260920";
 // V46al-R2 previous-peak active control begin
-static constexpr char AMPLITUDE_CONTROL_REVISION[] = "peak_percent_trigger_adjustable_current_100ms_15s_04741_20261005";
+static constexpr char AMPLITUDE_CONTROL_REVISION[] = "lateral_energy_inverse_v1_20261013";
 static constexpr char AMPLITUDE_CONTROL_BASELINE_SOURCE[] =
     "atoms3r-amplitude-control-v46ak-stable@bb9c5ed07c5ca8b3c6c6b5813b6c2f1b1f57a6ec";
 static constexpr char ENERGY_CONTROL_AUTONOMOUS_PREVIOUS_PEAK_MODEL_REVISION[] =
@@ -275,19 +275,18 @@ static constexpr uint8_t ENERGY_CONTROL_V0_INVALID_WAIT_REARM_EXCURSION = 10;
 static constexpr uint8_t ENERGY_CONTROL_V0_INVALID_NONALTERNATING_SIDE = 11;
 static constexpr uint8_t ENERGY_CONTROL_V0_INVALID_EVENT_LOG_OVERFLOW = 12;
 
-// Autonomous Energy Control V7: one startup-only strong kick is followed by
-// direct rate-baseline/Q1 control on accepted physical half-cycles. The V5
-// event policy separates raw detector candidates from accepted physical events
-// so pulse transients cannot self-trigger the next control cycle.
+// Lateral energy control: one startup-only kick, then one bounded variable
+// width pulse at each accepted physical zero crossing. MEKF provides the
+// lateral angle and rate; feet and yaw are observation-only here.
 static constexpr char ENERGY_CONTROL_AUTONOMOUS_MEASUREMENT_MODE[] =
-    "peak_percent_trigger_adjustable_current_100ms_rwlog15s";
+    "lateral_energy_mekf_zero_cross_variable_width_rwlog15s";
 static constexpr uint32_t ENERGY_CONTROL_AUTONOMOUS_DURATION_MS = 15000UL;
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG = 8.0f;
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_TARGET_MIN_DEG = 8.0f;
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_TARGET_MAX_DEG = 12.0f;
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_TARGET_CHOICES_DEG[3] = {8.0f, 10.0f, 12.0f};
 // This strong kick is startup-only and independent of normal energy control.
-static constexpr int16_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_CURRENT_MA = 1200;
+static constexpr int16_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_CURRENT_MA = 300;
 static constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_PULSE_MS = 100;
 static constexpr int8_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_DIRECTION = -1;
 // Trial mounting: the Roller485 has been installed front-to-back reversed.
@@ -298,15 +297,11 @@ static_assert(MOTOR_DRIVER_POLARITY == 1 || MOTOR_DRIVER_POLARITY == -1,
               "Motor polarity must be +1 or -1");
 // Normal autonomous output deliberately does not use the Q_IDENT 5--25 ms
 // experiment limits.  Width zero is a documented no-output decision.
-static constexpr int16_t ENERGY_CONTROL_AUTONOMOUS_CURRENT_MA = 1200;
+static constexpr int16_t ENERGY_CONTROL_AUTONOMOUS_CURRENT_MA = 300;
 static constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_MIN_PULSE_MS = 0;
 static constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS = 100;
-static constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_FIXED_TEST_PULSE_MS = 100;
 // Stop before the CAD arc's nominal 17.46-degree outer contact limit.
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_FIXED_TEST_STOP_ABS_DEG = 16.0f;
-static_assert(ENERGY_CONTROL_AUTONOMOUS_FIXED_TEST_PULSE_MS <=
-                  ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS,
-              "Fixed-width experiment exceeds the actuator limit");
 
 // V46ae: retain the historical V7 fit for provenance, but do not apply a
 // gyro-integral-coordinate residual to the new MEKF posterior amplitude.
@@ -332,10 +327,10 @@ static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_PEAK_CONFIRM_SAMPLES = 3;
 // the measured 0.317--0.490 s passive half-cycle range.
 static constexpr uint32_t ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS = 250UL;
 static constexpr uint32_t ENERGY_CONTROL_AUTONOMOUS_MIN_ZERO_TO_PEAK_MS = 125UL;
-// V46ai free-peak prediction: nonnegative side-specific zero-cross rate formula.
-// The geometric potential remains the angle/energy conversion for the solver.
+// Side-specific provisional energy model fitted from the inherited fixed-foot
+// events. Its status and coefficients are recorded in docs/lateral_energy_seed.json.
 static constexpr char ENERGY_CONTROL_AUTONOMOUS_FREE_MODEL_REVISION[] =
-    "FIXED_FOOT_MEKF_RATE_REFIT_20260929";
+    "LATERAL_ENERGY_SEED_20261013";
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_INTEGRAL_KI_MAS_PER_DEG = 0.10f;
 static constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_MAX_EVENTS = 256;
 static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_NONE = 0;

@@ -3,9 +3,9 @@
 #include <cerrno>
 #include <cstdlib>
 namespace autonomous_input_percent {
-constexpr float kDefaultPercent = 50.0f;
-constexpr float kMaxPercent = 100.0f;
-inline bool valid(float value) { return std::isfinite(value) && value >= 0 && value <= kMaxPercent; }
+constexpr float kDefaultPercent = 0.0f;
+constexpr float kMaxPercent = 0.0f;
+inline bool valid(float value) { return std::isfinite(value) && value == 0.0f; }
 inline bool parse(const char* text, float& result) {
   if (!text || !*text) return false;
   char* end = nullptr; errno = 0;

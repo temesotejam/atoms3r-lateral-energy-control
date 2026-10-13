@@ -4,21 +4,20 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <style>
 :root{font-family:system-ui,sans-serif;color:#1d293d;background:#eef2f5;font-size:16px}*{box-sizing:border-box}body{max-width:950px;margin:auto;padding:20px}h1{font-size:1.65rem;margin-bottom:4px}h2{font-size:1.08rem}p{line-height:1.6}.muted{color:#546477;font-size:.88rem}.card{background:white;border-radius:14px;padding:20px;margin:16px 0;border:1px solid #d9e1e8}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.value{font-size:2rem;font-variant-numeric:tabular-nums;margin:4px 0}.label{font-size:.85rem;color:#546477}button{padding:13px 18px;border:0;border-radius:8px;background:#174b8e;color:white;font:inherit;cursor:pointer;margin:4px 4px 4px 0}button:disabled{opacity:.4;cursor:default}#stop{background:#b62032}#clear,#cancel{background:#58677a}code,pre{font-family:ui-monospace,monospace}pre{white-space:pre-wrap;font-size:.78rem;overflow-wrap:anywhere}#connection{font-weight:600}progress{width:100%;height:24px}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px 4px;border-bottom:1px solid #e1e6eb}canvas{width:100%;height:120px;background:#f3f6fa;border-radius:8px}#message{min-height:26px;color:#9c2636}a{color:#174b8e}
 </style>
-<h1>AtomS3R Free-foot</h1><div class="muted">0.47.45 · モータ前後逆向き取り付け用（電流符号を反転） · カメラ認識は任意 · 最大角割合と指令電流を調整可能 · 入力時間 100 ms固定</div>
+<h1>AtomS3R Free-foot</h1><div class="muted">左右揺動のエネルギー制御 · MEKF姿勢推定 · ZEROクロスで必要な入力時間を計算</div>
 <p id="connection">接続を確認中…</p>
 <section class="card"><div class="grid"><div><div class="label">状態</div><div class="value" id="state">—</div></div><div><div class="label">残り時間</div><div class="value" id="remaining">—</div></div><div><div class="label">胴体の左右揺動 · MEKF</div><div class="value" id="pitch">—</div></div><div><div class="label">指令 / 実測電流</div><div class="value" style="font-size:1.5rem" id="current">—</div></div></div>
 <p id="guide">起動後は静止させてください。LEDが点灯したら左右のpitchを基準に合わせ、機体を静止させます。足のマーカー認識は測定開始に不要です。</p>
-<p><label for="target">比較用の記録角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
-<p class="muted" id="target-help">選択値はログに保存します。この試験版では選択値に関係なく入力時間は100 ms固定です。</p>
-<p class="muted" id="run-target" role="status">記録角度は測定開始時に保存します。パルス幅は固定です。</p>
-<p><label for="input-current">指令電流 </label><input id="input-current" type="number" min="100" max="1200" step="10" value="1200" disabled aria-describedby="input-current-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;width:110px"> mA</p>
-<p class="muted" id="input-current-help">100〜1200 mA、10 mA刻み。始動キックと通常入力に同じ指令値を使います。実電流はモータの状態によって異なります。</p>
-<p><label for="input-percent">直前の最大角の何％で入力するか </label><input id="input-percent" type="number" min="0" max="100" step="1" value="50" disabled aria-describedby="input-percent-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;width:110px"> %</p>
-<p class="muted" id="input-percent-help">0〜100%。50%ならピーク8°では戻りの4°、ピーク10°では戻りの5°で入力します。左右それぞれ直前に確認したピークを使います。0%はZEROクロス、100%は折り返し確認直後です。ピーク確認時に設定位置を通過済みなら、確認直後に入力します。設定は開始時に保存し、測定中は変更しません。</p>
-<p class="muted" id="run-percent" role="status">入力割合は測定開始時に確定します。</p>
+<p><label for="target">目標とする左右の最大角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
+<p class="muted" id="target-help">ZEROクロスの角速度から次の最大角度を予測し、選んだ目標に近づくよう電流の入力時間を0〜100 msで決めます。</p>
+<p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
+<p><label for="input-current">指令電流 </label><input id="input-current" type="number" min="100" max="1200" step="10" value="300" disabled aria-describedby="input-current-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;width:110px"> mA</p>
+<p class="muted" id="input-current-help">100〜1200 mA、10 mA刻み。初期値300 mAは予備データに近い条件です。始動キックと通常入力に同じ指令値を使います。</p>
+<input id="input-percent" type="hidden" value="0">
+<p class="muted" id="run-percent" role="status">通常入力はZEROクロスで行います。</p>
 <p class="muted">yaw関連機能は停止中です。</p>
 <button id="start" disabled>15秒測定を開始</button><button id="reconnect" style="display:none">終了・Web復帰を確認</button><button id="clear" disabled>ログを消去・次の測定へ</button>
-<div id="message" role="status"></div><p class="muted">開始・終了のLED同期はそれぞれ5秒。制御は既存のAutonomous、設定した最大角割合と指令電流で入力、パルス時間は100 ms固定です。</p></section>
+<div id="message" role="status"></div><p class="muted">開始・終了のLED同期はそれぞれ5秒。始動キックの後、MEKFの左右角と角速度でZEROクロスを検出します。必要なエネルギーから入力時間を求めます。</p></section>
 <p class="muted">運転中もWi-Fiを維持し、Web更新を休止して本体で制御・観測・記録します。前後90°以上の傾斜で停止します。横倒しは姿勢STOPの対象にしません。姿勢を戻しても再始動しません。Wi-Fi接続と画面を保ったままお待ちください。終了後にWeb表示が復帰したらログを保存してください。Web復帰だけではログは消えません。本体の電源断・再起動では未取得のログが失われます。</p>
 <section class="card"><h2>左右足角度 · 胴体に対する相対角</h2><div class="grid"><div><div class="label">右足 · 上段マーカー A</div><div class="value" id="right">—</div></div><div><div class="label">左足 · 下段マーカー B</div><div class="value" id="left">—</div></div><div><div class="label">カメラ実測 / 目標</div><div class="value" style="font-size:1.5rem" id="fps">— / 15 fps</div></div></div>
 <canvas id="markers" width="640" height="120" aria-label="マーカー検出位置。上段が右足、下段が左足。"></canvas>
@@ -149,7 +148,7 @@ let targetInitialized = false, targetBootId = null, requestedTargetDeg = null;
 let angleInitialized = false, angleBootId = null, requestedInputPercent = null;
 let currentInitialized = false, currentBootId = null, requestedInputCurrentMa = null;
 const validInputCurrent = value => Number.isInteger(value) && value >= 100 && value <= 1200 && value % 10 === 0;
-const validInputPercent = value => Number.isFinite(value) && value >= 0 && value <= 100;
+const validInputPercent = value => value === 0;
 const nap = ms => new Promise(resolve => setTimeout(resolve, ms));
 function crc32(data, crc = 0) {
   crc = ~crc;
@@ -211,11 +210,11 @@ function renderOffline() {
   $('connection').textContent = remaining ? 'Web更新を休止中 · Wi-Fi接続を維持してください' : 'Webの復帰待ち · 自動再試行';
   $('state').textContent = 'Web休止中';
   $('run-target').textContent = requestedTargetDeg === null
-    ? '比較用の記録角度はWeb復帰後に確認します。'
-    : `比較用の記録角度：${requestedTargetDeg}°（ZEROクロス入力は100 ms固定）`;
+    ? '目標角度はWeb復帰後に確認します。'
+    : `目標角度：${requestedTargetDeg}°（ZEROクロスで入力時間を計算）`;
   $('run-percent').textContent = requestedInputPercent === null
-    ? '入力割合はWeb復帰後に確認します。'
-    : `開始要求の入力位置：直前ピーク角の${requestedInputPercent}%（${requestedInputCurrentMa} mA・100 ms固定）`;
+    ? '通常入力はZEROクロスで行います。'
+    : `開始要求：ZEROクロスで${requestedInputCurrentMa} mA、入力時間はエネルギーから計算`;
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
   for (const id of ['pitch', 'current', 'right', 'left', 'fps']) $(id).textContent = '—';
   $('guide').textContent = '本体で制御・観測・記録を行います。開始5秒＋測定15秒＋終了5秒が予定時間です。前後90°以上の傾斜でSTOPします。横倒しは姿勢STOPの対象にしません。表示時間はPC側の目安で、実際の進行・終了を確認した値ではありません。';
@@ -281,11 +280,11 @@ function render(s) {
     currentInitialized = true; currentBootId = s.boot_id;
   }
   $('run-percent').textContent = s.running || terminal
-    ? `今回の入力位置：直前ピーク角の${format(s.input_peak_percent, 1)}%（${s.input_current_mA} mA・100 ms固定）`
-    : '入力割合は測定開始時に確定します。';
+    ? `今回の入力：ZEROクロスで${s.input_current_mA} mA、入力時間は可変`
+    : '通常入力はZEROクロスで行います。';
   $('run-target').textContent = s.running || terminal
-    ? `今回の記録角度：${format(s.target_deg, 0)}°（入力は100 ms固定）`
-    : '記録角度は測定開始時に保存します。パルス幅は固定です。';
+    ? `今回の目標角度：${format(s.target_deg, 0)}°`
+    : '目標角度は測定開始時に確定します。';
   $('right').textContent = f.right_valid && (!stale || terminal) ? format(f.right_deg) + '°' : '—';
   $('left').textContent = f.left_valid && (!stale || terminal) ? format(f.left_deg) + '°' : '—';
   $('fps').textContent = terminal ? '停止中' : `${format(stale ? 0 : f.fps, 1)} / 15 fps`;
@@ -355,12 +354,12 @@ async function startOfflineRun() {
   if (commandInFlight || offlineMode) return;
   const target = Number($('target').value);
   if (!targetChoices.includes(target)) {
-    $('message').textContent = '比較用の記録角度を8°・10°・12°から選択してください。'; return;
+    $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
   }
   const angleText = $('input-percent').value.trim();
   const inputPercent = Number(angleText);
   if (!angleText || !validInputPercent(inputPercent)) {
-    $('message').textContent = '入力位置を直前ピーク角の0〜100%の範囲で設定してください。'; return;
+    $('message').textContent = 'ZEROクロス設定を確認してください。'; return;
   }
   const currentText = $('input-current').value.trim();
   const inputCurrentMa = Number(currentText);
@@ -370,10 +369,10 @@ async function startOfflineRun() {
   requestedTargetDeg = target;
   requestedInputPercent = inputPercent;
   requestedInputCurrentMa = inputCurrentMa;
-  commandInFlight = true; setOffline(30000); $('message').textContent = `角度入力試験（直前ピーク角の${inputPercent}%・${inputCurrentMa} mA・記録角度${target}°）の開始要求を送信中…`;
+  commandInFlight = true; setOffline(30000); $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}`, {method:'POST', kind:'text'});
-    $('message').textContent = `角度入力試験（直前ピーク角の${inputPercent}%・${inputCurrentMa} mA・記録角度${target}°）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
+    $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
   } catch (error) {
     if (/^\d{3}:/.test(error.message)) { clearOffline(); await refresh(); }
     $('message').textContent = `開始結果の確認: ${error.message}。Web復帰後に本体の結果を確認します。`;

@@ -4,7 +4,7 @@
 #define private public
 #include "../src/run_control_worker.h"
 #undef private
-struct Model {bool running=false;unsigned steps=0;float target=8,angle=1;int16_t current=1200;RunControlWorker* worker=nullptr;};
+struct Model {bool running=false;unsigned steps=0;float target=8,angle=0;int16_t current=300;RunControlWorker* worker=nullptr;};
 static bool step(void* p) {
   auto& m=*static_cast<Model*>(p); ++m.steps;
   if(m.worker->takeStopRequest()) m.running=false;
@@ -32,10 +32,10 @@ int main(){
   assert(autonomous_target::parse("8",parsed)&&parsed==8);
   assert(autonomous_target::parse("10.0",parsed)&&parsed==10);
   assert(autonomous_target::parse("12",parsed)&&parsed==12);
-  for(const char* bad : {"", "-0.1", "100.1", "nan", "inf", "1junk", "1e999", "1e-999"}) {
+  for(const char* bad : {"", "-0.1", "1", "50", "100", "100.1", "nan", "inf", "1junk", "1e999", "1e-999"}) {
     float angle=2;assert(!autonomous_input_percent::parse(bad,angle)&&angle==2);
   }
-  for(const char* good : {"0", "1", "50", "100"}) {
+  for(const char* good : {"0"}) {
     float angle=-1;assert(autonomous_input_percent::parse(good,angle));
   }
   for(const char* bad : {"", "99", "1201", "555", "100junk", "10000000000"}) {
@@ -54,14 +54,14 @@ int main(){
   assert(!w.commandState().pending&&w.commandState().submitted==0);
   assert(!w.request(RunControlWorker::Command::Start,10,NAN));
   assert(!w.request(RunControlWorker::Command::Start,10,100.1f));
-  assert(!w.request(RunControlWorker::Command::Start,10,65.0f,90));
-  assert(!w.request(RunControlWorker::Command::Start,10,65.0f,1210));
-  assert(w.request(RunControlWorker::Command::Start,10,65.0f,500));
+  assert(!w.request(RunControlWorker::Command::Start,10,0.0f,90));
+  assert(!w.request(RunControlWorker::Command::Start,10,0.0f,1210));
+  assert(w.request(RunControlWorker::Command::Start,10,0.0f,500));
   assert(!w.request(RunControlWorker::Command::Start,12)); // cannot replace accepted target
   assert(!w.request(RunControlWorker::Command::Clear)); // pending start blocks clear
   w.oneStep();assert(w.active()&&w.commandState().ok);
   assert(m.target==10&&w.snapshot().target_deg==10);
-  assert(m.angle==65.0f&&w.snapshot().input_peak_percent==65.0f);
+  assert(m.angle==0.0f&&w.snapshot().input_peak_percent==0.0f);
   assert(m.current==500&&w.snapshot().input_current_mA==500);
   assert(w.commandPublished(w.commandState().completed));
   assert(!w.request(RunControlWorker::Command::Start));
@@ -76,7 +76,7 @@ int main(){
   assert(control_work::profile.stages[0][static_cast<uint8_t>(control_work::Stage::Owner)].count==profile_done.count);
   assert(w.request(RunControlWorker::Command::Start,12));
   assert(w.requestStop());w.oneStep();assert(!w.active()&&!w.commandState().pending);
-  assert(m.target==10 && m.angle==65.0f); // cancelled START never changes the applied target
+  assert(m.target==10 && m.angle==0.0f); // cancelled START never changes the applied target
   assert(!w.commandState().ok); // STOP cancels queued START
   assert(w.request(RunControlWorker::Command::Clear));w.oneStep();assert(!w.active());
   w.beginRunAudit();w.last_step_start_us_=UINT32_MAX-200;host_us=300;

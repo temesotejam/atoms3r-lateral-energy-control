@@ -989,6 +989,12 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
     status_.beta_smooth_series[i] = NAN;
   }
   resetEnergyControlAutonomous();
+  lateral_target_energy_j_ = lateral_energy::potential(lateral_energy_geometry_, energy_control_autonomous_target_peak_deg_);
+  if (!std::isfinite(lateral_target_energy_j_) ||
+      !lateral_current_table_.prepare(predictRiseTauS(energy_control_autonomous_input_current_mA_))) {
+    g_v46_mekf_run_reinit.active = false;
+    energy_control_autonomous_mode_ = false; status_.last_error = "lateral_energy_model_invalid"; return false;
+  }
   q_ident_run_schedule_id_ = 0;
   resetQIdentTracker();
   q1_shadow_run_target_peak_abs_deg_ = q1_shadow_target_peak_abs_deg_;
@@ -2300,8 +2306,8 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   energy_control_autonomous_pulse_authorized_ = false;
   energy_control_autonomous_phase_ = EnergyControlAutonomousPhase::IDLE;
   energy_control_autonomous_half_cycle_state_ = EnergyControlAutonomousHalfCycleState::WAIT_PEAK;
-  energy_control_autonomous_integral_plus_mA_s_ = 0.0f;
-  energy_control_autonomous_integral_minus_mA_s_ = 0.0f;
+  energy_control_autonomous_integral_plus_j_ = 0.0f;
+  energy_control_autonomous_integral_minus_j_ = 0.0f;
   energy_control_autonomous_last_motion_sample_us_ = 0;
   energy_control_autonomous_detector_has_previous_angle_ = false;
   // V46aa control-zero reset begin
@@ -2608,15 +2614,18 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       physical_side == energy_control_autonomous_pending_next_side_;
   event.pending_q_command_mA_s = event.pending_command_matched
       ? energy_control_autonomous_pending_q_command_mA_s_ : NAN;
+  event.target_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.target_peak_deg);
+  event.measured_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.peak_amplitude_deg);
+  event.energy_error_j = event.target_energy_j - event.measured_energy_j;
   event.antiwindup_upper_hold = event.pending_command_matched &&
-      energy_control_autonomous_pending_saturated_upper_ && event.peak_error_deg > 0.0f;
+      energy_control_autonomous_pending_saturated_upper_ && event.energy_error_j > 0;
   event.antiwindup_lower_hold = event.pending_command_matched &&
-      energy_control_autonomous_pending_saturated_lower_ && event.peak_error_deg < 0.0f;
-  if (!event.antiwindup_upper_hold && !event.antiwindup_lower_hold) {
-    float* integral = physical_side > 0 ? &energy_control_autonomous_integral_plus_mA_s_ :
-        &energy_control_autonomous_integral_minus_mA_s_;
-    *integral += Config::ENERGY_CONTROL_AUTONOMOUS_INTEGRAL_KI_MAS_PER_DEG * event.peak_error_deg;
-  }
+      energy_control_autonomous_pending_saturated_lower_ && event.energy_error_j < 0;
+  float* integral = physical_side > 0 ? &energy_control_autonomous_integral_plus_j_ :
+      &energy_control_autonomous_integral_minus_j_;
+  *integral = lateral_energy::updateIntegral(*integral,event.energy_error_j,event.target_energy_j,
+      energy_control_autonomous_pending_saturated_upper_,energy_control_autonomous_pending_saturated_lower_,
+      event.pending_command_matched);
   energy_control_autonomous_pending_peak_ = false;
   energy_control_autonomous_last_peak_valid_ = true;
   energy_control_autonomous_last_peak_amplitude_deg_ = amplitude_deg;
@@ -2628,8 +2637,9 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
   energy_control_autonomous_phase_ = fabsf(event.peak_error_deg) <= Config::TARGET_TOLERANCE_DEG
       ? EnergyControlAutonomousPhase::HOLD : EnergyControlAutonomousPhase::ENERGY_CONTROL;
   event.phase = static_cast<uint8_t>(energy_control_autonomous_phase_);
-  event.integral_plus_mA_s = energy_control_autonomous_integral_plus_mA_s_;
-  event.integral_minus_mA_s = energy_control_autonomous_integral_minus_mA_s_;
+  event.integral_plus_mA_s = event.integral_minus_mA_s = NAN; // retired Q-integral columns
+  event.integral_plus_j = energy_control_autonomous_integral_plus_j_;
+  event.integral_minus_j = energy_control_autonomous_integral_minus_j_;
   logger_->addEnergyControlAutonomousPeakEvent(event);
   return true;
 }
@@ -2656,7 +2666,7 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   if (fabsf(peak_relative_angle_deg) >=
       Config::ENERGY_CONTROL_AUTONOMOUS_FIXED_TEST_STOP_ABS_DEG) {
     energy_control_autonomous_phase_ = EnergyControlAutonomousPhase::STOP;
-    requestEmergencyStop("fixed100_lateral_angle_limit");
+    requestEmergencyStop("lateral_energy_angle_limit");
     return;
   }
   const uint32_t t_test_ms = now_ms - run_start_ms_;
@@ -2885,36 +2895,15 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       event.q_command_direction == event.physical_next_peak_side;
   event.vbat_mV = status_.roller_battery_mV;
   const uint32_t v46l_free_model_t0_us = micros();
-  // V46ai: only the current interpolated crossing rate and its physical side
-  // determine the free peak. There is no previous-amplitude P1 calculation.
-  const auto baseline = rate_baseline::evaluate(
-      event.zero_cross_abs_rate_dps, event.physical_next_peak_side);
-  event.p1_free_peak_before_rate_deg = NAN;  // retired CSV column, never computed
-  event.rate_baseline_peak_deg = baseline.rate_deg;  // raw formula, before zero floor
-  event.rate_baseline_correction_deg = NAN;  // retired P1-difference column
-  event.rate_baseline_reason = static_cast<uint8_t>(baseline.reason);
-  // 0.47.31: the old 8-degree residual is disabled in Config because the
-  // rate baseline has been refitted. The helper now passes the baseline through.
-  const auto previous_peak_result = previous_peak_control::evaluate(
-      baseline.adjusted_deg, event.previous_peak_amplitude_deg,
-      event.physical_next_peak_side, energy_control_autonomous_target_peak_deg_, t_test_ms);
-  event.free_next_peak_amplitude_deg = previous_peak_result.corrected_free_peak_deg;
-  // V46al-R2 previous-peak active control end
-  const uint32_t v46l_free_model_us = static_cast<uint32_t>(micros() - v46l_free_model_t0_us);
-  // V46s audit begin
-  audit.free_model_us = v46l_free_model_us;
-  // V46s audit end
-  event.passive_energy_j = energyControlPotentialJ(event.free_next_peak_amplitude_deg);
-  event.target_energy_j = energyControlPotentialJ(event.target_peak_deg);
-  event.q1_gain_deg_per_mA_s = energyControlAutonomousGainForSide(event.physical_next_peak_side);
-  event.g_side_base_deg_per_mA_s = event.q1_gain_deg_per_mA_s;
-  energyControlAutonomousCorrectionParameters(event.physical_next_peak_side,
-      &event.c_side_used_deg, &event.g_side_corrected_deg_per_mA_s);
-  event.correction_blend_lambda =
-      Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_CORRECTION_ENABLED
-          ? Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_BLEND_LAMBDA : 0.0f;
-  const float zero_q_corrected_prediction_deg = energyControlAutonomousCorrectedPrediction(
-      event.free_next_peak_amplitude_deg, event.physical_next_peak_side, 0.0f, nullptr);
+  const auto energy_coeff = lateral_energy::coefficients(event.physical_next_peak_side);
+  const float omega = event.zero_cross_abs_rate_dps * lateral_energy::kRadPerDeg;
+  event.passive_energy_j = lateral_energy::freeEnergy(energy_coeff,omega);
+  event.target_energy_j = lateral_target_energy_j_;
+  event.free_next_peak_amplitude_deg = lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
+  event.rate_support_diagnostic = event.zero_cross_abs_rate_dps >= energy_coeff.rate_min_dps &&
+      event.zero_cross_abs_rate_dps <= energy_coeff.rate_max_dps;
+  event.rate_baseline_reason = 255; // old angle-domain baseline is not the controller
+  audit.free_model_us = static_cast<uint32_t>(micros() - v46l_free_model_t0_us);
   const uint32_t now_ms = run_start_ms_ + t_test_ms;
   event.i0_estimated_mA = predicted_current_end_ms_ == 0 ? 0.0f :
       predicted_signed_current_end_mA_ * expf(-static_cast<float>(now_ms - predicted_current_end_ms_) / 70.0f);
@@ -2942,148 +2931,52 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
         ? pre_input.speed_rpm : NAN;
   }
 
-  event.q_available_mA_s = fabsf(predictedChargeMaS(event.i0_estimated_mA,
-      event.q_command_direction, static_cast<float>(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS),
-      energy_control_autonomous_input_current_mA_));
-  if (!isfinite(event.free_next_peak_amplitude_deg) || !isfinite(event.passive_energy_j) ||
-      !isfinite(event.target_energy_j) || !isfinite(event.q1_gain_deg_per_mA_s) ||
-      event.q1_gain_deg_per_mA_s <= 0.0f || !isfinite(event.q_available_mA_s) ||
-      !isfinite(zero_q_corrected_prediction_deg)) {
-    event.reason = (!isfinite(event.passive_energy_j) || !isfinite(event.target_energy_j))
-        ? Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN
-        : Config::ENERGY_CONTROL_AUTONOMOUS_REASON_NONFINITE_STATE;
-    logger_->addEnergyControlAutonomousZeroCrossEvent(event);
-    rearm_for_next_peak();
-    return;
-  }
-  event.delta_energy_required_j = event.target_energy_j - event.passive_energy_j;
-  // V46s audit begin
-  audit.solver_started = 1;
-  audit.solver_start_us = micros();
-  // V46s audit end
-  // Direct-Q control begin. The old two energy searches are replaced by an
-  // analytic amplitude inverse and one bounded signed-charge inverse.
-  static_assert(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS == direct_q::kMaxWidthMs,
-      "Revalidate the bounded inverse when the actuator width limit changes");
   const float fast_v = status_.beta_model_vbat_mV > 0
-      ? static_cast<float>(status_.beta_model_vbat_mV) / 1000.0f
-      : Config::MODEL_VBAT_REFERENCE_V;
-  const float fast_signed_target_current_mA =
-      static_cast<float>(event.q_command_direction) *
-      predictCurrentGoalMa(energy_control_autonomous_input_current_mA_, fast_v);
-  const float fast_tau_s = predictRiseTauS(energy_control_autonomous_input_current_mA_);
-  // V46s audit begin
-  audit.signed_target_current_mA = fast_signed_target_current_mA;
-  audit.tau_s = fast_tau_s;
-  // V46s audit end
-  const uint32_t v46r_fast_solver_t0_us = micros();
-  event.integral_side_mA_s = event.physical_next_peak_side > 0
-      ? energy_control_autonomous_integral_plus_mA_s_ : energy_control_autonomous_integral_minus_mA_s_;
-  const auto inverse_target = direct_q::target(event.free_next_peak_amplitude_deg,
-      event.target_peak_deg, event.g_side_base_deg_per_mA_s, event.c_side_used_deg,
-      event.g_side_corrected_deg_per_mA_s, Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_MAX_ABS_DEG,
-      event.q_available_mA_s, event.integral_side_mA_s);
-  // V46s audit begin
-  audit.ff_search_us = static_cast<uint32_t>(micros() - v46r_fast_solver_t0_us);
-  audit.ff_valid = inverse_target.valid;
-  // No feedforward pulse width is rounded or searched in this revision.
-  audit.ff_width_ms = 65535;
-  audit.ff_eval_count = 0;
-  audit.ff_q_mA_s = inverse_target.feedforward;
-  // V46s audit end
-  if (!inverse_target.valid) {
-  // V46s audit begin
-    audit.stage = 1;
-    audit.solver_end_us = micros();
-  // V46s audit end
-    event.reason = Config::ENERGY_CONTROL_AUTONOMOUS_REASON_NONFINITE_STATE;
-    logger_->addEnergyControlAutonomousZeroCrossEvent(event);
-    rearm_for_next_peak();
-    return;
+      ? static_cast<float>(status_.beta_model_vbat_mV) / 1000.0f : Config::MODEL_VBAT_REFERENCE_V;
+  const float goal_current_mA = predictCurrentGoalMa(energy_control_autonomous_input_current_mA_,fast_v);
+  const float aligned_initial_mA = static_cast<float>(event.q_command_direction)*event.i0_estimated_mA;
+  event.integral_energy_j = event.physical_next_peak_side > 0
+      ? energy_control_autonomous_integral_plus_j_ : energy_control_autonomous_integral_minus_j_;
+  audit.solver_started=1; audit.solver_start_us=micros();
+  const auto decision=lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
+      event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
+      event.integral_energy_j,aligned_initial_mA,goal_current_mA);
+  if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
+    audit.stage=1;audit.solver_end_us=micros();
+    event.reason=Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN;
+    logger_->addEnergyControlAutonomousZeroCrossEvent(event);rearm_for_next_peak();return;
   }
-  // Retain the binary field layout. Metadata identifies q_ff_energy as the
-  // continuous inverse clipped before the side integral, not a rounded pulse.
-  event.q_ff_energy_mA_s = inverse_target.feedforward;
-  event.q_angle_diagnostic_mA_s = fmaxf(0.0f, (event.target_peak_deg -
-      event.free_next_peak_amplitude_deg) / event.q1_gain_deg_per_mA_s);
-  event.q_unclamped_mA_s = inverse_target.unclamped;
-  event.q_saturated_upper = inverse_target.upper;
-  event.q_saturated_lower = inverse_target.lower;
-  const float corrected_q_target_mA_s = inverse_target.charge;
-  const float corrected_target_prediction_deg = energyControlAutonomousCorrectedPrediction(
-      event.free_next_peak_amplitude_deg, event.physical_next_peak_side,
-      corrected_q_target_mA_s, nullptr);
-  const float corrected_target_energy_j = energyControlPotentialJ(corrected_target_prediction_deg);
-  // V46s audit begin
-  audit.corrected_target_energy_j = corrected_target_energy_j;
-  // V46s audit end
-  if (!isfinite(corrected_target_energy_j)) {
-  // V46s audit begin
-    audit.stage = 2;
-    audit.solver_end_us = micros();
-  // V46s audit end
-    event.reason = Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN;
-    logger_->addEnergyControlAutonomousZeroCrossEvent(event);
-    rearm_for_next_peak();
-    return;
-  }
-  // V46s audit begin
-  const uint32_t selected_search_t0_us = micros();
-  // V46s audit end
-  const auto selected_inverse = direct_q::width(corrected_q_target_mA_s,
-      event.i0_estimated_mA, fast_signed_target_current_mA, fast_tau_s,
-      Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS);
-  // 0.47.32 fixed-width experiment: keep the inverse result for diagnostic
-  // comparison, but issue 100 ms at every otherwise valid physical crossing.
-  const uint16_t model_selected_width_ms = selected_inverse.ms;
-  const uint16_t selected_width_ms = Config::ENERGY_CONTROL_AUTONOMOUS_FIXED_TEST_PULSE_MS;
-  const float selected_q_mA_s = fabsf(predictedChargeMaS(event.i0_estimated_mA,
-      event.q_command_direction, static_cast<float>(selected_width_ms),
-      energy_control_autonomous_input_current_mA_));
-  const float selected_energy_j = selected_width_ms == 0 ? event.passive_energy_j :
-      energyControlPotentialJ(energyControlAutonomousCorrectedPrediction(
-          event.free_next_peak_amplitude_deg, event.physical_next_peak_side,
-          selected_q_mA_s, nullptr));
-  // V46s audit begin
-  audit.selected_search_us = static_cast<uint32_t>(micros() - selected_search_t0_us);
-  audit.selected_eval_count = selected_inverse.evaluations;
-  audit.eval_count = selected_inverse.evaluations;
-  audit.selected_valid = selected_inverse.valid && isfinite(selected_q_mA_s) && isfinite(selected_energy_j);
-  audit.fast_selected_width_ms = selected_inverse.valid ? model_selected_width_ms : 65535;
-  // V46s audit end
-  if (!selected_inverse.valid || !isfinite(selected_q_mA_s) || !isfinite(selected_energy_j)) {
-  // V46s audit begin
-    audit.stage = 3;
-    audit.solver_end_us = micros();
-  // V46s audit end
-    event.reason = Config::ENERGY_CONTROL_AUTONOMOUS_REASON_NONFINITE_STATE;
-    logger_->addEnergyControlAutonomousZeroCrossEvent(event);
-    rearm_for_next_peak();
-    return;
-  }
-  // V46s audit begin
-  audit.fast_solver_us = static_cast<uint32_t>(micros() - v46r_fast_solver_t0_us);
-  audit.stage = 4;
-  audit.solver_complete = 1;
-  audit.solver_end_us = micros();
-  audit.selected_width_ms = selected_width_ms;
-  audit.selected_q_mA_s = selected_q_mA_s;
-  // V46s audit end
-  // Direct-Q control end.
-  event.q_command_mA_s = selected_q_mA_s;
-  event.q_effective_pred_mA_s = selected_q_mA_s;
-  event.a_pred_base_deg = event.free_next_peak_amplitude_deg +
-      event.q1_gain_deg_per_mA_s * selected_q_mA_s;
-  event.a_pred_corrected_deg = energyControlAutonomousCorrectedPrediction(
-      event.free_next_peak_amplitude_deg, event.physical_next_peak_side,
-      selected_q_mA_s, &event.correction_deg);
-  event.predicted_next_peak_amplitude_deg = event.a_pred_corrected_deg;
-  event.predicted_energy_j = selected_energy_j;
-  event.q_gain_extrapolated = selected_width_ms > 0 &&
-      (selected_q_mA_s < Config::Q1_SHADOW_Q_SUPPORT_MIN_MAS ||
-       selected_q_mA_s > Config::Q1_SHADOW_Q_SUPPORT_MAX_MAS);
-  event.solver_required_width_ms = static_cast<float>(model_selected_width_ms);
-  event.solver_selected_integer_width_ms = selected_width_ms;
+  const uint16_t selected_width_ms=decision.ms;
+  const float selected_q_mA_s=decision.selected_q_mAs;
+  event.kinetic_energy_j=decision.kinetic_j;
+  event.predicted_loss_j=decision.loss_j;
+  event.delta_energy_required_j=decision.deficit_j;
+  event.commanded_energy_deficit_j=decision.commanded_deficit_j;
+  event.corrected_target_energy_j=decision.corrected_target_j;
+  event.q_available_mA_s=decision.available_q_mAs;
+  event.q_ff_energy_mA_s=decision.requested_q_mAs;
+  event.q_unclamped_mA_s=decision.requested_q_mAs;
+  event.q_saturated_upper=decision.upper;event.q_saturated_lower=decision.lower;
+  event.work_omega_q_coefficient=energy_coeff.work_omega_q;
+  event.work_q2_coefficient=energy_coeff.work_q2;
+  event.energy_model_extrapolated=decision.extrapolated || energy_control_autonomous_input_current_mA_!=300;
+  event.q_command_mA_s=selected_q_mA_s;event.q_effective_pred_mA_s=selected_q_mA_s;
+  event.predicted_energy_j=decision.predicted_j;
+  event.predicted_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.predicted_j);
+  event.solver_required_width_ms=static_cast<float>(selected_width_ms);
+  event.solver_selected_integer_width_ms=selected_width_ms;
+  // Audit fields are retained for old log readers; current energy-unit fields
+  // live on the zero-cross record. There is no angle-to-Q inverse here.
+  audit.signed_target_current_mA=event.q_command_direction*goal_current_mA;
+  audit.tau_s=lateral_current_table_.tau;
+  audit.ff_q_mA_s=decision.requested_q_mAs;audit.ff_width_ms=65535;audit.ff_valid=true;
+  audit.corrected_target_energy_j=decision.corrected_target_j;
+  audit.selected_width_ms=selected_width_ms;audit.fast_selected_width_ms=selected_width_ms;
+  audit.selected_q_mA_s=selected_q_mA_s;audit.eval_count=decision.evaluations;
+  audit.selected_eval_count=decision.evaluations;audit.selected_valid=true;
+  audit.stage=4;audit.solver_complete=1;audit.solver_end_us=micros();
+  audit.solver_us=static_cast<uint32_t>(audit.solver_end_us-audit.solver_start_us);
+  audit.selected_search_us=audit.solver_us;audit.fast_solver_us=audit.solver_us;
   energy_control_autonomous_pending_peak_ = true;
   energy_control_autonomous_pending_next_side_ = event.physical_next_peak_side;
   energy_control_autonomous_pending_target_deg_ = event.target_peak_deg;

@@ -1,0 +1,170 @@
+#pragma once
+#include <cmath>
+#include <cstdint>
+#include "realtime_code.h"
+
+// SI energy model. External Q/log units remain mA*s; every energy formula
+// converts Q to A*s and gyro rate to rad/s. Seed coefficients are empirical,
+// not measured inertia/torque constants. See docs/lateral_energy_seed.json.
+namespace lateral_energy {
+constexpr float kRadPerDeg = 0.01745329251994329577f;
+constexpr uint16_t kMaxMs = 100;
+constexpr float kIntegralGain = .10f;
+constexpr char kRevision[] = "lateral_energy_inverse_v1_20261013";
+struct Geometry {
+  float mass_g, height, radius, inner_x, center, inner_angle, outer_angle;
+  Geometry(float m=.1997f, float gravity=9.80665f, float h=.120f,
+           float r=.150f, float x=.005f, float outer=.045f)
+      : mass_g(m*gravity),height(h),radius(r),inner_x(x),
+        center(std::sqrt(r*r-x*x)),inner_angle(std::asin(x/r)),
+        outer_angle(std::asin(outer/r)) {}
+};
+// Stable height differences; shape-only constants are prepared once.
+static inline RW_SPEED_CODE float potential(const Geometry& g, float degrees) {
+  const float raw=std::fabs(degrees)*kRadPerDeg;
+  if (!std::isfinite(raw) || raw>g.outer_angle+1e-6f || !(g.mass_g>0)) return NAN;
+  const float a=std::fmin(raw,g.outer_angle);
+  const float half_sine=std::sin(.5f*a);
+  const float dh=a<=g.inner_angle
+      ? -2.f*g.height*half_sine*half_sine+g.inner_x*std::sin(a)
+      : (g.radius-g.center)+2.f*(g.center-g.height)*half_sine*half_sine;
+  return g.mass_g*dh;
+}
+static inline RW_SPEED_CODE float angle(const Geometry& g, float energy) {
+  if (!std::isfinite(energy) || energy<0 || !(g.mass_g>0)) return NAN;
+  if (energy==0) return 0;
+  const float boundary=potential(g,g.inner_angle/kRadPerDeg);
+  const float y=energy/g.mass_g;
+  float a;
+  if (energy<=boundary) {
+    const float disc=g.inner_x*g.inner_x-(2.f*g.height+y)*y;
+    if (disc<0) return NAN;
+    const float t=y/(g.inner_x+std::sqrt(disc));
+    a=2.f*std::atan(t);
+  } else {
+    const float term=(y-(g.radius-g.center))/(2.f*(g.center-g.height));
+    if (!(term>=0 && term<=1)) return NAN;
+    a=2.f*std::asin(std::sqrt(term));
+  }
+  return a<=g.outer_angle+1e-6f ? a/kRadPerDeg : NAN;
+}
+struct Coefficients {
+  float free_offset_j, free_omega2, work_omega_q, work_q2;
+  float rate_min_dps, rate_max_dps, charge_max_mAs;
+};
+static inline RW_SPEED_CODE Coefficients coefficients(int8_t side) {
+  return side>0
+    ? Coefficients{-.0002019364753f,.0006085534387f,.02692507790f,.5522071518f,17.9508f,92.2064f,13.27138f}
+    : Coefficients{-.0002180822115f,.0007149309376f,.03889674250f,.2578004825f,35.7375f,91.4938f,12.83679f};
+}
+static inline RW_SPEED_CODE float freeEnergy(const Coefficients& c,float omega) {
+  return std::fmax(0.f,c.free_omega2*omega*omega+c.free_offset_j);
+}
+// Q is signed in the intended body excitation direction. Negative residual
+// current cannot be counted as positive added energy via abs(Q).
+static inline RW_SPEED_CODE float work(const Coefficients& c,float omega,float q_mAs) {
+  const float q=q_mAs*.001f;
+  return c.work_omega_q*omega*q+c.work_q2*q*q;
+}
+static inline RW_SPEED_CODE float requiredCharge(const Coefficients& c,float omega,float energy) {
+  if (!std::isfinite(omega) || omega<0 || !std::isfinite(energy) ||
+      c.work_omega_q<0 || c.work_q2<0) return NAN;
+  if (energy<=0) return 0;
+  const float a=c.work_omega_q*omega;
+  const float root=std::sqrt(a*a+4.f*c.work_q2*energy);
+  const float denominator=a+root;
+  return denominator>0 ? 2000.f*energy/denominator : NAN;
+}
+struct CurrentTable {
+  float a[kMaxMs+1]{},b[kMaxMs+1]{};
+  float tau=0;
+  bool ready=false;
+  // Called before START_SYNC, never from the zero-cross decision.
+  bool prepare(float seconds) {
+    ready=false;
+    if (!std::isfinite(seconds) || seconds<=0) return false;
+    tau=seconds;
+    for (uint16_t n=0;n<=kMaxMs;++n) {
+      const float t=static_cast<float>(n)*.001f;
+      b[n]=tau*(-std::expm1(-t/tau));a[n]=t-b[n];
+    }
+    ready=true;return true;
+  }
+};
+static inline RW_SPEED_CODE float charge(const CurrentTable& t,uint16_t ms,float initial,float goal) {
+  return ms<=kMaxMs && t.ready ? goal*t.a[ms]+initial*t.b[ms] : NAN;
+}
+struct Decision {
+  bool valid=false, upper=false, lower=false, extrapolated=false;
+  uint16_t ms=0, evaluations=0;
+  float kinetic_j=NAN, loss_j=NAN, free_j=NAN, target_j=NAN, deficit_j=NAN;
+  float commanded_deficit_j=NAN, corrected_target_j=NAN;
+  float requested_q_mAs=NAN, available_q_mAs=NAN, selected_q_mAs=0;
+  float predicted_j=NAN, energy_error_j=NAN;
+};
+static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const CurrentTable& table,
+      int8_t side,float rate_dps,float target_j,float integral_j,
+      float initial_current_mA,float goal_current_mA) {
+  Decision d;
+  if ((side!=1 && side!=-1) || !table.ready || !std::isfinite(rate_dps) || rate_dps<0 ||
+      !std::isfinite(target_j) || target_j<=0 || !std::isfinite(integral_j) ||
+      !std::isfinite(initial_current_mA) || !std::isfinite(goal_current_mA) || goal_current_mA<=0)
+    return d;
+  const auto c=coefficients(side);
+  const float omega=rate_dps*kRadPerDeg;
+  d.kinetic_j=c.free_omega2*omega*omega;
+  d.loss_j=-c.free_offset_j; // effective fitted loss, not a measured collision loss
+  d.free_j=freeEnergy(c,omega);d.target_j=target_j;
+  const float support_energy=potential(geometry,geometry.outer_angle/kRadPerDeg);
+  if (!std::isfinite(d.free_j) || !std::isfinite(support_energy) || target_j>support_energy || d.free_j>support_energy)
+    return d;
+  d.deficit_j=target_j-d.free_j;
+  const float correction_limit=.5f*target_j;
+  const float correction=std::fmax(-correction_limit,std::fmin(correction_limit,integral_j));
+  const float raw=d.deficit_j+correction;
+  d.commanded_deficit_j=std::fmax(0.f,std::fmin(raw,support_energy-d.free_j));d.lower=raw<=0;
+  d.upper=raw>support_energy-d.free_j;
+  d.requested_q_mAs=requiredCharge(c,omega,d.commanded_deficit_j);
+  d.available_q_mAs=std::fmax(0.f,charge(table,kMaxMs,initial_current_mA,goal_current_mA));
+  if (!std::isfinite(d.requested_q_mAs) || !std::isfinite(d.available_q_mAs)) return d;
+  d.upper=d.upper || d.requested_q_mAs>d.available_q_mAs;
+  const float requested=std::fmin(d.requested_q_mAs,d.available_q_mAs);
+  d.corrected_target_j=d.free_j+work(c,omega,requested);
+  d.predicted_j=d.free_j;d.energy_error_j=std::fabs(d.corrected_target_j-d.free_j);
+  d.extrapolated=rate_dps<c.rate_min_dps || rate_dps>c.rate_max_dps ||
+      requested>c.charge_max_mAs;
+  d.valid=true;
+  if (requested==0) return d; // no uncalibrated active braking; coast above target
+  // For a positive desired signed impulse, S(t)>=requested is a monotone
+  // predicate even when initial current is reversed. It has at most one root.
+  uint16_t lo=0,hi=kMaxMs;
+  while (hi-lo>1) {
+    const uint16_t mid=static_cast<uint16_t>((lo+hi)/2);
+    ++d.evaluations;
+    if (charge(table,mid,initial_current_mA,goal_current_mA)<requested) lo=mid;
+    else hi=mid;
+  }
+  const uint16_t candidates[3]={lo,hi,kMaxMs};
+  for (uint16_t n:candidates) {
+    ++d.evaluations;
+    const float q=charge(table,n,initial_current_mA,goal_current_mA);
+    if (q<0) continue;
+    const float predicted=d.free_j+work(c,omega,q);
+    if (!std::isfinite(predicted) || predicted>support_energy) continue;
+    const float error=std::fabs(predicted-d.corrected_target_j);
+    if (error<d.energy_error_j || (error==d.energy_error_j && n<d.ms)) {
+      d.ms=n;d.selected_q_mAs=q;d.predicted_j=predicted;d.energy_error_j=error;
+    }
+  }
+  d.extrapolated=d.extrapolated || d.selected_q_mAs>c.charge_max_mAs;
+  return d;
+}
+static inline RW_SPEED_CODE float updateIntegral(float value,float error,float target,
+      bool upper,bool lower,bool matched) {
+  if (!matched || !std::isfinite(value) || !std::isfinite(error) || !std::isfinite(target) || target<=0)
+    return std::isfinite(value)?value:0;
+  if ((upper && error>0) || (lower && error<0)) return value;
+  const float limit=.5f*target;
+  return std::fmax(-limit,std::fmin(limit,value+kIntegralGain*error));
+}
+} // namespace lateral_energy

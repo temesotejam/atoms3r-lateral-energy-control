@@ -12,7 +12,7 @@ let targetInitialized = false, targetBootId = null, requestedTargetDeg = null;
 let angleInitialized = false, angleBootId = null, requestedInputPercent = null;
 let currentInitialized = false, currentBootId = null, requestedInputCurrentMa = null;
 const validInputCurrent = value => Number.isInteger(value) && value >= 100 && value <= 1200 && value % 10 === 0;
-const validInputPercent = value => Number.isFinite(value) && value >= 0 && value <= 100;
+const validInputPercent = value => value === 0;
 const nap = ms => new Promise(resolve => setTimeout(resolve, ms));
 function crc32(data, crc = 0) {
   crc = ~crc;
@@ -74,11 +74,11 @@ function renderOffline() {
   $('connection').textContent = remaining ? 'Web更新を休止中 · Wi-Fi接続を維持してください' : 'Webの復帰待ち · 自動再試行';
   $('state').textContent = 'Web休止中';
   $('run-target').textContent = requestedTargetDeg === null
-    ? '比較用の記録角度はWeb復帰後に確認します。'
-    : `比較用の記録角度：${requestedTargetDeg}°（ZEROクロス入力は100 ms固定）`;
+    ? '目標角度はWeb復帰後に確認します。'
+    : `目標角度：${requestedTargetDeg}°（ZEROクロスで入力時間を計算）`;
   $('run-percent').textContent = requestedInputPercent === null
-    ? '入力割合はWeb復帰後に確認します。'
-    : `開始要求の入力位置：直前ピーク角の${requestedInputPercent}%（${requestedInputCurrentMa} mA・100 ms固定）`;
+    ? '通常入力はZEROクロスで行います。'
+    : `開始要求：ZEROクロスで${requestedInputCurrentMa} mA、入力時間はエネルギーから計算`;
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
   for (const id of ['pitch', 'current', 'right', 'left', 'fps']) $(id).textContent = '—';
   $('guide').textContent = '本体で制御・観測・記録を行います。開始5秒＋測定15秒＋終了5秒が予定時間です。前後90°以上の傾斜でSTOPします。横倒しは姿勢STOPの対象にしません。表示時間はPC側の目安で、実際の進行・終了を確認した値ではありません。';
@@ -144,11 +144,11 @@ function render(s) {
     currentInitialized = true; currentBootId = s.boot_id;
   }
   $('run-percent').textContent = s.running || terminal
-    ? `今回の入力位置：直前ピーク角の${format(s.input_peak_percent, 1)}%（${s.input_current_mA} mA・100 ms固定）`
-    : '入力割合は測定開始時に確定します。';
+    ? `今回の入力：ZEROクロスで${s.input_current_mA} mA、入力時間は可変`
+    : '通常入力はZEROクロスで行います。';
   $('run-target').textContent = s.running || terminal
-    ? `今回の記録角度：${format(s.target_deg, 0)}°（入力は100 ms固定）`
-    : '記録角度は測定開始時に保存します。パルス幅は固定です。';
+    ? `今回の目標角度：${format(s.target_deg, 0)}°`
+    : '目標角度は測定開始時に確定します。';
   $('right').textContent = f.right_valid && (!stale || terminal) ? format(f.right_deg) + '°' : '—';
   $('left').textContent = f.left_valid && (!stale || terminal) ? format(f.left_deg) + '°' : '—';
   $('fps').textContent = terminal ? '停止中' : `${format(stale ? 0 : f.fps, 1)} / 15 fps`;
@@ -218,12 +218,12 @@ async function startOfflineRun() {
   if (commandInFlight || offlineMode) return;
   const target = Number($('target').value);
   if (!targetChoices.includes(target)) {
-    $('message').textContent = '比較用の記録角度を8°・10°・12°から選択してください。'; return;
+    $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
   }
   const angleText = $('input-percent').value.trim();
   const inputPercent = Number(angleText);
   if (!angleText || !validInputPercent(inputPercent)) {
-    $('message').textContent = '入力位置を直前ピーク角の0〜100%の範囲で設定してください。'; return;
+    $('message').textContent = 'ZEROクロス設定を確認してください。'; return;
   }
   const currentText = $('input-current').value.trim();
   const inputCurrentMa = Number(currentText);
@@ -233,10 +233,10 @@ async function startOfflineRun() {
   requestedTargetDeg = target;
   requestedInputPercent = inputPercent;
   requestedInputCurrentMa = inputCurrentMa;
-  commandInFlight = true; setOffline(30000); $('message').textContent = `角度入力試験（直前ピーク角の${inputPercent}%・${inputCurrentMa} mA・記録角度${target}°）の開始要求を送信中…`;
+  commandInFlight = true; setOffline(30000); $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}`, {method:'POST', kind:'text'});
-    $('message').textContent = `角度入力試験（直前ピーク角の${inputPercent}%・${inputCurrentMa} mA・記録角度${target}°）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
+    $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
   } catch (error) {
     if (/^\d{3}:/.test(error.message)) { clearOffline(); await refresh(); }
     $('message').textContent = `開始結果の確認: ${error.message}。Web復帰後に本体の結果を確認します。`;

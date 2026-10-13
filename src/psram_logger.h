@@ -308,6 +308,8 @@ class PsramLogger {
     float detector_peak_angle_deg = NAN;
     float target_peak_deg = NAN;
     float peak_error_deg = NAN;
+    float target_energy_j=NAN, measured_energy_j=NAN, energy_error_j=NAN;
+    float integral_plus_j=0, integral_minus_j=0;
     uint8_t phase = 0;
     float integral_plus_mA_s = 0.0f;
     float integral_minus_mA_s = 0.0f;
@@ -346,6 +348,10 @@ class PsramLogger {
     float target_peak_deg = NAN;
     float target_energy_j = NAN;
     float delta_energy_required_j = NAN;
+    float kinetic_energy_j=NAN, predicted_loss_j=NAN, integral_energy_j=NAN;
+    float commanded_energy_deficit_j=NAN, corrected_target_energy_j=NAN;
+    float work_omega_q_coefficient=NAN, work_q2_coefficient=NAN;
+    bool energy_model_extrapolated=false;
     float q1_gain_deg_per_mA_s = NAN;
     float q_ff_energy_mA_s = NAN;
     float q_angle_diagnostic_mA_s = NAN;

@@ -147,7 +147,7 @@ void WebUi::command(RunControlWorker::Command cmd) {
     float input_peak_percent;
     if (!server_->hasArg("input_peak_percent") ||
         !autonomous_input_percent::parse(server_->arg("input_peak_percent").c_str(), input_peak_percent)) {
-      server_->send(400, "text/plain", "input_peak_percent_0_to_100_required_reload_page"); return;
+      server_->send(400, "text/plain", "input_peak_percent_must_be_zero_for_energy_control"); return;
     }
     int16_t input_current_mA;
     if (!server_->hasArg("input_current_mA") ||

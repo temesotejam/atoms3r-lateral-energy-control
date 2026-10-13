@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <cstdint>
 namespace autonomous_input_current {
-constexpr int16_t kDefaultMa = 1200;
+constexpr int16_t kDefaultMa = 300;
 constexpr int16_t kMinMa = 100;
 constexpr int16_t kMaxMa = 1200;
 inline bool valid(long value) { return value >= kMinMa && value <= kMaxMa && value % 10 == 0; }

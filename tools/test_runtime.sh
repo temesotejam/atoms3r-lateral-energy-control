@@ -18,14 +18,9 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tools/test_stack_scan_policy.cpp -o /tm
 /tmp/test_stack_scan_policy
 python3 tools/test_realtime_code_link.py
 python3 tools/test_motion_acquisition_link.py
-python3 tools/test_motion_speed.py
-python3 tools/test_fixed_foot_baseline.py
-python3 tools/test_control_math_cache.py
-g++ -std=c++17 -Os -ffp-contract=off -Wall -Wextra -Werror -Isrc tools/test_direct_q_math.cpp -o /tmp/test_direct_q_math
-/tmp/test_direct_q_math
-# The historical production inverse replay assumes variable output width.
-# Its pure arithmetic remains covered by test_direct_q_math.cpp; the fixed
-# command path is exercised by test_motion_speed.py above.
+python3 tools/fit_lateral_energy_seed.py > /tmp/lateral_energy_seed_fit.json
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_lateral_energy.cpp -o /tmp/test_lateral_energy
+/tmp/test_lateral_energy
 python3 tools/test_rwlog_v46_converter.py
 for name in runtime_control export_protocol previous_peak_math diagnostic_journal; do
   g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_${name}.cpp src/control_work_profile.cpp src/control_latency.cpp -o /tmp/test_${name}

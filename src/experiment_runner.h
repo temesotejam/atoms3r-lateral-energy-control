@@ -8,6 +8,7 @@
 #include "config.h"
 #include "autonomous_input_percent.h"
 #include "autonomous_input_current.h"
+#include "lateral_energy_control.h"
 #include "control_math_cache.h"
 #include "imu_manager.h"
 #include "log_types.h"
@@ -410,8 +411,14 @@ private:
   float energy_control_autonomous_input_peak_percent_ = autonomous_input_percent::kDefaultPercent;
   int16_t energy_control_autonomous_input_current_mA_ = autonomous_input_current::kDefaultMa;
   float energy_control_autonomous_target_peak_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
-  float energy_control_autonomous_integral_plus_mA_s_ = 0.0f;
-  float energy_control_autonomous_integral_minus_mA_s_ = 0.0f;
+  lateral_energy::Geometry lateral_energy_geometry_{
+      Config::ENERGY_CONTROL_V0_MASS_KG,Config::ENERGY_CONTROL_V0_GRAVITY_M_S2,
+      Config::ENERGY_CONTROL_V0_CG_HEIGHT_M,Config::ENERGY_CONTROL_V0_RADIUS_M,
+      Config::ENERGY_CONTROL_V0_INNER_EDGE_X_M,Config::ENERGY_CONTROL_V0_OUTER_EDGE_X_M};
+  lateral_energy::CurrentTable lateral_current_table_;
+  float lateral_target_energy_j_ = NAN;
+  float energy_control_autonomous_integral_plus_j_ = 0.0f;
+  float energy_control_autonomous_integral_minus_j_ = 0.0f;
   // V46ae: one MEKF state supplies peak amplitude and zero-cross timing.
   // Repeated delivery of a gyro sample cannot count as another return sample.
   uint32_t energy_control_autonomous_last_motion_sample_us_ = 0;

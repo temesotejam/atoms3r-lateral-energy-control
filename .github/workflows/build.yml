@@ -22,7 +22,7 @@ jobs:
         run: bash tools/test_runtime.sh
       - name: Install PlatformIO
         run: pip install platformio
-      - name: Build Free-foot Runtime V2 firmware
+      - name: Build lateral energy control firmware
         run: |
           set -euxo pipefail
           pio pkg install -e atoms3cam
@@ -48,12 +48,12 @@ jobs:
           cp bmi270-build-patch.json madgwick-build-patch.json dist/
           python "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --chip esp32s3 merge_bin -o dist/merged-firmware.bin 0x0000 dist/bootloader.bin 0x8000 dist/partitions.bin 0xe000 dist/boot_app0.bin 0x10000 dist/firmware.bin
           printf '%s\n' "$GITHUB_SHA" > dist/build-sha.txt
-          printf '%s\n' '0.47.45 optional foot camera / reversed front-to-back Roller485 mounting: signed driver current polarity -1 for all pulse outputs; logical motion direction unchanged; adjustable 100-1200mA/100ms at selected peak percentage; MEKF, 15s, RWLOG v54' > dist/FLASH_LAYOUT.txt
+          printf '%s\n' '1.0.0 lateral energy control; MEKF; 15s; RWLOG v54; provisional model; reversed motor mounting polarity -1; ZERO-cross 0-100ms variable pulse' > dist/FLASH_LAYOUT.txt
           (cd dist && sha256sum *.bin > SHA256SUMS.txt)
           git diff --exit-code
       - uses: actions/upload-artifact@v4
         with:
-          name: atoms3r-freefoot-runtime-v2-${{ github.sha }}
+          name: atoms3r-lateral-energy-control-${{ github.sha }}
           path: dist/
           if-no-files-found: error
           retention-days: 30
