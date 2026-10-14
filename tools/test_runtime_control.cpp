@@ -4,13 +4,13 @@
 #define private public
 #include "../src/run_control_worker.h"
 #undef private
-struct Model {bool running=false;unsigned steps=0;float target=8,angle=0;int16_t current=300;RunControlWorker* worker=nullptr;};
+struct Model {bool running=false;unsigned steps=0;float target=8,angle=0;int16_t current=300;uint16_t brake=50;RunControlWorker* worker=nullptr;};
 static bool step(void* p) {
   auto& m=*static_cast<Model*>(p); ++m.steps;
   if(m.worker->takeStopRequest()) m.running=false;
-  float target=0,angle=0;int16_t current=0;
-  const auto command=m.worker->takeCommand(&target,&angle,&current);
-  if(command==RunControlWorker::Command::Start){m.target=target;m.angle=angle;m.current=current;m.running=true;m.worker->beginRunAudit();m.worker->completeCommand(true,"started");
+  float target=0,angle=0;int16_t current=0;uint16_t brake=50;
+  const auto command=m.worker->takeCommand(&target,&angle,&current,&brake);
+  if(command==RunControlWorker::Command::Start){m.target=target;m.angle=angle;m.current=current;m.brake=brake;m.running=true;m.worker->beginRunAudit();m.worker->completeCommand(true,"started");
     assert(!m.worker->commandPublished(m.worker->commandState().completed));}
   if(command==RunControlWorker::Command::Clear){m.running=false;m.worker->completeCommand(true,"cleared");}
   if(m.running){const auto t=micros();host_us+=750;m.worker->recordStep(t,100,600,750);}
@@ -21,6 +21,7 @@ static void capture(void* p,RunControlSnapshot& s) {
   s.target_deg=static_cast<Model*>(p)->target;
   s.input_peak_percent=static_cast<Model*>(p)->angle;
   s.input_current_mA=static_cast<Model*>(p)->current;
+  s.brake_max_ms=static_cast<Model*>(p)->brake;
 }
 int main(){
   for(const char* bad : {"", "9", "0", "-10", "14", "10junk", "nan", "inf", "1e999", "1e-999"}) {
@@ -56,13 +57,15 @@ int main(){
   assert(!w.request(RunControlWorker::Command::Start,10,100.1f));
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,90));
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,1210));
-  assert(w.request(RunControlWorker::Command::Start,10,0.0f,500));
+  assert(!w.request(RunControlWorker::Command::Start,10,0.0f,500,10));
+  assert(w.request(RunControlWorker::Command::Start,10,0.0f,500,20));
   assert(!w.request(RunControlWorker::Command::Start,12)); // cannot replace accepted target
   assert(!w.request(RunControlWorker::Command::Clear)); // pending start blocks clear
   w.oneStep();assert(w.active()&&w.commandState().ok);
   assert(m.target==10&&w.snapshot().target_deg==10);
   assert(m.angle==0.0f&&w.snapshot().input_peak_percent==0.0f);
   assert(m.current==500&&w.snapshot().input_current_mA==500);
+  assert(m.brake==20&&w.snapshot().brake_max_ms==20);
   assert(w.commandPublished(w.commandState().completed));
   assert(!w.request(RunControlWorker::Command::Start));
   assert(!w.request(RunControlWorker::Command::Clear));

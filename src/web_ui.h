@@ -39,6 +39,7 @@ class WebUi {
   uint32_t start_command_id_ = 0;
   float start_input_peak_percent_ = autonomous_input_percent::kDefaultPercent;
   int16_t start_input_current_mA_ = autonomous_input_current::kDefaultMa;
+  uint16_t start_brake_max_ms_ = autonomous_brake_limit::kDefaultMs;
   float start_target_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   bool start_submitted_ = false, cancel_sent_ = false;
 };

@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <initializer_list>
 #include "lateral_energy_control.h"
+#include "autonomous_brake_limit.h"
 
 static bool near(float a, float b, float tolerance) {
   return std::fabs(a-b) <= tolerance;
@@ -17,6 +18,11 @@ int main() {
     assert(near(angle(g,e),degrees,.015f));
   }
   CurrentTable table;
+  uint16_t selected_brake_ms = 99;
+  for (const char* choice : {"0", "20", "50"})
+    assert(autonomous_brake_limit::parse(choice, selected_brake_ms));
+  for (const char* invalid : {"", "-1", "10", "51", "20ms"})
+    assert(!autonomous_brake_limit::parse(invalid, selected_brake_ms));
   assert(table.prepare(.025f));
   assert(near(charge(table,0,0,300),0,.000001f));
   assert(charge(table,100,0,300)>20.f);
@@ -45,6 +51,11 @@ int main() {
     assert(brake.command_sign==-1 && brake.selected_q_mAs<0);
     assert(brake.predicted_j<brake.free_j && brake.extrapolated);
     assert(brake.evaluations<=10);
+    const auto no_brake=decide(g,table,side,75,potential(g,8),0,0,300,0);
+    assert(no_brake.valid && no_brake.ms==0 && no_brake.command_sign==0);
+    const auto short_brake=decide(g,table,side,75,potential(g,8),0,0,300,20);
+    assert(short_brake.valid && short_brake.ms<=20);
+    assert(short_brake.predicted_j>=brake.predicted_j);
     const auto coast=decide(g,table,side,60,
         freeEnergy(c,60*kRadPerDeg),0,0,300);
     assert(coast.valid && coast.ms==0 && coast.command_sign==0);
@@ -82,5 +93,6 @@ int main() {
   assert(near(updateIntegral(0,.0001f,.001f,false,false,true),.00001f,1.e-8f));
   assert(updateIntegral(0,.0001f,.001f,true,false,true)==0);
   assert(!decide(g,table,1,65,potential(g,10),0,0,0).valid);
+  assert(!decide(g,table,1,75,potential(g,8),0,0,300,51).valid);
   std::puts("lateral energy model: OK");
 }

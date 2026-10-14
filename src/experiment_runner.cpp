@@ -937,6 +937,13 @@ bool ExperimentRunner::setEnergyControlAutonomousInputCurrentMa(int16_t current_
   energy_control_autonomous_input_current_mA_ = current_mA;
   status_.last_error = ""; return true;
 }
+bool ExperimentRunner::setEnergyControlAutonomousBrakeMaxMs(uint16_t brake_max_ms) {
+  if (running() || !autonomous_brake_limit::valid(brake_max_ms)) {
+    status_.last_error = "brake_max_invalid_or_running"; return false;
+  }
+  energy_control_autonomous_brake_max_ms_ = brake_max_ms;
+  status_.last_error = ""; return true;
+}
 
 const char* ExperimentRunner::energyControlAutonomousPhaseName() const {
   switch (energy_control_autonomous_phase_) {
@@ -1212,7 +1219,8 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
                     passive_capture_mode_, q1_shadow_run_target_peak_abs_deg_, q_ident_mode_,
                     q_ident_mode_ ? static_cast<uint8_t>(q_ident_run_schedule_id_ + 1) : 0,
                      energy_control_v0_mode_, energy_control_autonomous_mode_,
-                     energy_control_autonomous_input_peak_percent_);
+                     energy_control_autonomous_input_peak_percent_,
+                     energy_control_autonomous_brake_max_ms_);
   last_log_us_ = 0;
   status_.state = ExperimentState::START_SYNC;
   status_.sync_event_id = 1;
@@ -2939,7 +2947,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   audit.solver_started=1; audit.solver_start_us=micros();
   const auto decision=lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
       event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
-      event.integral_energy_j,aligned_initial_mA,goal_current_mA);
+      event.integral_energy_j,aligned_initial_mA,goal_current_mA,
+      event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs);
   if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
     audit.stage=1;audit.solver_end_us=micros();
     event.reason=Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN;

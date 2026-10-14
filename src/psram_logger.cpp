@@ -194,7 +194,8 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
                              uint8_t q_probe_schedule_id, bool passive_capture,
                              float q1_shadow_target_peak_abs_deg, bool q_ident_mode,
                              uint8_t q_ident_run_schedule_id, bool energy_control_v0_mode,
-                             bool energy_control_autonomous_mode, float input_peak_percent) {
+                             bool energy_control_autonomous_mode, float input_peak_percent,
+                             uint16_t brake_max_ms) {
   if (!ready_ || downloading_) return;
   sealed_ = false;
   sample_count_ = 0;
@@ -215,6 +216,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
   energy_control_autonomous_mode_ = energy_control_autonomous_mode;
   autonomous_timing_compensation_us_ = 0;
   autonomous_input_peak_percent_ = energy_control_autonomous_mode ? input_peak_percent : 0;
+  autonomous_brake_max_ms_ = energy_control_autonomous_mode ? brake_max_ms : lateral_energy::kBrakeMaxMs;
   identification_event_count_ = 0;
   calibration_peak_event_count_ = 0;
   calibration_probe_event_count_ = 0;
@@ -453,7 +455,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_v0_potential_role\":\"geometry_potential_only;not_a_J_eff_or_dissipation_fit\",";
   json += "\"passive_motor_command_policy\":\"passive_capture_only:all_recorded_samples_command_0mA_and_output_off\",";
   json += "\"energy_control_v0_output_policy\":\"sole_actual_output_path;accepted_zero_cross_only;no_braking;all_other_paths_fail_closed\",";
-  json += "\"energy_control_autonomous_policy\":\"MEKF_posterior_lateral_peak_and_zero_cross;startup_100ms_kick_then_signed_energy_inverse_at_zero_cross;excite_max_100ms;brake_max_50ms;one_command_per_accepted_halfcycle\",";
+  json += "\"energy_control_autonomous_policy\":\"MEKF_posterior_lateral_peak_and_zero_cross;startup_100ms_kick_then_signed_energy_inverse_at_zero_cross;excite_max_100ms;negative_side_brake_max_selected_0_20_50ms;positive_side_brake_max_50ms;one_command_per_accepted_halfcycle\",";
   json += "\"lateral_energy_revision\":\"" + String(lateral_energy::kRevision) + "\",";
   json += "\"lateral_energy_units\":\"omega_rad_per_s;energy_J;Q_log_mA_s;Q_fit_A_s;time_ms\",";
   json += "\"lateral_energy_formula\":\"E_free=max(0,c_omega2*omega^2+c_offset);E_target=m*g*height(theta_target);DeltaE=E_target-E_free+I_side;DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;signed_Q=inverse(DeltaE);width=inverse_current_rise(abs(Q))\",";
@@ -516,8 +518,9 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_autonomous_normal_width_min_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_normal_width_max_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(lateral_energy::kBrakeMaxMs) + ",";
+  json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(autonomous_brake_max_ms_) + ",";
   json += "\"autonomous_uses_q_ident_limits\":false,";
-  json += "\"energy_control_autonomous_q_policy\":\"signed_energy_error_to_signed_Q_analytic_inverse;current_rise_table_and_binary_search;excite_0_to_100ms;brake_0_to_50ms;negative_Q_extrapolated\",";
+  json += "\"energy_control_autonomous_q_policy\":\"signed_energy_error_to_signed_Q_analytic_inverse;current_rise_table_and_binary_search;excite_0_to_100ms;negative_side_brake_0_to_selected_max;positive_side_brake_0_to_50ms;negative_Q_extrapolated\",";
   json += "\"energy_control_autonomous_event_overflow\":" + String(energy_control_autonomous_event_overflow_ ? "true" : "false") + ",";
   json += "\"energy_control_autonomous_event_overflow_policy\":\"diagnostic_only;no_control_stop\",";
   json += "\"q1_model_name\":\"" + String(Config::Q1_SHADOW_MODEL_NAME) + "\",";

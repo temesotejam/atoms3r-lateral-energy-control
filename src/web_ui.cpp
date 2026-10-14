@@ -92,7 +92,8 @@ bool WebUi::stopServer() {
 bool WebUi::queueStart() {
   start_command_id_ = control_->commandState().submitted + 1;
   start_submitted_ = control_->request(RunControlWorker::Command::Start, start_target_deg_,
-                                       start_input_peak_percent_, start_input_current_mA_);
+                                       start_input_peak_percent_, start_input_current_mA_,
+                                       start_brake_max_ms_);
   return start_submitted_;
 }
 OfflineRunSession::StartResult WebUi::startResult() const {
@@ -154,11 +155,17 @@ void WebUi::command(RunControlWorker::Command cmd) {
         !autonomous_input_current::parse(server_->arg("input_current_mA").c_str(), input_current_mA)) {
       server_->send(400, "text/plain", "input_current_mA_100_to_1200_step_10_required_reload_page"); return;
     }
+    uint16_t brake_max_ms;
+    if (!server_->hasArg("brake_max_ms") ||
+        !autonomous_brake_limit::parse(server_->arg("brake_max_ms").c_str(), brake_max_ms)) {
+      server_->send(400, "text/plain", "brake_max_ms_0_20_50_required_reload_page"); return;
+    }
     const bool ok = offline_.queue(millis());
     if (ok) {
       start_target_deg_ = target_deg;
       start_input_peak_percent_ = input_peak_percent;
       start_input_current_mA_ = input_current_mA;
+      start_brake_max_ms_ = brake_max_ms;
       start_submitted_ = cancel_sent_ = false;
       RuntimeDiag::setRunActive(true);
     }
@@ -193,6 +200,7 @@ void WebUi::status() {
   json += ",\"target_deg\":" + num(s.target_deg);
   json += ",\"input_peak_percent\":" + num(s.input_peak_percent);
   json += ",\"input_current_mA\":" + String(s.input_current_mA);
+  json += ",\"brake_max_ms\":" + String(s.brake_max_ms);
   json += ",\"motor_mA\":" + String(s.motor_cmd_mA) + ",\"actual_mA\":" + String(s.actual_current_mA);
   json += ",\"battery_mV\":" + String(s.battery_mV);
   json += ",\"imu_ok\":" + String(s.imu_ok ? "true" : "false") + ",\"roller_ok\":" + String(s.roller_ok ? "true" : "false");

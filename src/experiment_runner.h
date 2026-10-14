@@ -8,6 +8,7 @@
 #include "config.h"
 #include "autonomous_input_percent.h"
 #include "autonomous_input_current.h"
+#include "autonomous_brake_limit.h"
 #include "lateral_energy_control.h"
 #include "control_math_cache.h"
 #include "imu_manager.h"
@@ -50,6 +51,8 @@ public:
   bool setEnergyControlAutonomousInputCurrentMa(int16_t current_mA);
   float energyControlAutonomousInputPeakPercent() const { return energy_control_autonomous_input_peak_percent_; }
   int16_t energyControlAutonomousInputCurrentMa() const { return energy_control_autonomous_input_current_mA_; }
+  bool setEnergyControlAutonomousBrakeMaxMs(uint16_t brake_max_ms);
+  uint16_t energyControlAutonomousBrakeMaxMs() const { return energy_control_autonomous_brake_max_ms_; }
   void zeroAngleNow();
   bool zeroCurrentRollDisplay();
   bool setCurrentRollTarget(float target_deg);
@@ -410,6 +413,7 @@ private:
       EnergyControlAutonomousHalfCycleState::WAIT_PEAK;
   float energy_control_autonomous_input_peak_percent_ = autonomous_input_percent::kDefaultPercent;
   int16_t energy_control_autonomous_input_current_mA_ = autonomous_input_current::kDefaultMa;
+  uint16_t energy_control_autonomous_brake_max_ms_ = autonomous_brake_limit::kDefaultMs;
   float energy_control_autonomous_target_peak_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   lateral_energy::Geometry lateral_energy_geometry_{
       Config::ENERGY_CONTROL_V0_MASS_KG,Config::ENERGY_CONTROL_V0_GRAVITY_M_S2,

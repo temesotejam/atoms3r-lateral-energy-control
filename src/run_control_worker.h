@@ -13,6 +13,7 @@
 #include "autonomous_target.h"
 #include "autonomous_input_percent.h"
 #include "autonomous_input_current.h"
+#include "autonomous_brake_limit.h"
 
 // One permanent controller owner, including idle and calibration. HTTP sends
 // commands and consumes POD snapshots; it never calls the live runner/IMU.
@@ -26,6 +27,7 @@ struct RunControlSnapshot {
   float pitch_deg = 0, rate_dps = 0, target_deg = 0;
   float input_peak_percent = autonomous_input_percent::kDefaultPercent;
   int16_t input_current_mA = autonomous_input_current::kDefaultMa;
+  uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs;
   MekfAttitudeSnapshot mekf_attitude;
   steering::Snapshot steering = steering::disabledSnapshot();
   float upright_error_deg = 180, upright_pitch_error_deg = 180, accel_norm_g = 0, gyro_norm_dps = 0;
@@ -98,29 +100,34 @@ class RunControlWorker {
   bool request(Command command,
                float target_deg = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG,
                float input_peak_percent = autonomous_input_percent::kDefaultPercent,
-               int16_t input_current_mA = autonomous_input_current::kDefaultMa) {
+               int16_t input_current_mA = autonomous_input_current::kDefaultMa,
+               uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs) {
     if (!ready() || command == Command::None) return false;
     if (command == Command::Start && (!autonomous_target::selectable(target_deg) ||
         !autonomous_input_percent::valid(input_peak_percent) ||
-        !autonomous_input_current::valid(input_current_mA))) return false;
+        !autonomous_input_current::valid(input_current_mA) ||
+        !autonomous_brake_limit::valid(brake_max_ms))) return false;
     portENTER_CRITICAL(&mux_);
     const bool accepted = !command_state_.pending && !snapshot_.running && !stop_requested_;
     if (accepted) {
       command_ = command; command_target_deg_ = target_deg; command_input_peak_percent_ = input_peak_percent;
       command_input_current_mA_ = input_current_mA;
+      command_brake_max_ms_ = brake_max_ms;
       command_state_.pending = true; ++command_state_.submitted;
     }
     portEXIT_CRITICAL(&mux_);
     return accepted;
   }
   Command takeCommand(float* target_deg = nullptr, float* input_peak_percent = nullptr,
-                      int16_t* input_current_mA = nullptr) {
+                      int16_t* input_current_mA = nullptr,
+                      uint16_t* brake_max_ms = nullptr) {
     portENTER_CRITICAL(&mux_);
     const Command command = stop_requested_ ? Command::None : command_;
     if (command != Command::None) {
       if (target_deg) *target_deg = command_target_deg_;
       if (input_peak_percent) *input_peak_percent = command_input_peak_percent_;
       if (input_current_mA) *input_current_mA = command_input_current_mA_;
+      if (brake_max_ms) *brake_max_ms = command_brake_max_ms_;
       command_ = Command::None;
     }
     portEXIT_CRITICAL(&mux_);
@@ -324,6 +331,7 @@ class RunControlWorker {
   Command command_ = Command::None;
   float command_input_peak_percent_ = autonomous_input_percent::kDefaultPercent;
   int16_t command_input_current_mA_ = autonomous_input_current::kDefaultMa;
+  uint16_t command_brake_max_ms_ = autonomous_brake_limit::kDefaultMs;
   float command_target_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   CommandState command_state_;
   RunControlSnapshot snapshot_;

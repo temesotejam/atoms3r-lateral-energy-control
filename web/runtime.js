@@ -11,6 +11,8 @@ const targetChoices = [8, 10, 12];
 let targetInitialized = false, targetBootId = null, requestedTargetDeg = null;
 let angleInitialized = false, angleBootId = null, requestedInputPercent = null;
 let currentInitialized = false, currentBootId = null, requestedInputCurrentMa = null;
+let brakeInitialized = false, brakeBootId = null, requestedBrakeMaxMs = null;
+const brakeChoices = [0, 20, 50];
 const validInputCurrent = value => Number.isInteger(value) && value >= 100 && value <= 1200 && value % 10 === 0;
 const validInputPercent = value => value === 0;
 const nap = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -42,6 +44,7 @@ function controls() {
   $('target').disabled = $('start').disabled;
   $('input-percent').disabled = $('start').disabled;
   $('input-current').disabled = $('start').disabled;
+  $('brake-max').disabled = $('start').disabled;
   $('clear').disabled = !fresh || busy || transferRunning || building || latest.running || !['FINISHED', 'ESTOP'].includes(latest.state);
   $('download').disabled = !fresh || busy || transferRunning || !latest.downloadable || latest.running;
   $('cancel').disabled = !transferRunning;
@@ -79,6 +82,9 @@ function renderOffline() {
   $('run-percent').textContent = requestedInputPercent === null
     ? '通常入力はZEROクロスで行います。'
     : `開始要求：ZEROクロスで${requestedInputCurrentMa} mA、入力時間はエネルギーから計算`;
+  $('run-brake').textContent = requestedBrakeMaxMs === null
+    ? '負側ブレーキ上限はWeb復帰後に確認します。'
+    : `開始要求：負側ブレーキ上限 ${requestedBrakeMaxMs} ms`;
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
   for (const id of ['pitch', 'current', 'right', 'left', 'fps']) $(id).textContent = '—';
   $('guide').textContent = '本体で制御・観測・記録を行います。開始5秒＋測定15秒＋終了5秒が予定時間です。前後90°以上の傾斜でSTOPします。横倒しは姿勢STOPの対象にしません。表示時間はPC側の目安で、実際の進行・終了を確認した値ではありません。';
@@ -143,12 +149,20 @@ function render(s) {
     $('input-current').value = String(s.input_current_mA);
     currentInitialized = true; currentBootId = s.boot_id;
   }
+  if (brakeChoices.includes(s.brake_max_ms) &&
+      (!brakeInitialized || brakeBootId !== s.boot_id || s.running || terminal)) {
+    $('brake-max').value = String(s.brake_max_ms);
+    brakeInitialized = true; brakeBootId = s.boot_id;
+  }
   $('run-percent').textContent = s.running || terminal
     ? `今回の入力：ZEROクロスで${s.input_current_mA} mA、入力時間は可変`
     : '通常入力はZEROクロスで行います。';
   $('run-target').textContent = s.running || terminal
     ? `今回の目標角度：${format(s.target_deg, 0)}°`
     : '目標角度は測定開始時に確定します。';
+  $('run-brake').textContent = s.running || terminal
+    ? `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
+    : '負側ブレーキ上限は測定開始時に確定します。';
   $('right').textContent = f.right_valid && (!stale || terminal) ? format(f.right_deg) + '°' : '—';
   $('left').textContent = f.left_valid && (!stale || terminal) ? format(f.left_deg) + '°' : '—';
   $('fps').textContent = terminal ? '停止中' : `${format(stale ? 0 : f.fps, 1)} / 15 fps`;
@@ -195,6 +209,7 @@ async function refresh(force = false) {
 function adoptStatus(s) {
   if (!s || typeof s.state !== 'string' || typeof s.export_phase !== 'string' ||
       !validInputPercent(s.input_peak_percent) || !validInputCurrent(s.input_current_mA) ||
+      !brakeChoices.includes(s.brake_max_ms) ||
       !s.foot || !s.upright || !s.command ||
       typeof s.command.pending !== 'boolean' ||
       !Number.isInteger(s.command.completed) || !Number.isInteger(s.command.submitted) ||
@@ -230,12 +245,17 @@ async function startOfflineRun() {
   if (!currentText || !validInputCurrent(inputCurrentMa)) {
     $('message').textContent = '指令電流を100〜1200 mAの範囲で10 mA刻みで設定してください。'; return;
   }
+  const brakeMaxMs = Number($('brake-max').value);
+  if (!brakeChoices.includes(brakeMaxMs)) {
+    $('message').textContent = '負側ブレーキ上限を0・20・50 msから選択してください。'; return;
+  }
   requestedTargetDeg = target;
   requestedInputPercent = inputPercent;
   requestedInputCurrentMa = inputCurrentMa;
+  requestedBrakeMaxMs = brakeMaxMs;
   commandInFlight = true; setOffline(30000); $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
-    await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}`, {method:'POST', kind:'text'});
+    await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}`, {method:'POST', kind:'text'});
     $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
   } catch (error) {
     if (/^\d{3}:/.test(error.message)) { clearOffline(); await refresh(); }

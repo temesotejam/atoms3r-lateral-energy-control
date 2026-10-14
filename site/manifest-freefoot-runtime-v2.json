@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.3-lateral-energy-mekf-rwlog-v54-side-refit",
+  "version": "1.0.4-lateral-energy-brake-comparison",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

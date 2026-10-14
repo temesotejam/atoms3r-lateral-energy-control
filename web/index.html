@@ -11,6 +11,9 @@
 <p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
 <p><label for="input-current">指令電流 </label><input id="input-current" type="number" min="100" max="1200" step="10" value="300" disabled aria-describedby="input-current-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;width:110px"> mA</p>
 <p class="muted" id="input-current-help">100〜1200 mA、10 mA刻み。初期値300 mAは予備データに近い条件です。始動キックと通常入力に同じ指令値を使います。</p>
+<p><label for="brake-max">負側ブレーキ時間の上限 </label><select id="brake-max" disabled aria-describedby="brake-max-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="0">0 ms（ブレーキなし）</option><option value="20">20 ms</option><option value="50" selected>50 ms（従来条件）</option></select></p>
+<p class="muted" id="brake-max-help">負側でエネルギーが多いと判断された場合だけ、逆入力の最大時間を制限します。正側の入力と始動キックは変えません。足を前後に動かないよう固定した比較試験用です。</p>
+<p class="muted" id="run-brake" role="status">負側ブレーキ上限は測定開始時に確定します。</p>
 <input id="input-percent" type="hidden" value="0">
 <p class="muted" id="run-percent" role="status">通常入力はZEROクロスで行います。</p>
 <p class="muted">yaw関連機能は停止中です。</p>

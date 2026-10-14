@@ -493,7 +493,7 @@ class PsramLogger {
                  float q1_shadow_target_peak_abs_deg = NAN, bool q_ident_mode = false,
                  uint8_t q_ident_run_schedule_id = 0, bool energy_control_v0_mode = false,
                  bool energy_control_autonomous_mode = false,
-                 float input_peak_percent = 50.0f);
+                 float input_peak_percent = 50.0f, uint16_t brake_max_ms = 50);
   uint16_t beginIdentificationEvent(const IdentificationEvent& event);
   void finishIdentificationEvent(uint16_t event_id, uint32_t peak_ms, int16_t theta_peak_cdeg);
   void addCalibrationPeakEvent(const CalibrationPeakEvent& event);
@@ -647,6 +647,7 @@ private:
   bool energy_control_v0_mode_ = false;
   bool energy_control_autonomous_mode_ = false;
   float autonomous_input_peak_percent_ = 0;
+  uint16_t autonomous_brake_max_ms_ = 50;
   uint32_t autonomous_timing_compensation_us_ = 0;  // Immutable metadata for the saved run.
   uint16_t identification_event_count_ = 0;
   uint8_t calibration_peak_event_count_ = 0;
