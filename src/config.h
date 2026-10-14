@@ -123,7 +123,7 @@ static constexpr char ATTITUDE_VALIDATION_REVISION[] = "v46aj_fixed_3ms_compensa
 // V46ak changes observation only. ATTITUDE_VALIDATION_REVISION intentionally remains V46aj.
 static constexpr char AMPLITUDE_CONTROL_OBSERVATION_REVISION[] = "v46ak_pre_input_state_observation_20260920";
 // V46al-R2 previous-peak active control begin
-static constexpr char AMPLITUDE_CONTROL_REVISION[] = "lateral_energy_inverse_v1_20261013";
+static constexpr char AMPLITUDE_CONTROL_REVISION[] = "lateral_energy_signed_inverse_v2_20261014";
 static constexpr char AMPLITUDE_CONTROL_BASELINE_SOURCE[] =
     "atoms3r-amplitude-control-v46ak-stable@bb9c5ed07c5ca8b3c6c6b5813b6c2f1b1f57a6ec";
 static constexpr char ENERGY_CONTROL_AUTONOMOUS_PREVIOUS_PEAK_MODEL_REVISION[] =
@@ -295,8 +295,8 @@ static constexpr int8_t ENERGY_CONTROL_AUTONOMOUS_START_KICK_DIRECTION = -1;
 static constexpr int8_t MOTOR_DRIVER_POLARITY = -1;
 static_assert(MOTOR_DRIVER_POLARITY == 1 || MOTOR_DRIVER_POLARITY == -1,
               "Motor polarity must be +1 or -1");
-// Sign-only trial: reverse normal autonomous motor output while leaving the
-// start kick and every energy/width calculation unchanged.
+// The sign test confirmed that -1 excites motion in the logical direction.
+// The solver may now reverse logical direction to remove excess energy.
 static constexpr int8_t ENERGY_CONTROL_AUTONOMOUS_NORMAL_OUTPUT_SIGN = -1;
 // Normal autonomous output deliberately does not use the Q_IDENT 5--25 ms
 // experiment limits.  Width zero is a documented no-output decision.

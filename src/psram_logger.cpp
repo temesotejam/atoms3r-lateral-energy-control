@@ -16,6 +16,7 @@ extern FootObserver feet;
 
 
 #include "config.h"
+#include "lateral_energy_control.h"
 
 static constexpr uint16_t RWLOG_FORMAT_VERSION = 54;
 static constexpr uint32_t RWLOG_FLAG_CRC32 = 1U << 0;
@@ -452,15 +453,15 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_v0_potential_role\":\"geometry_potential_only;not_a_J_eff_or_dissipation_fit\",";
   json += "\"passive_motor_command_policy\":\"passive_capture_only:all_recorded_samples_command_0mA_and_output_off\",";
   json += "\"energy_control_v0_output_policy\":\"sole_actual_output_path;accepted_zero_cross_only;no_braking;all_other_paths_fail_closed\",";
-  json += "\"energy_control_autonomous_policy\":\"MEKF_posterior_lateral_peak_and_zero_cross;startup_100ms_kick_then_energy_inverse_0_to_100ms_at_zero_cross;one_command_per_accepted_halfcycle\",";
-  json += "\"lateral_energy_revision\":\"lateral_energy_inverse_v1_20261013\",";
+  json += "\"energy_control_autonomous_policy\":\"MEKF_posterior_lateral_peak_and_zero_cross;startup_100ms_kick_then_signed_energy_inverse_at_zero_cross;excite_max_100ms;brake_max_50ms;one_command_per_accepted_halfcycle\",";
+  json += "\"lateral_energy_revision\":\"" + String(lateral_energy::kRevision) + "\",";
   json += "\"lateral_energy_units\":\"omega_rad_per_s;energy_J;Q_log_mA_s;Q_fit_A_s;time_ms\",";
-  json += "\"lateral_energy_formula\":\"E_free=max(0,c_omega2*omega^2+c_offset);E_target=m*g*height(theta_target);DeltaE=max(0,E_target-E_free+I_side);DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;Q=inverse(DeltaE);width=inverse_current_rise(Q)\",";
-  json += "\"lateral_energy_coefficient_status\":\"provisional_204_closed_loop_fixed_foot_events;not_independent_actuator_identification;physical_trial_pending\",";
-  json += "\"energy_control_autonomous_revision\":\"lateral_energy_inverse_v1_20261013\",";
+  json += "\"lateral_energy_formula\":\"E_free=max(0,c_omega2*omega^2+c_offset);E_target=m*g*height(theta_target);DeltaE=E_target-E_free+I_side;DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;signed_Q=inverse(DeltaE);width=inverse_current_rise(abs(Q))\",";
+  json += "\"lateral_energy_coefficient_status\":\"provisional_204_closed_loop_fixed_foot_events;positive_Q_only_fit;negative_Q_extrapolation_requires_hardware_identification\",";
+  json += "\"energy_control_autonomous_revision\":\"" + String(lateral_energy::kRevision) + "\",";
   json += "\"energy_control_autonomous_base_revision\":\"V7_hardware_and_MEKF_event_path\",";
   json += "\"legacy_rate_and_Q1_models_active\":false,";
-  json += "\"normal_excitation_direction_policy\":\"same_as_zero_cross_roll_rate\",";
+  json += "\"normal_excitation_direction_policy\":\"energy_deficit_positive_same_as_zero_cross_roll_rate;negative_opposite_as_active_braking\",";
   json += "\"normal_direction_sign_fix\":true,";
   json += "\"start_kick_direction_changed\":false,";
   json += "\"side_response_correction_enabled\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_CORRECTION_ENABLED ? "true" : "false") + ",";
@@ -475,7 +476,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"side_response_correction_base_P1_unchanged\":false,";
   json += "\"side_response_correction_base_Q1_gains_unchanged\":true,";
   json += "\"side_response_correction_Ki_unchanged\":true,";
-  json += "\"side_response_correction_direction_policy_unchanged\":true,";
+  json += "\"side_response_correction_direction_policy_unchanged\":false,";
   json += "\"energy_control_autonomous_state_machine\":\"IDLE->STRONG_START_KICK->WAIT_FIRST_PEAK->ENERGY_CONTROL->HOLD;physical_halfcycle=WAIT_PEAK->WAIT_ZERO_CROSS->PULSE_ACTIVE->WAIT_PEAK;STOP_only_abnormal\",";
   json += "\"physical_event_policy\":\"peak_zero_pulse_halfcycle_v5\",";
   json += "\"min_half_cycle_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS) + ",";
@@ -514,8 +515,9 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_autonomous_start_kick_current_mA\":" + String(run_current_mA_) + ",";
   json += "\"energy_control_autonomous_normal_width_min_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_normal_width_max_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS) + ",";
+  json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(lateral_energy::kBrakeMaxMs) + ",";
   json += "\"autonomous_uses_q_ident_limits\":false,";
-  json += "\"energy_control_autonomous_q_policy\":\"energy_deficit_to_required_Q_analytic_inverse;current_rise_table_and_binary_search_0_to_100ms;outside_seed_support_logged;no_active_braking\",";
+  json += "\"energy_control_autonomous_q_policy\":\"signed_energy_error_to_signed_Q_analytic_inverse;current_rise_table_and_binary_search;excite_0_to_100ms;brake_0_to_50ms;negative_Q_extrapolated\",";
   json += "\"energy_control_autonomous_event_overflow\":" + String(energy_control_autonomous_event_overflow_ ? "true" : "false") + ",";
   json += "\"energy_control_autonomous_event_overflow_policy\":\"diagnostic_only;no_control_stop\",";
   json += "\"q1_model_name\":\"" + String(Config::Q1_SHADOW_MODEL_NAME) + "\",";

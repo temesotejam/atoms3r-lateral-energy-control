@@ -9,8 +9,11 @@
 namespace lateral_energy {
 constexpr float kRadPerDeg = 0.01745329251994329577f;
 constexpr uint16_t kMaxMs = 100;
+// Reverse-current response has not been identified on this mechanism yet.
+// Limit the first braking trials to half of the excitation time budget.
+constexpr uint16_t kBrakeMaxMs = 50;
 constexpr float kIntegralGain = .10f;
-constexpr char kRevision[] = "lateral_energy_inverse_v1_20261013";
+constexpr char kRevision[] = "lateral_energy_signed_inverse_v2_20261014";
 struct Geometry {
   float mass_g, height, radius, inner_x, center, inner_angle, outer_angle;
   Geometry(float m=.1997f, float gravity=9.80665f, float h=.120f,
@@ -75,6 +78,17 @@ static inline RW_SPEED_CODE float requiredCharge(const Coefficients& c,float ome
   const float denominator=a+root;
   return denominator>0 ? 2000.f*energy/denominator : NAN;
 }
+// Select the root nearest zero. Negative work is used only within the
+// reachable, limited reverse-charge interval, below the quadratic vertex.
+static inline RW_SPEED_CODE float requiredSignedCharge(const Coefficients& c,float omega,float energy) {
+  if (energy>=0) return requiredCharge(c,omega,energy);
+  if (!std::isfinite(omega) || omega<0 || !std::isfinite(energy) ||
+      !(c.work_omega_q>0) || !(c.work_q2>0)) return NAN;
+  const float a=c.work_omega_q*omega;
+  const float discriminant=a*a+4.f*c.work_q2*energy;
+  if (discriminant<0) return NAN;
+  return 2000.f*energy/(a+std::sqrt(discriminant));
+}
 struct CurrentTable {
   float a[kMaxMs+1]{},b[kMaxMs+1]{};
   float tau=0;
@@ -96,6 +110,8 @@ static inline RW_SPEED_CODE float charge(const CurrentTable& t,uint16_t ms,float
 }
 struct Decision {
   bool valid=false, upper=false, lower=false, extrapolated=false;
+  // +1 adds energy in the zero-cross motion direction; -1 removes it.
+  int8_t command_sign=0;
   uint16_t ms=0, evaluations=0;
   float kinetic_j=NAN, loss_j=NAN, free_j=NAN, target_j=NAN, deficit_j=NAN;
   float commanded_deficit_j=NAN, corrected_target_j=NAN;
@@ -122,41 +138,65 @@ static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const Curre
   const float correction_limit=.5f*target_j;
   const float correction=std::fmax(-correction_limit,std::fmin(correction_limit,integral_j));
   const float raw=d.deficit_j+correction;
-  d.commanded_deficit_j=std::fmax(0.f,std::fmin(raw,support_energy-d.free_j));d.lower=raw<=0;
-  d.upper=raw>support_energy-d.free_j;
-  d.requested_q_mAs=requiredCharge(c,omega,d.commanded_deficit_j);
-  d.available_q_mAs=std::fmax(0.f,charge(table,kMaxMs,initial_current_mA,goal_current_mA));
+  const bool braking=raw<0;
+  const uint16_t max_ms=braking?kBrakeMaxMs:kMaxMs;
+  const float signed_goal=braking?-goal_current_mA:goal_current_mA;
+  const float limit_q=charge(table,max_ms,initial_current_mA,signed_goal);
+  if (!std::isfinite(limit_q)) return d;
+  if (braking) {
+    // The fitted work curve is monotone over the deliberately small reverse
+    // charge interval. Cap it at the quadratic vertex for high current or
+    // low rate, so the model never interprets stronger reverse current as
+    // adding energy again.
+    const float vertex_q=-500.f*c.work_omega_q*omega/c.work_q2;
+    const float min_q=std::fmax(vertex_q,std::fmin(0.f,limit_q));
+    const float min_work=std::fmin(0.f,work(c,omega,min_q));
+    const float desired=std::fmax(raw,-d.free_j);
+    d.commanded_deficit_j=std::fmax(desired,min_work);
+    d.lower=raw<-d.free_j || desired<min_work;
+    d.command_sign=-1;
+    d.available_q_mAs=-min_q;
+  } else {
+    d.commanded_deficit_j=std::fmin(raw,support_energy-d.free_j);
+    d.upper=raw>support_energy-d.free_j;
+    d.command_sign=raw>0?1:0;
+    d.available_q_mAs=std::fmax(0.f,limit_q);
+  }
+  d.requested_q_mAs=requiredSignedCharge(c,omega,d.commanded_deficit_j);
   if (!std::isfinite(d.requested_q_mAs) || !std::isfinite(d.available_q_mAs)) return d;
-  d.upper=d.upper || d.requested_q_mAs>d.available_q_mAs;
-  const float requested=std::fmin(d.requested_q_mAs,d.available_q_mAs);
+  d.upper=d.upper || (!braking && d.requested_q_mAs>d.available_q_mAs);
+  const float requested=braking?std::fmax(d.requested_q_mAs,-d.available_q_mAs):
+      std::fmin(d.requested_q_mAs,d.available_q_mAs);
   d.corrected_target_j=d.free_j+work(c,omega,requested);
   d.predicted_j=d.free_j;d.energy_error_j=std::fabs(d.corrected_target_j-d.free_j);
   d.extrapolated=rate_dps<c.rate_min_dps || rate_dps>c.rate_max_dps ||
-      requested>c.charge_max_mAs;
+      requested<0 || requested>c.charge_max_mAs;
   d.valid=true;
-  if (requested==0) return d; // no uncalibrated active braking; coast above target
-  // For a positive desired signed impulse, S(t)>=requested is a monotone
-  // predicate even when initial current is reversed. It has at most one root.
-  uint16_t lo=0,hi=kMaxMs;
+  if (requested==0) { d.command_sign=0; return d; }
+  // Once signed charge crosses the requested sign, it is monotone toward the
+  // commanded current even when residual current initially points the other way.
+  uint16_t lo=0,hi=max_ms;
   while (hi-lo>1) {
     const uint16_t mid=static_cast<uint16_t>((lo+hi)/2);
     ++d.evaluations;
-    if (charge(table,mid,initial_current_mA,goal_current_mA)<requested) lo=mid;
+    const float q_mid=charge(table,mid,initial_current_mA,signed_goal);
+    if (braking ? q_mid>requested : q_mid<requested) lo=mid;
     else hi=mid;
   }
-  const uint16_t candidates[3]={lo,hi,kMaxMs};
+  const uint16_t candidates[3]={lo,hi,max_ms};
   for (uint16_t n:candidates) {
     ++d.evaluations;
-    const float q=charge(table,n,initial_current_mA,goal_current_mA);
-    if (q<0) continue;
+    const float q=charge(table,n,initial_current_mA,signed_goal);
+    if (braking ? (q>0 || q< -d.available_q_mAs) : q<0) continue;
     const float predicted=d.free_j+work(c,omega,q);
-    if (!std::isfinite(predicted) || predicted>support_energy) continue;
+    if (!std::isfinite(predicted) || predicted<0 || predicted>support_energy) continue;
     const float error=std::fabs(predicted-d.corrected_target_j);
     if (error<d.energy_error_j || (error==d.energy_error_j && n<d.ms)) {
       d.ms=n;d.selected_q_mAs=q;d.predicted_j=predicted;d.energy_error_j=error;
     }
   }
-  d.extrapolated=d.extrapolated || d.selected_q_mAs>c.charge_max_mAs;
+  d.extrapolated=d.extrapolated || d.selected_q_mAs<0 || d.selected_q_mAs>c.charge_max_mAs;
+  if (d.ms==0) d.command_sign=0;
   return d;
 }
 static inline RW_SPEED_CODE float updateIntegral(float value,float error,float target,

@@ -2889,11 +2889,9 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.previous_peak_side = energy_control_autonomous_last_peak_side_;
   event.previous_peak_amplitude_deg = energy_control_autonomous_last_peak_amplitude_deg_;
   event.target_peak_deg = energy_control_autonomous_target_peak_deg_;
-  // V6 normal excitation: command in the current zero-cross motion direction.
-  // Physical side remains the sole selector of the side-specific Q gain.
+  // The solver chooses excitation or braking from the signed energy error.
+  // Its residual-current input always uses the zero-cross motion coordinate.
   event.q_command_direction = event.physical_next_peak_side;
-  event.command_matches_zero_cross_motion =
-      event.q_command_direction == event.physical_next_peak_side;
   event.vbat_mV = status_.roller_battery_mV;
   const uint32_t v46l_free_model_t0_us = micros();
   const auto energy_coeff = lateral_energy::coefficients(event.physical_next_peak_side);
@@ -2935,7 +2933,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   const float fast_v = status_.beta_model_vbat_mV > 0
       ? static_cast<float>(status_.beta_model_vbat_mV) / 1000.0f : Config::MODEL_VBAT_REFERENCE_V;
   const float goal_current_mA = predictCurrentGoalMa(energy_control_autonomous_input_current_mA_,fast_v);
-  const float aligned_initial_mA = static_cast<float>(event.q_command_direction)*event.i0_estimated_mA;
+  const float aligned_initial_mA = static_cast<float>(event.physical_next_peak_side)*event.i0_estimated_mA;
   event.integral_energy_j = event.physical_next_peak_side > 0
       ? energy_control_autonomous_integral_plus_j_ : energy_control_autonomous_integral_minus_j_;
   audit.solver_started=1; audit.solver_start_us=micros();
@@ -2947,6 +2945,10 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     event.reason=Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN;
     logger_->addEnergyControlAutonomousZeroCrossEvent(event);rearm_for_next_peak();return;
   }
+  event.q_command_direction = decision.command_sign<0
+      ? -event.physical_next_peak_side : event.physical_next_peak_side;
+  event.command_matches_zero_cross_motion =
+      event.q_command_direction == event.physical_next_peak_side;
   const uint16_t selected_width_ms=decision.ms;
   const float selected_q_mA_s=decision.selected_q_mAs;
   event.kinetic_energy_j=decision.kinetic_j;
