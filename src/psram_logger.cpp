@@ -457,7 +457,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"lateral_energy_revision\":\"" + String(lateral_energy::kRevision) + "\",";
   json += "\"lateral_energy_units\":\"omega_rad_per_s;energy_J;Q_log_mA_s;Q_fit_A_s;time_ms\",";
   json += "\"lateral_energy_formula\":\"E_free=max(0,c_omega2*omega^2+c_offset);E_target=m*g*height(theta_target);DeltaE=E_target-E_free+I_side;DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;signed_Q=inverse(DeltaE);width=inverse_current_rise(abs(Q))\",";
-  json += "\"lateral_energy_coefficient_status\":\"provisional_204_closed_loop_fixed_foot_events;positive_Q_only_fit;negative_Q_extrapolation_requires_hardware_identification\",";
+  json += "\"lateral_energy_coefficient_status\":\"provisional_58_corrected_polarity_free_foot_events;plus_c2_and_alpha_refit;minus_c2_coast_refit;reverse_response_not_separately_identified\",";
   json += "\"energy_control_autonomous_revision\":\"" + String(lateral_energy::kRevision) + "\",";
   json += "\"energy_control_autonomous_base_revision\":\"V7_hardware_and_MEKF_event_path\",";
   json += "\"legacy_rate_and_Q1_models_active\":false,";
