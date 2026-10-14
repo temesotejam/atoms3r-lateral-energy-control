@@ -31,6 +31,17 @@ static uint32_t boot_ms = 0, upright_epoch = 0;
 static uint64_t upright_since_us = 0, log_epoch_us = 0, measurement_epoch_us = 0;
 static bool upright_stable = false;
 static UprightPoseGuide::CachedMetrics pose_metrics;
+static bool reference_command_active = false;
+static uint32_t reference_pose_accel_sequence = 0, reference_pose_revision = UINT32_MAX;
+static float reference_pose_pitch_error_deg = 180;
+static void updateReferencePoseMetrics(const ImuReading& r) {
+  const uint32_t revision = runner.uprightReference().revision;
+  if (r.accel_sequence != reference_pose_accel_sequence || revision != reference_pose_revision) {
+    reference_pose_pitch_error_deg = runner.uprightPitchErrorDeg(r);
+    reference_pose_accel_sequence = r.accel_sequence;
+    reference_pose_revision = revision;
+  }
+}
 static void updateAcquisitionContext() {
   imu.setAcquisitionContext(runner.running(),
       runner.status().state == ExperimentState::RUNNING_BATCH_SWEEP,
@@ -56,12 +67,18 @@ static void captureRunState(void*, RunControlSnapshot& out) {
   out.input_current_mA = runner.energyControlAutonomousInputCurrentMa();
   out.brake_max_ms = runner.energyControlAutonomousBrakeMaxMs();
   out.peak_adaptation_enabled = runner.peakAdaptationEnabled();
+  out.upright_reference = runner.uprightReference();
+  out.upright_reference_capturing = runner.uprightReferenceCapturing();
+  out.upright_reference_capture_samples = runner.uprightReferenceCaptureSamples();
+  if (upright_reference::valid(out.upright_reference))
+    out.pitch_deg = upright_reference::relative(st.pitch_mekf_abs_deg, out.upright_reference);
   out.led_state = st.led_state; out.sync_event_id = st.sync_event_id;
   out.upright_stable = upright_stable; out.upright_epoch = upright_epoch;
   out.upright_since_us = upright_since_us;
   out.log_epoch_us = log_epoch_us; out.measurement_epoch_us = measurement_epoch_us;
   out.upright_error_deg = pose_metrics.direction_error_deg;
-  out.upright_pitch_error_deg = pose_metrics.pitch_error_deg;
+  updateReferencePoseMetrics(r);
+  out.upright_pitch_error_deg = reference_pose_pitch_error_deg;
   out.accel_norm_g = pose_metrics.accel_norm_g; out.gyro_norm_dps = pose_metrics.gyro_norm_dps;
   strlcpy(out.state_name, runner.stateName(), sizeof(out.state_name));
   strlcpy(out.last_error, st.last_error ? st.last_error : "", sizeof(out.last_error));
@@ -75,7 +92,10 @@ static bool controlStep(void*) {
   const bool profile_pulse = runner.status().pulse_active;
   {
     control_work::Scope work(control_work::Stage::Service, profile_measurement, profile_pulse);
-    if (run_control.takeStopRequest()) runner.requestEmergencyStop("web_estop");
+    if (run_control.takeStopRequest()) {
+      runner.requestEmergencyStop("web_estop");
+      reference_command_active = false;
+    }
     updateAcquisitionContext();
     runner.serviceFast(); runner.updateImuDynamicBetaContext();
   }
@@ -93,12 +113,13 @@ static bool controlStep(void*) {
   {
     control_work::Scope work(control_work::Stage::PoseGuide, profile_measurement, profile_pulse);
     pose_metrics.update(r);
+    updateReferencePoseMetrics(r);
     const float norm = pose_metrics.accel_norm_g;
     stable = millis() - boot_ms >= 10000 && imu.acquisitionHealthy() && r.last_gyro_update_us &&
         static_cast<uint32_t>(micros() - r.last_gyro_update_us) <= 10000 &&
         isfinite(norm) && fabsf(norm - 1.0f) <= appcfg::kAutoZeroAccelNormToleranceG &&
         r.az_g < 0.0f &&
-        pose_metrics.pitch_error_deg <= appcfg::kAutoZeroMaxPitchErrorDeg &&
+        reference_pose_pitch_error_deg <= appcfg::kAutoZeroMaxPitchErrorDeg &&
         pose_metrics.gyro_norm_dps <= appcfg::kAutoZeroMaxGyroDps;
     if (stable != upright_stable) { ++upright_epoch; upright_since_us = stable ? esp_timer_get_time() : 0; }
     upright_stable = stable;
@@ -139,6 +160,9 @@ static bool controlStep(void*) {
   } else if (command == RunControlWorker::Command::Clear) {
     runner.clearFinishedOrEstop(); feet.clearRun(); log_epoch_us = measurement_epoch_us = 0;
     run_control.completeCommand(true, "cleared");
+  } else if (command == RunControlWorker::Command::CaptureUprightReference) {
+    reference_command_active = runner.beginUprightReferenceCapture();
+    if (!reference_command_active) run_control.completeCommand(false, runner.status().last_error);
   }
   const bool measurement = runner.status().state == ExperimentState::RUNNING_BATCH_SWEEP;
   control_latency::setActive(measurement);
@@ -164,6 +188,14 @@ static bool controlStep(void*) {
     run_control.recordStep(start, imu_us, runner_us, done - start);
   }
   runner.setLoopDt(done - start);
+  if (reference_command_active) {
+    bool ok = false;
+    const char* result = "";
+    if (runner.pollUprightReferenceCapture(ok, result)) {
+      reference_command_active = false;
+      run_control.completeCommand(ok, result);
+    }
+  }
   RuntimeDiag::phase(RuntimeDiag::Lane::Control, RuntimeDiag::Phase::ControlFinish);
   if ((was_running || run_started) && !runner.running()) { runner.sealCompletedLog(); feet.finishRun(); }
   // The existing LED sync pattern has exclusive authority during every run.

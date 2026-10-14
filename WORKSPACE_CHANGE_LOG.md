@@ -1,3 +1,11 @@
+# 2026-10-14 / 1.0.7
+
+- Add an explicit stopped Web command to average the current MEKF pitch for two seconds and persist it as the operator's upright reference in NVS.
+- Require a saved reference before autonomous measurement; preserve it across start, clear, STOP and reboot. Reject motion/stale data during capture without replacing the previous live reference.
+- Use the saved origin for autonomous amplitude, energy conversion, zero-cross timing and lateral angle limits; record the actual start attitude separately.
+- Snapshot calibration into run metadata so later operator updates cannot alter a completed log. Keep RWLOG v54 binary fields, with an explicit metadata policy describing their new fixed-reference meaning.
+- Verify averaging, failed capture/write, persisted reload, timestamp wrap, Web command exclusion, maximum-capacity logger serialization/CRC and firmware compilation. Physical calibration accuracy and hardware timing remain to be checked on the next run.
+
 # 2026-09-29 / 0.47.31
 
 - User supplied three fixed-foot 8/10/12-degree recordings and requested urgent amplitude correction.

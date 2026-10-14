@@ -8,6 +8,9 @@ node --check site/serial-monitor.js
 node tools/test_serial_monitor.js
 node tools/test_runtime_web.js
 node tools/test_offline_web.js
+node tools/test_upright_reference_web.js
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_upright_reference.cpp src/upright_reference_store.cpp -o /tmp/test_upright_reference
+/tmp/test_upright_reference
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_core_lifecycle.cpp -o /tmp/test_core_lifecycle
 /tmp/test_core_lifecycle
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_offline_run.cpp -o /tmp/test_offline_run

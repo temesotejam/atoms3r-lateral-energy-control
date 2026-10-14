@@ -70,8 +70,14 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.6-lateral-energy-model-validation'
-assert metadata['energy_control_autonomous_revision']=='lateral_energy_model_validation_v6_20261014'
+assert metadata['firmware_revision']=='1.0.7-lateral-energy-upright-reference'
+assert metadata['energy_control_autonomous_revision']=='lateral_energy_saved_upright_v7_20261014'
+assert metadata['upright_reference_valid'] is True
+assert metadata['upright_reference_revision'] == 3
+assert abs(metadata['upright_reference_abs_pitch_deg'] - 2.2) < 1e-6
+assert abs(metadata['measurement_start_abs_pitch_deg'] - 3.2) < 1e-6
+assert abs(metadata['measurement_start_upright_relative_deg'] - 1.0) < 1e-6
+assert 'no_measurement_start_rezero' in metadata['angle_reference_policy']
 assert metadata['peak_error_adaptation_enabled'] is False
 assert metadata['energy_request_audit_revision']=='unrestricted_inverse_v1_20261014'
 audit=metadata['energy_control_autonomous_zero_cross_events'][0]

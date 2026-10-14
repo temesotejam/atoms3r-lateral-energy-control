@@ -11,6 +11,7 @@
 #include "autonomous_brake_limit.h"
 #include "lateral_energy_control.h"
 #include "peak_error_adaptation.h"
+#include "upright_reference.h"
 #include "control_math_cache.h"
 #include "imu_manager.h"
 #include "log_types.h"
@@ -56,6 +57,13 @@ public:
   uint16_t energyControlAutonomousBrakeMaxMs() const { return energy_control_autonomous_brake_max_ms_; }
   bool setPeakAdaptationEnabled(bool enabled);
   bool peakAdaptationEnabled() const { return peak_adaptation_enabled_; }
+  bool beginUprightReferenceCapture();
+  bool pollUprightReferenceCapture(bool& ok, const char*& result);
+  const upright_reference::Record& uprightReference() const { return upright_reference_; }
+  bool uprightReferenceCapturing() const { return upright_reference_capture_.pending(); }
+  uint32_t uprightReferenceCaptureSamples() const { return upright_reference_capture_.samples(); }
+  float uprightPitchErrorDeg(const ImuReading& r) const;
+  bool isUprightStableSample(const ImuReading& r) const;
   void zeroAngleNow();
   bool zeroCurrentRollDisplay();
   bool setCurrentRollTarget(float target_deg);
@@ -100,6 +108,8 @@ public:
   const char* presetName() const { return "MEKF_ADOPTED_DYNAMIC_BETA_COMPARE_V46"; }
 
 private:
+  upright_reference::Record upright_reference_;
+  upright_reference::Capture upright_reference_capture_;
   float energy_control_autonomous_pending_target_deg_ = NAN;
   void beginFilters();
   void RW_SPEED_CODE updateFilterSeries(const ImuReading& r);

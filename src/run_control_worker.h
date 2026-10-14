@@ -14,6 +14,7 @@
 #include "autonomous_input_percent.h"
 #include "autonomous_input_current.h"
 #include "autonomous_brake_limit.h"
+#include "upright_reference.h"
 
 // One permanent controller owner, including idle and calibration. HTTP sends
 // commands and consumes POD snapshots; it never calls the live runner/IMU.
@@ -29,6 +30,9 @@ struct RunControlSnapshot {
   int16_t input_current_mA = autonomous_input_current::kDefaultMa;
   uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs;
   bool peak_adaptation_enabled = true;
+  upright_reference::Record upright_reference;
+  bool upright_reference_capturing = false;
+  uint32_t upright_reference_capture_samples = 0;
   MekfAttitudeSnapshot mekf_attitude;
   steering::Snapshot steering = steering::disabledSnapshot();
   float upright_error_deg = 180, upright_pitch_error_deg = 180, accel_norm_g = 0, gyro_norm_dps = 0;
@@ -50,7 +54,7 @@ class RunControlWorker {
  public:
   static constexpr uint8_t kCore = 1;
   static constexpr uint8_t kPriority = 4;
-  enum class Command : uint8_t { None, Start, Clear };
+  enum class Command : uint8_t { None, Start, Clear, CaptureUprightReference };
   struct CommandState {
     uint32_t submitted = 0, completed = 0;
     bool pending = false, ok = false;

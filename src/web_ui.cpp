@@ -43,6 +43,7 @@ void WebUi::begin(BoundedWriteWebServer& s, RunControlWorker& control, FootObser
   s.on("/vision/chunk", HTTP_GET, [this]() { previewChunk(); });
   s.on("/start-energy-control-autonomous", HTTP_POST, [this]() { command(RunControlWorker::Command::Start); });
   s.on("/clear", HTTP_POST, [this]() { command(RunControlWorker::Command::Clear); });
+  s.on("/upright-reference/capture", HTTP_POST, [this]() { command(RunControlWorker::Command::CaptureUprightReference); });
   s.on("/stop", HTTP_POST, [this]() {
     RuntimeDiag::Scope diagnostic(RuntimeDiag::Lane::Http, RuntimeDiag::Phase::HttpCommand);
     const bool ok = control_->requestStop();
@@ -136,6 +137,15 @@ void WebUi::command(RunControlWorker::Command cmd) {
       (export_->status().phase != ImmutableExport::Phase::Empty || !st.ready)) {
     server_->send(409, "text/plain", "clear_previous_run_first"); return;
   }
+  if (cmd == RunControlWorker::Command::Start && !upright_reference::valid(st.upright_reference)) {
+    server_->send(409, "text/plain", "upright_reference_required"); return;
+  }
+  if (cmd == RunControlWorker::Command::CaptureUprightReference &&
+      (!st.imu_ok || !st.heartbeat_us || static_cast<uint32_t>(micros() - st.heartbeat_us) >= 500000 ||
+       st.pulse_active || st.motor_cmd_mA != 0 ||
+       (String(st.state_name) != "READY_TO_MEASURE" && String(st.state_name) != "FINISHED" && String(st.state_name) != "ESTOP"))) {
+    server_->send(409, "text/plain", "upright_reference_requires_stopped"); return;
+  }
   if (cmd == RunControlWorker::Command::Clear && !export_->reset()) {
     server_->send(409, "text/plain", "export_preparing"); return;
   }
@@ -196,7 +206,7 @@ void WebUi::status() {
   json += ",\"network\":{\"phase\":\"" + String(offline_.name()) + "\",\"last_error\":\"" + String(offline_.error()) + "\"}";
   json += ",\"usb_diagnostics\":" + String(RuntimeDiag::enabled() ? "true" : "false");
   json += ",\"running\":" + String(s.running ? "true" : "false");
-  json += ",\"ready\":" + String(s.ready && fresh && s.imu_ok && s.roller_ok && export_->ready() ? "true" : "false");
+  json += ",\"ready\":" + String(s.ready && fresh && s.imu_ok && s.roller_ok && export_->ready() && upright_reference::valid(s.upright_reference) ? "true" : "false");
   json += ",\"controller_fresh\":" + String(fresh ? "true" : "false");
   json += ",\"run_id\":" + String(s.run_id) + ",\"samples\":" + String(s.sample_count);
   json += ",\"remaining_ms\":" + String(s.remaining_ms) + ",\"elapsed_ms\":" + String(s.measure_elapsed_ms);
@@ -208,6 +218,13 @@ void WebUi::status() {
   json += ",\"input_current_mA\":" + String(s.input_current_mA);
   json += ",\"brake_max_ms\":" + String(s.brake_max_ms);
   json += ",\"peak_adaptation_enabled\":" + String(s.peak_adaptation_enabled ? "true" : "false");
+  json += ",\"upright_reference\":{\"valid\":" + String(upright_reference::valid(s.upright_reference) ? "true" : "false");
+  json += ",\"abs_pitch_deg\":" + num(upright_reference::valid(s.upright_reference) ? s.upright_reference.pitch_deg : NAN);
+  json += ",\"relative_pitch_deg\":" + num(upright_reference::relative(s.mekf_attitude.pitch_deg, s.upright_reference));
+  json += ",\"revision\":" + String(s.upright_reference.revision) + ",\"samples\":" + String(s.upright_reference.samples);
+  json += ",\"spread_deg\":" + num(s.upright_reference.spread_deg);
+  json += ",\"capturing\":" + String(s.upright_reference_capturing ? "true" : "false");
+  json += ",\"capture_samples\":" + String(s.upright_reference_capture_samples) + "}";
   json += ",\"motor_mA\":" + String(s.motor_cmd_mA) + ",\"actual_mA\":" + String(s.actual_current_mA);
   json += ",\"battery_mV\":" + String(s.battery_mV);
   json += ",\"imu_ok\":" + String(s.imu_ok ? "true" : "false") + ",\"roller_ok\":" + String(s.roller_ok ? "true" : "false");

@@ -13,7 +13,7 @@ constexpr uint16_t kMaxMs = 100;
 // Limit the first braking trials to half of the excitation time budget.
 constexpr uint16_t kBrakeMaxMs = 50; // Absolute limit; trial choices are 0/20/50 ms.
 constexpr float kIntegralGain = .10f;
-constexpr char kRevision[] = "lateral_energy_model_validation_v6_20261014";
+constexpr char kRevision[] = "lateral_energy_saved_upright_v7_20261014";
 struct Geometry {
   float mass_g, height, radius, inner_x, center, inner_angle, outer_angle;
   Geometry(float m=.1997f, float gravity=9.80665f, float h=.120f,

@@ -195,7 +195,8 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
                              float q1_shadow_target_peak_abs_deg, bool q_ident_mode,
                              uint8_t q_ident_run_schedule_id, bool energy_control_v0_mode,
                              bool energy_control_autonomous_mode, float input_peak_percent,
-                             uint16_t brake_max_ms, bool peak_adaptation_enabled) {
+                             uint16_t brake_max_ms, bool peak_adaptation_enabled,
+                             const upright_reference::Record& upright_reference) {
   if (!ready_ || downloading_) return;
   sealed_ = false;
   sample_count_ = 0;
@@ -218,6 +219,8 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
   autonomous_input_peak_percent_ = energy_control_autonomous_mode ? input_peak_percent : 0;
   autonomous_brake_max_ms_ = energy_control_autonomous_mode ? brake_max_ms : lateral_energy::kBrakeMaxMs;
   peak_adaptation_enabled_ = peak_adaptation_enabled;
+  run_upright_reference_ = upright_reference;
+  measurement_start_abs_deg_ = NAN;
   identification_event_count_ = 0;
   calibration_peak_event_count_ = 0;
   calibration_probe_event_count_ = 0;
@@ -502,7 +505,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"normal_autonomous_motor_output_sign\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_NORMAL_OUTPUT_SIGN) + ",";
   json += "\"motor_direction_semantics\":\"pulse_direction_and_q_command_direction_are_body_motion_logical;normal_autonomous_output_uses_mount_polarity_times_trial_sign;start_kick_unchanged;motor_cmd_mA_is_signed_current_sent_to_Roller485;roller_actual_current_mA_is_driver_readback\",";
   json += "\"energy_control_autonomous_startup_pump\":false,";
-  json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);measurement_start_reference;no_delay_projection;no_output_scaling\",";
+  json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);saved_operator_upright_reference;no_delay_projection;no_output_scaling\",";
   json += "\"energy_control_autonomous_rate_coordinate\":\"(gy_dps-mekf_bias_y_dps)*mekf_gyro_y_scale;live_MEKF_bias;historical_Q1_rate_support_rescaled\",";
   json += "\"energy_control_autonomous_model_coordinate_status\":\"fixed_foot_3run_MEKF_refit;base_Q1_unchanged;old_8deg_residual_disabled;new_closed_loop_hardware_validation_pending\",";
   json += "\"rate_baseline_revision\":\"fixed_foot_mekf_rate_refit_04731_20260929\",";
@@ -542,7 +545,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"q1_gain_physical_minus\":" + String(Config::Q1_SHADOW_GAIN_PHYSICAL_MINUS_DEG_PER_MAS, 5) + ",";
   json += "\"q1_q_support_mA_s\":\"0.454-1.197\",";
   json += "\"q1_rate_support_dps\":\"1.68-27.80\",";
-  json += "\"q1_zero_cross_angle_detector\":\"MEKF_control_angle_relative_to_measurement_start;detector_only\",";
+  json += "\"q1_zero_cross_angle_detector\":\"MEKF_control_angle;autonomous_saved_upright_reference;legacy_measurement_start;detector_only\",";
   json += "\"q1_zero_cross_rate_axis\":\"physical_roll_rate_dps=+gy_dps-startup_y_bias\",";
   json += "\"q1_physical_next_peak_side_rule\":\"sign(physical_roll_rate_dps) after accepted zero-cross;positive_rate_means_positive_physical_next_peak\",";
   json += "\"q1_policy\":\"baseline_is_Q_equals_0;inverse_Q_augmentation_only;nonpositive_delta_is_braking_invalid;never_clip_support\",";
@@ -552,24 +555,32 @@ PsramString PsramLogger::buildMetadataJson() const {
   else json += "null";
   json += ",";
   json += "\"e2_shadow_role\":\"offline_diagnostic_only;not_called_by_Q1_or_its_validity_logic\",";
-  json += "\"angle_reference_policy\":\"MEKF_absolute_remains_continuous;video_and_autonomous_amplitude_use_posterior_measurement_relative;input_uses_last_peak_percentage_inward_threshold\",";
-  json += "\"comparison_zero_source\":\"posterior_pitch_mekf_abs_deg_snapshot_only;does_not_reset_MEKF_quaternion_bias_or_covariance\",";
-  json += "\"comparison_zero_sample_time_semantics\":\"last_consumed_gyro_host_acquisition_timestamp_us_at_reference_capture\",";
+  json += "\"angle_reference_policy\":\"autonomous_saved_operator_upright_reference_frozen_for_run;no_measurement_start_rezero;legacy_modes_keep_measurement_start_zero\",";
+  json += "\"comparison_zero_source\":\"autonomous=NVS_two_second_stationary_MEKF_average;legacy=posterior_snapshot;reference_subtraction_does_not_reset_MEKF_state\",";
+  json += "\"upright_reference_revision\":" + String(run_upright_reference_.revision) + ",";
+  json += "\"upright_reference_valid\":" + String(upright_reference::valid(run_upright_reference_) ? "true" : "false") + ",";
+  json += "\"upright_reference_abs_pitch_deg\":" + jsonFloatOrNull(upright_reference::valid(run_upright_reference_) ? run_upright_reference_.pitch_deg : NAN, 6) + ",";
+  json += "\"upright_reference_normalized_ax\":" + jsonFloatOrNull(upright_reference::valid(run_upright_reference_) ? run_upright_reference_.normalized_ax : NAN, 6) + ",";
+  json += "\"upright_reference_samples\":" + String(run_upright_reference_.samples) + ",";
+  json += "\"upright_reference_spread_deg\":" + jsonFloatOrNull(upright_reference::valid(run_upright_reference_) ? run_upright_reference_.spread_deg : NAN, 6) + ",";
+  json += "\"measurement_start_abs_pitch_deg\":" + jsonFloatOrNull(measurement_start_abs_deg_, 6) + ",";
+  json += "\"measurement_start_upright_relative_deg\":" + jsonFloatOrNull(upright_reference::relative(measurement_start_abs_deg_, run_upright_reference_), 6) + ",";
+  json += "\"comparison_zero_sample_time_semantics\":\"autonomous_persistent_reference_has_no_current_boot_capture_timestamp;legacy_last_consumed_gyro_timestamp\",";
   json += "\"attitude_filter_adopted\":\"MEKF_6state_error_state\",";
   json += "\"attitude_filter_compare\":\"online_dynamic_beta_madgwick_hold073_only_for_post_run_comparison\",";
   json += "\"mekf_coordinate_mapping\":\"Ry180_body_frame:accel=(-ax,+ay,-az);gyro=(-gx,+gy_scaled,-gz);reported_pitch=physical_video_sign\",";
   json += "\"mekf_gyro_y_scale\":" + String(Config::MEKF_GYRO_Y_SCALE, 6) + ",";
   json += "\"mekf_gyro_y_scale_role\":\"pre_prediction_sensor_calibration_not_output_angle_scaling\",";
-  json += "\"mekf_control_angle_reference\":\"autonomous_only:posterior_measurement_relative_without_timing_projection;identical_to_pitch_mekf_detector_relative_deg;legacy_non_autonomous_modes_keep_previous_semantics\",";
+  json += "\"mekf_control_angle_reference\":\"autonomous:MEKF_posterior_abs_minus_saved_upright;measurement_relative_and_detector_relative_columns_share_this_fixed_reference;no_timing_projection;legacy_modes_unchanged\",";
   json += "\"mekf_abs_angle_reference\":\"continuous_gravity_frame_no_per_run_zero_subtraction;preferred_for_absolute_estimator_diagnostics\",";
   json += "\"mekf_detector_relative_reference\":\"posterior_measurement_relative_angle_without_timing_projection\",";
-  json += "\"mekf_detector_zero_role\":\"measurement_start_posterior_reference_shared_by_amplitude_and_timing;no_timing_projection_angle_threshold_only;never_resets_MEKF_state\",";
+  json += "\"mekf_detector_zero_role\":\"saved_operator_upright_reference_shared_by_amplitude_energy_timing_angle_stop;no_per_run_rezero\",";
   json += "\"autonomous_control_prediction_enabled\":" + String(energy_control_autonomous_mode_ && autonomous_timing_compensation_us_ > 0 ? "true" : "false") + ",";
   json += "\"autonomous_control_prediction_type\":\"none_angle_threshold_only\",";
   json += "\"autonomous_timing_compensation_selectable\":false,";
   json += "\"autonomous_timing_compensation_us\":" + String(autonomous_timing_compensation_us_) + ",";
   json += "\"autonomous_input_peak_percent\":" + String(autonomous_input_peak_percent_, 3) + ",";
-  json += "\"autonomous_input_percent_reference\":\"measurement_start_MEKF_posterior;inward_only;no_time_projection;threshold_is_fraction_of_last_confirmed_peak;already_inside_on_confirmation_fires_immediately\",";
+  json += "\"autonomous_input_percent_reference\":\"saved_upright_MEKF_posterior;inward_only;no_time_projection;threshold_is_fraction_of_last_confirmed_peak;already_inside_on_confirmation_fires_immediately\",";
   json += "\"autonomous_input_advance_us\":" + String(0UL) + ",";
   json += "\"autonomous_total_timing_projection_us\":" + String(0UL) + ",";
   json += "\"autonomous_input_event_coordinate\":\"zero_cross_named_events_are_selected_angle_threshold_events_not_actual_zero_angle\",";

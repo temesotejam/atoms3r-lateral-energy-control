@@ -6,6 +6,7 @@
 
 #include "log_types.h"
 #include "solver_audit.h"
+#include "upright_reference.h"
 
 class PsramLogger {
  public:
@@ -512,7 +513,12 @@ class PsramLogger {
                  uint8_t q_ident_run_schedule_id = 0, bool energy_control_v0_mode = false,
                  bool energy_control_autonomous_mode = false,
                  float input_peak_percent = 50.0f, uint16_t brake_max_ms = 50,
-                 bool peak_adaptation_enabled = true);
+                 bool peak_adaptation_enabled = true,
+                 const upright_reference::Record& upright_reference = upright_reference::Record{});
+  void recordMeasurementStartAngle(float absolute_deg) {
+    if (!sealed_ && energy_control_autonomous_mode_ && !isfinite(measurement_start_abs_deg_))
+      measurement_start_abs_deg_ = absolute_deg;
+  }
   uint16_t beginIdentificationEvent(const IdentificationEvent& event);
   void finishIdentificationEvent(uint16_t event_id, uint32_t peak_ms, int16_t theta_peak_cdeg);
   void addCalibrationPeakEvent(const CalibrationPeakEvent& event);
@@ -668,6 +674,8 @@ private:
   float autonomous_input_peak_percent_ = 0;
   uint16_t autonomous_brake_max_ms_ = 50;
   bool peak_adaptation_enabled_ = true;
+  upright_reference::Record run_upright_reference_;
+  float measurement_start_abs_deg_ = NAN;
   uint32_t autonomous_timing_compensation_us_ = 0;  // Immutable metadata for the saved run.
   uint16_t identification_event_count_ = 0;
   uint8_t calibration_peak_event_count_ = 0;

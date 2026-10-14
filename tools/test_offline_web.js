@@ -6,7 +6,8 @@ const canvas={clearRect(){},fillRect(){},beginPath(){},moveTo(){},lineTo(){},str
 const element=id=>{if(!elements.has(id))elements.set(id,{textContent:'',style:{},getContext:()=>canvas});return elements.get(id);};
 const status={state:'READY_TO_MEASURE',ready:true,running:false,downloadable:false,controller_fresh:true,
   target_deg:8,input_peak_percent:0,input_current_mA:1200,brake_max_ms:50,peak_adaptation_enabled:true,boot_id:1,
-  export_phase:'empty',command:{pending:false,submitted:0,completed:0,result:''},foot:{},upright:{}};
+  export_phase:'empty',command:{pending:false,submitted:0,completed:0,result:''},foot:{},upright:{},
+  upright_reference:{valid:true,capturing:false,abs_pitch_deg:2.2,relative_pitch_deg:0,revision:1}};
 const sessionStorage={getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
 const context=vm.createContext({document:{getElementById:element},Date:{now:()=>now},sessionStorage,
   setTimeout:()=>1,clearTimeout(){},AbortController,URLSearchParams,Map,DataView,Uint8Array,TextDecoder,

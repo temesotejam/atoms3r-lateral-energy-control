@@ -48,7 +48,7 @@ jobs:
           cp bmi270-build-patch.json madgwick-build-patch.json dist/
           python "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --chip esp32s3 merge_bin -o dist/merged-firmware.bin 0x0000 dist/bootloader.bin 0x8000 dist/partitions.bin 0xe000 dist/boot_app0.bin 0x10000 dist/firmware.bin
           printf '%s\n' "$GITHUB_SHA" > dist/build-sha.txt
-          printf '%s\n' '1.0.6 lateral energy model validation; MEKF; 15s; RWLOG v54; unrestricted demand audit; optional peak adaptation; negative-side brake cap selectable 0/20/50ms' > dist/FLASH_LAYOUT.txt
+          printf '%s\n' '1.0.7 lateral energy saved upright reference; MEKF; 15s; RWLOG v54; explicit stopped Web capture; persistent NVS origin; no measurement-start rezero' > dist/FLASH_LAYOUT.txt
           (cd dist && sha256sum *.bin > SHA256SUMS.txt)
           git diff --exit-code
       - uses: actions/upload-artifact@v4

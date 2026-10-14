@@ -11,6 +11,7 @@
 #include <math.h>
 
 #include "upright_pose_guide.h"
+#include "upright_reference_store.h"
 #include "direct_q_solver.h"
 
 namespace {
@@ -79,6 +80,7 @@ void ExperimentRunner::begin(PsramLogger& logger, ImuManager& imu, Roller485Mana
   logger_ = &logger;
   imu_ = &imu;
   roller_ = &roller;
+  upright_reference::load(upright_reference_);
   boot_start_ms_ = millis();
   calib_start_ms_ = boot_start_ms_;
   beginFilters();
@@ -86,6 +88,63 @@ void ExperimentRunner::begin(PsramLogger& logger, ImuManager& imu, Roller485Mana
   setSyncLed(false);
   stopMotor();
   status_.state = ExperimentState::STARTUP_GYRO_CALIB;
+}
+
+bool ExperimentRunner::beginUprightReferenceCapture() {
+  if (running() || status_.pulse_active || status_.motor_cmd_mA != 0 ||
+      upright_reference_capture_.pending() || !bias_ready_ ||
+      (status_.state != ExperimentState::READY_TO_MEASURE &&
+       status_.state != ExperimentState::FINISHED && status_.state != ExperimentState::ESTOP)) {
+    status_.last_error = "upright_reference_requires_stopped"; return false;
+  }
+  stopMotor();
+  upright_reference_capture_.begin(micros(), upright_reference_.revision);
+  return true;
+}
+
+bool ExperimentRunner::pollUprightReferenceCapture(bool& ok, const char*& result) {
+  using State = upright_reference::Capture::State;
+  if (upright_reference_capture_.state() == State::Idle) return false;
+  if (upright_reference_capture_.pending()) {
+    const auto& r = imu_->reading();
+    const auto& a = status_.mekf_attitude;
+    const uint32_t now_us = micros();
+    const bool healthy = imu_->acquisitionHealthy() && !imu_->stale(millis()) && a.valid &&
+        static_cast<uint32_t>(now_us - a.sample_us) <= 15000 && r.last_accel_update_us &&
+        static_cast<uint32_t>(now_us - r.last_accel_update_us) <= 20000;
+    upright_reference_capture_.step(now_us, a.sample_us, r.gyro_sequence, healthy,
+        !running() && !status_.pulse_active && status_.motor_cmd_mA == 0,
+        raw_mekf_pitch_abs_deg_, r.ax_g, r.az_g, UprightPoseGuide::accelNormG(r),
+        UprightPoseGuide::gyroNormDps(r));
+  }
+  if (upright_reference_capture_.pending()) return false;
+  ok = upright_reference_capture_.state() == State::Ready;
+  result = upright_reference_capture_.error();
+  if (ok) {
+    // The controller owner writes flash only while stopped. One blob is
+    // committed and read back before the live reference is replaced.
+    ok = upright_reference::save(upright_reference_capture_.candidate());
+    if (ok) {
+      upright_reference_ = upright_reference_capture_.candidate();
+      result = "upright_reference_saved";
+      status_.last_error = "";
+    } else result = "upright_reference_save_failed";
+  }
+  if (!ok) status_.last_error = result;
+  upright_reference_capture_ = upright_reference::Capture{};
+  return true;
+}
+
+float ExperimentRunner::uprightPitchErrorDeg(const ImuReading& r) const {
+  return upright_reference::valid(upright_reference_)
+      ? upright_reference::pitchError(r.ax_g, UprightPoseGuide::accelNormG(r), upright_reference_)
+      : UprightPoseGuide::pitchErrorDeg(r);
+}
+bool ExperimentRunner::isUprightStableSample(const ImuReading& r) const {
+  const float norm = UprightPoseGuide::accelNormG(r);
+  return isfinite(norm) && norm >= .85f && norm <= 1.15f && r.az_g < 0 &&
+      uprightPitchErrorDeg(r) <= appcfg::kAutoZeroMaxPitchErrorDeg &&
+      UprightPoseGuide::gyroNormDps(r) <= UprightPoseGuide::UPRIGHT_MAX_GYRO_NORM_DPS;
 }
 
 void ExperimentRunner::beginFilters() {
@@ -548,6 +607,8 @@ void ExperimentRunner::updateDisplayedAngles(const ImuReading&) {
   // It has no time-based advance or latency projection.
   status_.pitch_mekf_detector_relative_deg = status_.pitch_mekf_measurement_relative_deg;
   if (energy_control_autonomous_mode_) status_.pitch_mekf_deg = status_.pitch_mekf_detector_relative_deg;
+  if (!running() && upright_reference::valid(upright_reference_))
+    status_.pitch_mekf_deg = upright_reference::relative(raw_mekf_pitch_abs_deg_, upright_reference_);
 
 }
 
@@ -983,7 +1044,10 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   energy_control_autonomous_pulse_authorized_ = false;
   energy_control_v0_pulse_authorized_ = false;
   const ImuReading& autonomous_start_reading = imu_->reading();
-  if (!UprightPoseGuide::isUprightStableSample(autonomous_start_reading)) {
+  if (!upright_reference::valid(upright_reference_) || upright_reference_capture_.pending()) {
+    status_.last_error = "upright_reference_required"; return false;
+  }
+  if (!isUprightStableSample(autonomous_start_reading)) {
     status_.last_error = "upright_pose_required_before_start";
     return false;
   }
@@ -1211,8 +1275,8 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   // V46z comparison-zero begin
   captureMekfComparisonZero(status_.mekf_start_sync_zero_abs_deg,
                             status_.mekf_start_sync_zero_sample_us);
-  status_.mekf_measurement_zero_abs_deg = NAN;
-  status_.mekf_trial_zero_abs_deg = NAN;
+  status_.mekf_measurement_zero_abs_deg = energy_control_autonomous_mode_ ? upright_reference_.pitch_deg : NAN;
+  status_.mekf_trial_zero_abs_deg = energy_control_autonomous_mode_ ? upright_reference_.pitch_deg : NAN;
   status_.mekf_measurement_zero_sample_us = 0;
   status_.mekf_trial_zero_sample_us = 0;
   updateMekfComparisonRelativeAngles();
@@ -1227,7 +1291,8 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
                     q_ident_mode_ ? static_cast<uint8_t>(q_ident_run_schedule_id_ + 1) : 0,
                      energy_control_v0_mode_, energy_control_autonomous_mode_,
                      energy_control_autonomous_input_peak_percent_,
-                     energy_control_autonomous_brake_max_ms_, peak_adaptation_enabled_);
+                      energy_control_autonomous_brake_max_ms_, peak_adaptation_enabled_,
+                      energy_control_autonomous_mode_ ? upright_reference_ : upright_reference::Record{});
   last_log_us_ = 0;
   status_.state = ExperimentState::START_SYNC;
   status_.sync_event_id = 1;
@@ -1239,13 +1304,19 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
 }
 
 void ExperimentRunner::beginMeasurementRun() {
-  if (!passive_capture_mode_ && !q_ident_mode_ && !energy_control_v0_mode_) {
+  if (!passive_capture_mode_ && !q_ident_mode_ && !energy_control_v0_mode_ && !energy_control_autonomous_mode_) {
     captureAngleOffsets();
     updateDisplayedAngles(imu_->reading());
   }
   // V46z comparison-zero begin
-  captureMekfComparisonZero(status_.mekf_measurement_zero_abs_deg,
-                            status_.mekf_measurement_zero_sample_us);
+  if (energy_control_autonomous_mode_) {
+    // Preserve the operator's saved origin. The actual start attitude is
+    // recorded separately as a diagnostic and never becomes a control zero.
+    logger_->recordMeasurementStartAngle(raw_mekf_pitch_abs_deg_);
+  } else {
+    captureMekfComparisonZero(status_.mekf_measurement_zero_abs_deg,
+                             status_.mekf_measurement_zero_sample_us);
+  }
   const bool dedicated_single_trial =
       passive_capture_mode_ || q_ident_mode_ || energy_control_v0_mode_ || energy_control_autonomous_mode_;
   if (dedicated_single_trial) {
@@ -1258,10 +1329,17 @@ void ExperimentRunner::beginMeasurementRun() {
   updateMekfComparisonRelativeAngles();
   // V46z comparison-zero end
   // V46aa control-zero capture begin
-  status_.mekf_detector_zero_predicted_abs_deg = raw_mekf_predicted_abs_deg_;
-  status_.mekf_detector_zero_sample_us = imu_ ? imu_->reading().last_gyro_update_us : 0;
-  status_.pitch_mekf_detector_relative_deg =
-      isfinite(status_.mekf_detector_zero_predicted_abs_deg) ? 0.0f : NAN;
+  if (energy_control_autonomous_mode_) {
+    status_.mekf_detector_zero_predicted_abs_deg = upright_reference_.pitch_deg;
+    status_.mekf_detector_zero_sample_us = 0; // Saved calibration, not a new sample origin.
+    status_.pitch_mekf_detector_relative_deg = status_.pitch_mekf_measurement_relative_deg;
+    status_.pitch_mekf_deg = status_.pitch_mekf_detector_relative_deg;
+  } else {
+    status_.mekf_detector_zero_predicted_abs_deg = raw_mekf_predicted_abs_deg_;
+    status_.mekf_detector_zero_sample_us = imu_ ? imu_->reading().last_gyro_update_us : 0;
+    status_.pitch_mekf_detector_relative_deg =
+        isfinite(status_.mekf_detector_zero_predicted_abs_deg) ? 0.0f : NAN;
+  }
   // V46aa control-zero capture end
   run_start_ms_ = millis();
   if (passive_capture_mode_ || q_ident_mode_ || energy_control_v0_mode_ || energy_control_autonomous_mode_) resetQ1ShadowZeroCrossTracker();
@@ -3304,6 +3382,7 @@ void ExperimentRunner::updateMekfComparisonRelativeAngles() {
 // V46z comparison-zero end
 
 void ExperimentRunner::requestEmergencyStop(const char* reason) {
+  upright_reference_capture_.cancel("upright_reference_cancelled");
   setSyncLed(false);
   stopMotor();
   if (status_.state == ExperimentState::RUNNING_BATCH_SWEEP || status_.state == ExperimentState::TRIAL_REST ||
@@ -3377,7 +3456,7 @@ void ExperimentRunner::updateStartSync(uint32_t now_ms) {
     if (r.accel_sequence != 0 &&
         r.accel_sequence != g_v46_mekf_run_reinit.last_accel_sequence) {
       g_v46_mekf_run_reinit.last_accel_sequence = r.accel_sequence;
-      if (UprightPoseGuide::isUprightStableSample(r)) {
+      if (isUprightStableSample(r)) {
         g_v46_mekf_run_reinit.ax_sum_g += r.ax_g;
         g_v46_mekf_run_reinit.ay_sum_g += r.ay_g;
         g_v46_mekf_run_reinit.az_sum_g += r.az_g;

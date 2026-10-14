@@ -67,7 +67,11 @@ int main(int argc,char** argv){
   PsramLogger logger;assert(logger.begin());
   assert(sizeof(PsramLogger)<4096);
   assert(PsramLogger::eventStorageBytes()<256U*1024U);
-  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f,50,false);
+  upright_reference::Record reference{upright_reference::kMagic,1,3,801,2.2f,.038f,.05f};
+  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f,50,false,reference);
+  logger.recordMeasurementStartAngle(3.2f);
+  logger.recordMeasurementStartAngle(9.2f); // Cannot replace the actual start snapshot.
+  reference.pitch_deg = 7.7f; // Operator changes after the run cannot mutate its metadata.
   LogSample row{};row.motor_cmd_mA=300;row.roller_actual_current_mA=270;
   row.roll_mekf_abs_cdeg=1234;row.pitch_mekf_abs_cdeg=567;
   row.gyro_heading_cdeg=LOG_NAN_I32;

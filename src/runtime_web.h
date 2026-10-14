@@ -8,6 +8,11 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p id="connection">接続を確認中…</p>
 <section class="card"><div class="grid"><div><div class="label">状態</div><div class="value" id="state">—</div></div><div><div class="label">残り時間</div><div class="value" id="remaining">—</div></div><div><div class="label">胴体の左右揺動 · MEKF</div><div class="value" id="pitch">—</div></div><div><div class="label">指令 / 実測電流</div><div class="value" style="font-size:1.5rem" id="current">—</div></div></div>
 <p id="guide">起動後は静止させてください。LEDが点灯したら左右のpitchを基準に合わせ、機体を静止させます。足のマーカー認識は測定開始に不要です。</p>
+<h2>制御に使う直立基準</h2>
+<p>機体を基準にしたい姿勢で静止させ、下のボタンを押してください。約2秒間その姿勢を保つと、左右角の平均を本体に保存します。測定開始・ログ消去・再起動でも基準を保ち、停止中にこのボタンを押したときだけ更新します。</p>
+<button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
+<p id="upright-reference-status" role="status">保存した基準を確認中…</p>
+<p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
 <p><label for="target">目標とする左右の最大角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
 <p class="muted" id="target-help">ZEROクロスの角速度から次の最大角度を予測し、選んだ目標に近づくよう電流の入力時間を0〜100 msで決めます。</p>
 <p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
@@ -31,7 +36,8 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <section class="card"><h2>前後傾斜と足角度の比較</h2>
 <p id="mekf-axes" class="muted">MEKFの更新を待っています。</p>
 <p>両足を地面に固定して、胴体と両足が直立した姿勢を基準にします。基準の後、胴体を前後の片方向へ約5°・10°・15°・20°と傾け、10°・直立へ戻す順に、設定範囲内で記録してください。各姿勢で約3秒間静止します。</p>
-<button id="pose-base" disabled>直立基準を取得</button><button id="pose-add" disabled>この姿勢を追加</button><button id="pose-cancel" disabled>姿勢取得を中止</button><button id="pose-save" disabled>比較JSONを保存</button><button id="pose-reset" disabled>保存後に比較をやり直す</button>
+<button id="pose-base" disabled>比較用の直立姿勢を取得</button><button id="pose-add" disabled>この姿勢を追加</button><button id="pose-cancel" disabled>姿勢取得を中止</button><button id="pose-save" disabled>比較JSONを保存</button><button id="pose-reset" disabled>保存後に比較をやり直す</button>
+<p class="muted">この姿勢比較は記録用です。制御に使う直立基準は、上の「今の姿勢を直立基準として保存」で変更します。</p>
 <p id="pose-status" role="status">胴体と両足を直立させ、基準を取得してください。</p>
 <div style="overflow-x:auto"><table><thead><tr><th>姿勢</th><th>胴体前後変化</th><th>右の差</th><th>左の差</th><th>確認</th></tr></thead><tbody id="pose-rows"></tbody></table></div>
 <p class="muted">「差」は基準からの足相対角の変化＋胴体前後角の変化です。足を固定した平面運動では0°が目安になります。左右傾斜が大きい場合は参考値とします。各姿勢の取得では角度換算係数を変更しません。現在は固定2姿勢から求めた係数を使用しています。最大12姿勢の画像と診断をまとめて保存します。再読み込みする前に比較JSONを保存してください。</p>
@@ -183,7 +189,10 @@ function controls() {
   const fresh = !offlineMode && latest && Date.now() - lastSeen < 3500;
   const busy = commandInFlight || previewRunning || poseRunning || !!latest?.command?.pending;
   const building = latest?.export_phase === 'building';
-  $('start').disabled = !fresh || busy || transferRunning || !latest.ready || latest.running || latest.export_phase !== 'empty';
+  $('start').disabled = !fresh || busy || transferRunning || !latest.ready || !latest.upright_reference?.valid || latest.running || latest.export_phase !== 'empty';
+  $('upright-reference-capture').disabled = !fresh || busy || transferRunning || building ||
+    !latest.controller_fresh || !latest.imu_ok || latest.running || latest.pulse_active || latest.motor_mA !== 0 ||
+    !['READY_TO_MEASURE', 'FINISHED', 'ESTOP'].includes(latest.state);
   $('target').disabled = $('start').disabled;
   $('input-percent').disabled = $('start').disabled;
   $('input-current').disabled = $('start').disabled;
@@ -322,7 +331,15 @@ function render(s) {
   $('fps').textContent = terminal ? '停止中' : `${format(stale ? 0 : f.fps, 1)} / 15 fps`;
   $('foot-status').textContent = `足角度（任意） · ${f.zero_ready ? 'ゼロ点確定' : 'ゼロ点未確定（' + (f.zero_samples ?? 0) + '枚）'} · 記録${f.frames ?? 0}枚 · 画像取得失敗${f.failures ?? 0}回` +
     footIssues(f, stale, terminal);
+  const reference = s.upright_reference;
+  $('upright-reference-status').textContent = reference.capturing
+    ? '基準を取得中です。約2秒間、今の姿勢で静止させてください。'
+    : reference.valid
+      ? `基準を保存済み（更新${reference.revision}回） · 基準からの左右角 ${format(reference.relative_pitch_deg)}° · 基準のMEKF角 ${format(reference.abs_pitch_deg)}°`
+      : '基準は未保存です。機体を直立させ、今の姿勢を基準として保存してください。';
   if (s.running) $('guide').textContent = '測定中。画面は更新されます。足角度は制御入力に使用しません。';
+  else if (reference.capturing) $('guide').textContent = '基準を取得しています。機体を動かさずお待ちください。';
+  else if (!reference.valid) $('guide').textContent = '準備ができたら、直立姿勢を保って基準を保存してください。測定開始時には原点を取り直しません。';
   else if (s.downloadable) $('guide').textContent = 'ログを保存してください。次の測定には「ログを消去・次の測定へ」を使います。';
   else if (s.ready) $('guide').textContent = f.zero_ready && f.right_valid && f.left_valid && !stale
     ? '直立姿勢を保ち、測定を開始してください。'
@@ -365,6 +382,10 @@ function adoptStatus(s) {
       !validInputPercent(s.input_peak_percent) || !validInputCurrent(s.input_current_mA) ||
       !brakeChoices.includes(s.brake_max_ms) ||
       typeof s.peak_adaptation_enabled !== 'boolean' ||
+      !s.upright_reference || typeof s.upright_reference.valid !== 'boolean' ||
+      typeof s.upright_reference.capturing !== 'boolean' ||
+      (s.upright_reference.valid && (!Number.isFinite(s.upright_reference.abs_pitch_deg) ||
+        !Number.isInteger(s.upright_reference.revision) || s.upright_reference.revision <= 0)) ||
       !s.foot || !s.upright || !s.command ||
       typeof s.command.pending !== 'boolean' ||
       !Number.isInteger(s.command.completed) || !Number.isInteger(s.command.submitted) ||
@@ -423,14 +444,17 @@ async function startOfflineRun() {
   } finally { commandInFlight = false; controls(); }
 }
 async function command(path) {
-  commandInFlight = true; controls(); $('message').textContent = '要求を送信中…';
+  const referenceCapture = path === '/upright-reference/capture';
+  commandInFlight = true; controls(); $('message').textContent = referenceCapture
+    ? '今の姿勢を約2秒間保ってください。基準を取得して保存します。' : '要求を送信中…';
   const before = latest?.command?.submitted ?? 0;
   try {
     await request(path, {method: 'POST', kind: 'text'});
-    for (let i = 0; i < 12; ++i) {
+    for (let i = 0; i < (referenceCapture ? 30 : 12); ++i) {
       const s = await request('/status.json'); adoptStatus(s); render(s);
       if (!s.command.pending && (s.command.completed > before || path === '/stop')) {
-        $('message').textContent = s.command.result || '要求を処理しました'; return;
+        $('message').textContent = referenceCapture ? referenceResultMessage(s.command.result) :
+          s.command.result || '要求を処理しました'; return;
       }
       await nap(150);
     }
@@ -438,6 +462,20 @@ async function command(path) {
   } catch (error) {
     $('message').textContent = `通信結果が未確認です。状態を確認してください: ${error.message}`;
   } finally { commandInFlight = false; controls(); }
+}
+function referenceResultMessage(result) {
+  const messages = {
+    upright_reference_saved:'今の姿勢を直立基準として本体に保存しました。以後の測定でもこの基準を使います。',
+    upright_reference_requires_stopped:'測定を停止してから基準を取得してください。',
+    upright_reference_hold_still:'静止を確認できませんでした。元の基準を保っています。機体を静止させてやり直してください。',
+    upright_reference_pose_moved:'取得中に角度が変わりました。元の基準を保っています。姿勢を保ってやり直してください。',
+    upright_reference_imu_not_fresh:'姿勢の更新を確認できませんでした。元の基準を保っています。準備完了後にやり直してください。',
+    upright_reference_save_failed:'本体への保存を確認できませんでした。基準を再取得してください。',
+    upright_reference_timeout:'基準の取得が完了しませんでした。機体を静止させてやり直してください。',
+    upright_reference_cancelled:'基準の取得を中止しました。元の基準を保っています。',
+    stopped:'基準の取得を中止しました。元の基準を保っています。'
+  };
+  return messages[result] || `基準の取得結果：${result || '状態を確認してください'}`;
 }
 // A cache is optional for one-session downloads. IndexedDB additionally allows
 // reload/reconnect resume; every cached chunk is revalidated before reuse.
@@ -684,6 +722,7 @@ async function capturePose(baseline) {
   } finally { poseRunning = false; controls(); }
 }
 $('start').onclick = startOfflineRun;
+$('upright-reference-capture').onclick = () => command('/upright-reference/capture');
 if ($('stop')) $('stop').onclick = () => { poseCancelled = true; return command('/stop'); };
 if ($('reconnect')) $('reconnect').onclick = () => refresh(true);
 if ($('usb-diag')) $('usb-diag').onchange = async () => {

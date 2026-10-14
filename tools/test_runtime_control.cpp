@@ -59,6 +59,14 @@ int main(){
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,90));
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,1210));
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,500,10));
+  assert(w.request(RunControlWorker::Command::CaptureUprightReference));
+  assert(w.takeCommand()==RunControlWorker::Command::CaptureUprightReference);
+  assert(w.commandState().pending);
+  assert(!w.request(RunControlWorker::Command::Start));
+  assert(!w.request(RunControlWorker::Command::Clear));
+  assert(!w.request(RunControlWorker::Command::CaptureUprightReference));
+  w.completeCommand(true,"upright_reference_saved");
+  w.oneStep(); assert(w.commandPublished(w.commandState().completed));
   assert(w.request(RunControlWorker::Command::Start,10,0.0f,500,20,false));
   bool applied_adaptation=true;
   assert(!w.request(RunControlWorker::Command::Start,12)); // cannot replace accepted target
