@@ -162,7 +162,7 @@ static bool controlStep(void*) {
     run_control.completeCommand(true, "cleared");
   } else if (command == RunControlWorker::Command::CaptureUprightReference) {
     reference_command_active = runner.beginUprightReferenceCapture();
-    if (!reference_command_active) run_control.completeCommand(false, runner.status().last_error);
+    if (!reference_command_active) run_control.completeCommand(false, "upright_reference_requires_stopped");
   }
   const bool measurement = runner.status().state == ExperimentState::RUNNING_BATCH_SWEEP;
   control_latency::setActive(measurement);

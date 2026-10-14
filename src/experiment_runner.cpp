@@ -95,7 +95,9 @@ bool ExperimentRunner::beginUprightReferenceCapture() {
       upright_reference_capture_.pending() || !bias_ready_ ||
       (status_.state != ExperimentState::READY_TO_MEASURE &&
        status_.state != ExperimentState::FINISHED && status_.state != ExperimentState::ESTOP)) {
-    status_.last_error = "upright_reference_requires_stopped"; return false;
+    if (status_.state == ExperimentState::READY_TO_MEASURE)
+      status_.last_error = "upright_reference_requires_stopped";
+    return false;
   }
   stopMotor();
   upright_reference_capture_.begin(micros(), upright_reference_.revision);
@@ -127,10 +129,12 @@ bool ExperimentRunner::pollUprightReferenceCapture(bool& ok, const char*& result
     if (ok) {
       upright_reference_ = upright_reference_capture_.candidate();
       result = "upright_reference_saved";
-      status_.last_error = "";
+      if (status_.state == ExperimentState::READY_TO_MEASURE) status_.last_error = "";
     } else result = "upright_reference_save_failed";
   }
-  if (!ok) status_.last_error = result;
+  // Capture feedback belongs to the Web command. Preserve a completed run's
+  // terminal error, especially ESTOP, until its log has been downloaded.
+  if (!ok && status_.state == ExperimentState::READY_TO_MEASURE) status_.last_error = result;
   upright_reference_capture_ = upright_reference::Capture{};
   return true;
 }
