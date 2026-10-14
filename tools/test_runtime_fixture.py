@@ -70,7 +70,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.2-lateral-energy-mekf-rwlog-v54-signed-energy'
+assert metadata['firmware_revision']=='1.0.3-lateral-energy-mekf-rwlog-v54-side-refit'
 assert metadata['energy_control_autonomous_revision']=='lateral_energy_signed_inverse_v2_20261014'
 assert metadata['legacy_rate_and_Q1_models_active'] is False
 assert metadata['lateral_energy_coefficient_status'].startswith('provisional_204_closed_loop')

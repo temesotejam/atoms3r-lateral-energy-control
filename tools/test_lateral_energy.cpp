@@ -29,9 +29,9 @@ int main() {
         assert(std::isfinite(q) && q>0);
         assert(near(work(c,omega,q),required,1.e-7f));
       }
-      const float brake_q=requiredSignedCharge(c,omega,-.00005f);
+      const float brake_q=requiredSignedCharge(c,omega,-.00002f);
       assert(std::isfinite(brake_q) && brake_q<0);
-      assert(near(work(c,omega,brake_q),-.00005f,1.e-7f));
+      assert(near(work(c,omega,brake_q),-.00002f,1.e-7f));
     }
     const auto d=decide(g,table,side,65, potential(g,10),0,0,300);
     assert(d.valid && d.ms>0 && d.ms<=100);

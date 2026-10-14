@@ -5,7 +5,7 @@
 
 // SI energy model. External Q/log units remain mA*s; every energy formula
 // converts Q to A*s and gyro rate to rad/s. Seed coefficients are empirical,
-// not measured inertia/torque constants. See docs/lateral_energy_seed.json.
+// not measured inertia/torque constants. See docs/lateral_energy_refit_20261014.md.
 namespace lateral_energy {
 constexpr float kRadPerDeg = 0.01745329251994329577f;
 constexpr uint16_t kMaxMs = 100;
@@ -13,7 +13,7 @@ constexpr uint16_t kMaxMs = 100;
 // Limit the first braking trials to half of the excitation time budget.
 constexpr uint16_t kBrakeMaxMs = 50;
 constexpr float kIntegralGain = .10f;
-constexpr char kRevision[] = "lateral_energy_signed_inverse_v2_20261014";
+constexpr char kRevision[] = "lateral_energy_side_refit_v3_20261014";
 struct Geometry {
   float mass_g, height, radius, inner_x, center, inner_angle, outer_angle;
   Geometry(float m=.1997f, float gravity=9.80665f, float h=.120f,
@@ -57,8 +57,8 @@ struct Coefficients {
 };
 static inline RW_SPEED_CODE Coefficients coefficients(int8_t side) {
   return side>0
-    ? Coefficients{-.0002019364753f,.0006085534387f,.02692507790f,.5522071518f,17.9508f,92.2064f,13.27138f}
-    : Coefficients{-.0002180822115f,.0007149309376f,.03889674250f,.2578004825f,35.7375f,91.4938f,12.83679f};
+    ? Coefficients{-.0002019364753f,.0007317420955f,.01259279858f,.5522071518f,17.9508f,92.2064f,13.27138f}
+    : Coefficients{-.0002180822115f,.0009189896078f,.03889674250f,.2578004825f,35.7375f,91.4938f,12.83679f};
 }
 static inline RW_SPEED_CODE float freeEnergy(const Coefficients& c,float omega) {
   return std::fmax(0.f,c.free_omega2*omega*omega+c.free_offset_j);

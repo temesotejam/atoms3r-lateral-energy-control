@@ -123,7 +123,7 @@ jobs:
                   if published != expected:
                       raise ValueError('Published build SHA differs: ' + published)
                   manifest = json.loads(get('manifest-freefoot-runtime-v2.json'))
-                  if manifest['version'] != '1.0.2-lateral-energy-mekf-rwlog-v54-signed-energy':
+                  if manifest['version'] != '1.0.3-lateral-energy-mekf-rwlog-v54-side-refit':
                       raise ValueError('Unexpected firmware version')
                   if '左右揺動エネルギー制御' not in get('index.html').decode():
                       raise ValueError('Published page label differs')

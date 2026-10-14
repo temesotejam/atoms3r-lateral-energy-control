@@ -123,7 +123,7 @@ static constexpr char ATTITUDE_VALIDATION_REVISION[] = "v46aj_fixed_3ms_compensa
 // V46ak changes observation only. ATTITUDE_VALIDATION_REVISION intentionally remains V46aj.
 static constexpr char AMPLITUDE_CONTROL_OBSERVATION_REVISION[] = "v46ak_pre_input_state_observation_20260920";
 // V46al-R2 previous-peak active control begin
-static constexpr char AMPLITUDE_CONTROL_REVISION[] = "lateral_energy_signed_inverse_v2_20261014";
+static constexpr char AMPLITUDE_CONTROL_REVISION[] = "lateral_energy_side_refit_v3_20261014";
 static constexpr char AMPLITUDE_CONTROL_BASELINE_SOURCE[] =
     "atoms3r-amplitude-control-v46ak-stable@bb9c5ed07c5ca8b3c6c6b5813b6c2f1b1f57a6ec";
 static constexpr char ENERGY_CONTROL_AUTONOMOUS_PREVIOUS_PEAK_MODEL_REVISION[] =
@@ -330,10 +330,10 @@ static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_PEAK_CONFIRM_SAMPLES = 3;
 // the measured 0.317--0.490 s passive half-cycle range.
 static constexpr uint32_t ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS = 250UL;
 static constexpr uint32_t ENERGY_CONTROL_AUTONOMOUS_MIN_ZERO_TO_PEAK_MS = 125UL;
-// Side-specific provisional energy model fitted from the inherited fixed-foot
-// events. Its status and coefficients are recorded in docs/lateral_energy_seed.json.
+// Side-specific provisional energy model updated from the 2026-10-14
+// corrected-polarity free-foot runs; see docs/lateral_energy_refit_20261014.md.
 static constexpr char ENERGY_CONTROL_AUTONOMOUS_FREE_MODEL_REVISION[] =
-    "LATERAL_ENERGY_SEED_20261013";
+    "LATERAL_ENERGY_SIDE_REFIT_20261014";
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_INTEGRAL_KI_MAS_PER_DEG = 0.10f;
 static constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_MAX_EVENTS = 256;
 static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_NONE = 0;
