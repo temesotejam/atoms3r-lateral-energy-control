@@ -10,6 +10,7 @@
 #include "autonomous_input_current.h"
 #include "autonomous_brake_limit.h"
 #include "lateral_energy_control.h"
+#include "peak_error_adaptation.h"
 #include "control_math_cache.h"
 #include "imu_manager.h"
 #include "log_types.h"
@@ -420,6 +421,7 @@ private:
       Config::ENERGY_CONTROL_V0_CG_HEIGHT_M,Config::ENERGY_CONTROL_V0_RADIUS_M,
       Config::ENERGY_CONTROL_V0_INNER_EDGE_X_M,Config::ENERGY_CONTROL_V0_OUTER_EDGE_X_M};
   lateral_energy::CurrentTable lateral_current_table_;
+  peak_error_adaptation::Model peak_error_model_;
   float lateral_target_energy_j_ = NAN;
   float energy_control_autonomous_integral_plus_j_ = 0.0f;
   float energy_control_autonomous_integral_minus_j_ = 0.0f;
@@ -448,6 +450,12 @@ private:
   bool energy_control_autonomous_pending_peak_ = false;
   int8_t energy_control_autonomous_pending_next_side_ = 0;
   float energy_control_autonomous_pending_q_command_mA_s_ = 0.0f;
+  float energy_control_autonomous_pending_model_energy_j_ = NAN;
+  float energy_control_autonomous_pending_wheel_rpm_ = NAN;
+  uint32_t energy_control_autonomous_pending_wheel_age_us_ = UINT32_MAX;
+  uint32_t energy_control_autonomous_pending_zero_ms_ = 0;
+  peak_error_adaptation::Mode energy_control_autonomous_pending_mode_ = peak_error_adaptation::Coast;
+  bool energy_control_autonomous_pending_wheel_valid_ = false;
   bool energy_control_autonomous_pending_saturated_upper_ = false;
   bool energy_control_autonomous_pending_saturated_lower_ = false;
   uint16_t energy_control_autonomous_pending_zero_event_index_ = 0;

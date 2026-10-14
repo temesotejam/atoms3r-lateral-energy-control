@@ -316,6 +316,8 @@ class PsramLogger {
     bool first_peak = false;
     bool pending_command_matched = false;
     float pending_q_command_mA_s = NAN;
+    float model_residual_j = NAN;  // measured peak minus uncorrected model prediction
+    bool model_residual_observed = false;
     bool antiwindup_upper_hold = false;
     bool antiwindup_lower_hold = false;
   };
@@ -333,6 +335,12 @@ class PsramLogger {
     bool rate_support_diagnostic = false;
     float q_available_mA_s = NAN;
     float predicted_energy_j = NAN;
+    float prediction_bias_j = 0.0f;
+    float predicted_observed_energy_j = NAN;
+    float predicted_observed_next_peak_deg = NAN;
+    int8_t adaptation_mode = 0;
+    uint8_t wheel_speed_bin = 255;
+    uint8_t adaptation_consistent_samples = 0;
     uint32_t previous_peak_time_ms = 0;
     int8_t previous_peak_side = 0;
     float previous_peak_amplitude_deg = NAN;

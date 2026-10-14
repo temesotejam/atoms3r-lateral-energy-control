@@ -2316,6 +2316,7 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   energy_control_autonomous_half_cycle_state_ = EnergyControlAutonomousHalfCycleState::WAIT_PEAK;
   energy_control_autonomous_integral_plus_j_ = 0.0f;
   energy_control_autonomous_integral_minus_j_ = 0.0f;
+  peak_error_model_.reset();
   energy_control_autonomous_last_motion_sample_us_ = 0;
   energy_control_autonomous_detector_has_previous_angle_ = false;
   // V46aa control-zero reset begin
@@ -2335,6 +2336,12 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   energy_control_autonomous_pending_peak_ = false;
   energy_control_autonomous_pending_next_side_ = 0;
   energy_control_autonomous_pending_q_command_mA_s_ = 0.0f;
+  energy_control_autonomous_pending_model_energy_j_ = NAN;
+  energy_control_autonomous_pending_wheel_rpm_ = NAN;
+  energy_control_autonomous_pending_wheel_age_us_ = UINT32_MAX;
+  energy_control_autonomous_pending_zero_ms_ = 0;
+  energy_control_autonomous_pending_mode_ = peak_error_adaptation::Coast;
+  energy_control_autonomous_pending_wheel_valid_ = false;
   energy_control_autonomous_pending_saturated_upper_ = false;
   energy_control_autonomous_pending_saturated_lower_ = false;
   energy_control_autonomous_pending_zero_event_index_ = 0;
@@ -2626,6 +2633,15 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
   event.target_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.target_peak_deg);
   event.measured_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.peak_amplitude_deg);
   event.energy_error_j = event.target_energy_j - event.measured_energy_j;
+  if (event.pending_command_matched && std::isfinite(event.measured_energy_j) &&
+      std::isfinite(energy_control_autonomous_pending_model_energy_j_)) {
+    event.model_residual_j = event.measured_energy_j - energy_control_autonomous_pending_model_energy_j_;
+    event.model_residual_observed = true;
+    peak_error_model_.observe(energy_control_autonomous_pending_zero_ms_, physical_side,
+        energy_control_autonomous_pending_mode_, energy_control_autonomous_pending_wheel_rpm_,
+        energy_control_autonomous_pending_wheel_valid_,
+        energy_control_autonomous_pending_wheel_age_us_, event.model_residual_j);
+  }
   event.antiwindup_upper_hold = event.pending_command_matched &&
       energy_control_autonomous_pending_saturated_upper_ && event.energy_error_j > 0;
   event.antiwindup_lower_hold = event.pending_command_matched &&
@@ -2636,6 +2652,7 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       energy_control_autonomous_pending_saturated_upper_,energy_control_autonomous_pending_saturated_lower_,
       event.pending_command_matched);
   energy_control_autonomous_pending_peak_ = false;
+  energy_control_autonomous_pending_model_energy_j_ = NAN;
   energy_control_autonomous_last_peak_valid_ = true;
   energy_control_autonomous_last_peak_amplitude_deg_ = amplitude_deg;
   energy_control_autonomous_last_peak_side_ = physical_side;
@@ -2915,9 +2932,9 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.i0_estimated_mA = predicted_current_end_ms_ == 0 ? 0.0f :
       predicted_signed_current_end_mA_ * expf(-static_cast<float>(now_ms - predicted_current_end_ms_) / 70.0f);
 
-  // V46ak observation-only pre-input snapshot. Capture the latest independently
-  // sampled Roller state before the pulse solver/command path. Nothing below
-  // reads these fields back into control.
+  // Capture the latest independently sampled Roller state before solving.
+  // Fresh wheel speed selects a bounded, side-specific residual cell;
+  // measured current remains diagnostic and never changes this pulse.
   const uint32_t pre_input_capture_us = micros();
   event.pre_input_capture_time_us = pre_input_capture_us;
   if (roller_) {
@@ -2944,11 +2961,39 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   const float aligned_initial_mA = static_cast<float>(event.physical_next_peak_side)*event.i0_estimated_mA;
   event.integral_energy_j = event.physical_next_peak_side > 0
       ? energy_control_autonomous_integral_plus_j_ : energy_control_autonomous_integral_minus_j_;
+  const float integral_limit_j = .5f * event.target_energy_j;
+  const float bounded_integral_j = fmaxf(-integral_limit_j,
+      fminf(integral_limit_j, event.integral_energy_j));
+  const float uncorrected_request_j = event.target_energy_j - event.passive_energy_j +
+      bounded_integral_j;
+  auto requested_mode = uncorrected_request_j > 0.f ? peak_error_adaptation::Excite :
+      (uncorrected_request_j < 0.f ? peak_error_adaptation::Brake : peak_error_adaptation::Coast);
+  if (requested_mode == peak_error_adaptation::Brake &&
+      event.physical_next_peak_side < 0 && energy_control_autonomous_brake_max_ms_ == 0)
+    requested_mode = peak_error_adaptation::Coast;
+  float prediction_bias_j = peak_error_model_.correction(event.physical_next_peak_side,
+      requested_mode, event.pre_input_wheel_speed_rpm, event.pre_input_wheel_speed_valid,
+      event.pre_input_wheel_speed_age_us, &event.wheel_speed_bin,
+      &event.adaptation_consistent_samples);
+  // A learned correction cannot reverse the selected drive/brake decision.
+  const float bias_limit_j = .5f * fabsf(uncorrected_request_j);
+  prediction_bias_j = fmaxf(-bias_limit_j, fminf(bias_limit_j, prediction_bias_j));
   audit.solver_started=1; audit.solver_start_us=micros();
-  const auto decision=lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
+  auto decision=lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
       event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
       event.integral_energy_j,aligned_initial_mA,goal_current_mA,
-      event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs);
+      event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs,
+      prediction_bias_j);
+  if (decision.valid && prediction_bias_j != 0.f &&
+      peak_error_adaptation::modeForSignedCharge(decision.selected_q_mAs) != requested_mode) {
+    // At a mode boundary, retain the original controller decision rather
+    // than applying a correction learned from a different pulse direction.
+    prediction_bias_j = 0.f;
+    decision = lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
+        event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
+        event.integral_energy_j,aligned_initial_mA,goal_current_mA,
+        event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs);
+  }
   if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
     audit.stage=1;audit.solver_end_us=micros();
     event.reason=Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN;
@@ -2960,6 +3005,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       event.q_command_direction == event.physical_next_peak_side;
   const uint16_t selected_width_ms=decision.ms;
   const float selected_q_mA_s=decision.selected_q_mAs;
+  event.prediction_bias_j = prediction_bias_j;
+  event.adaptation_mode = peak_error_adaptation::modeForSignedCharge(selected_q_mA_s);
   event.kinetic_energy_j=decision.kinetic_j;
   event.predicted_loss_j=decision.loss_j;
   event.delta_energy_required_j=decision.deficit_j;
@@ -2975,6 +3022,9 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.q_command_mA_s=selected_q_mA_s;event.q_effective_pred_mA_s=selected_q_mA_s;
   event.predicted_energy_j=decision.predicted_j;
   event.predicted_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.predicted_j);
+  event.predicted_observed_energy_j = fmaxf(0.f, decision.predicted_j + prediction_bias_j);
+  event.predicted_observed_next_peak_deg = lateral_energy::angle(
+      lateral_energy_geometry_, event.predicted_observed_energy_j);
   event.solver_required_width_ms=static_cast<float>(selected_width_ms);
   event.solver_selected_integer_width_ms=selected_width_ms;
   // Audit fields are retained for old log readers; current energy-unit fields
@@ -2993,6 +3043,13 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   energy_control_autonomous_pending_next_side_ = event.physical_next_peak_side;
   energy_control_autonomous_pending_target_deg_ = event.target_peak_deg;
   energy_control_autonomous_pending_q_command_mA_s_ = selected_q_mA_s;
+  energy_control_autonomous_pending_model_energy_j_ = decision.predicted_j;
+  energy_control_autonomous_pending_wheel_rpm_ = event.pre_input_wheel_speed_rpm;
+  energy_control_autonomous_pending_wheel_age_us_ = event.pre_input_wheel_speed_age_us;
+  energy_control_autonomous_pending_wheel_valid_ = event.pre_input_wheel_speed_valid;
+  energy_control_autonomous_pending_zero_ms_ = accepted_cross_ms;
+  energy_control_autonomous_pending_mode_ =
+      peak_error_adaptation::modeForSignedCharge(selected_q_mA_s);
   energy_control_autonomous_pending_saturated_upper_ = event.q_saturated_upper;
   energy_control_autonomous_pending_saturated_lower_ = event.q_saturated_lower;
   if (selected_width_ms == 0) {

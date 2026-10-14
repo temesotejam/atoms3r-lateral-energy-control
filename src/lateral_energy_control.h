@@ -13,7 +13,7 @@ constexpr uint16_t kMaxMs = 100;
 // Limit the first braking trials to half of the excitation time budget.
 constexpr uint16_t kBrakeMaxMs = 50; // Absolute limit; trial choices are 0/20/50 ms.
 constexpr float kIntegralGain = .10f;
-constexpr char kRevision[] = "lateral_energy_brake_comparison_v4_20261014";
+constexpr char kRevision[] = "lateral_energy_peak_adaptation_v5_20261014";
 struct Geometry {
   float mass_g, height, radius, inner_x, center, inner_angle, outer_angle;
   Geometry(float m=.1997f, float gravity=9.80665f, float h=.120f,
@@ -121,10 +121,11 @@ struct Decision {
 static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const CurrentTable& table,
       int8_t side,float rate_dps,float target_j,float integral_j,
       float initial_current_mA,float goal_current_mA,
-      uint16_t brake_max_ms=kBrakeMaxMs) {
+      uint16_t brake_max_ms=kBrakeMaxMs,float prediction_bias_j=0.f) {
   Decision d;
   if ((side!=1 && side!=-1) || !table.ready || !std::isfinite(rate_dps) || rate_dps<0 ||
       !std::isfinite(target_j) || target_j<=0 || !std::isfinite(integral_j) ||
+      !std::isfinite(prediction_bias_j) ||
       !std::isfinite(initial_current_mA) || !std::isfinite(goal_current_mA) || goal_current_mA<=0 ||
       brake_max_ms>kBrakeMaxMs)
     return d;
@@ -139,7 +140,9 @@ static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const Curre
   d.deficit_j=target_j-d.free_j;
   const float correction_limit=.5f*target_j;
   const float correction=std::fmax(-correction_limit,std::fmin(correction_limit,integral_j));
-  const float raw=d.deficit_j+correction;
+  // A positive prediction bias means that the measured peak previously had
+  // more energy than the uncorrected model predicted for this same state.
+  const float raw=d.deficit_j+correction-prediction_bias_j;
   const bool braking=raw<0;
   const uint16_t max_ms=braking?brake_max_ms:kMaxMs;
   const float signed_goal=braking?-goal_current_mA:goal_current_mA;

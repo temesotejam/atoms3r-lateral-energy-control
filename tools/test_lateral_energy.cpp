@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <initializer_list>
 #include "lateral_energy_control.h"
+#include "peak_error_adaptation.h"
 #include "autonomous_brake_limit.h"
 
 static bool near(float a, float b, float tolerance) {
@@ -63,6 +64,33 @@ int main() {
   }
   const auto reverse=decide(g,table,1,65,potential(g,10),0,-150,300);
   assert(reverse.valid && reverse.ms<=100 && reverse.selected_q_mAs>=0);
+  {
+    const auto c = coefficients(1);
+    const float omega = 60.f * kRadPerDeg;
+    const float target = freeEnergy(c, omega) + work(c, omega, 5.f);
+    const auto original = decide(g,table,1,60,target,0,0,300);
+    const auto corrected = decide(g,table,1,60,target,0,0,300,kBrakeMaxMs,.000025f);
+    assert(original.valid && corrected.valid);
+    assert(corrected.selected_q_mAs < original.selected_q_mAs);
+    assert(corrected.ms < original.ms);
+  }
+  {
+    peak_error_adaptation::Model model;
+    uint8_t bin=255, count=255;
+    for (int i=0;i<4;++i)
+      model.observe(5000+i*500,1,peak_error_adaptation::Excite,50,true,10000,.00004f);
+    assert(near(model.correction(1,peak_error_adaptation::Excite,50,true,10000,&bin,&count),
+                .00004f,1.e-8f));
+    assert(bin==peak_error_adaptation::Slow && count==4);
+    assert(model.correction(-1,peak_error_adaptation::Excite,50,true,10000)==0);
+    assert(model.correction(1,peak_error_adaptation::Brake,50,true,10000)==0);
+    assert(model.correction(1,peak_error_adaptation::Excite,150,true,10000)==0);
+    assert(model.correction(1,peak_error_adaptation::Excite,50,true,60000)==0);
+    model.observe(7100,1,peak_error_adaptation::Excite,50,true,10000,-.00004f);
+    assert(model.correction(1,peak_error_adaptation::Excite,50,true,10000)==0);
+    model.reset();
+    assert(model.correction(1,peak_error_adaptation::Excite,50,true,10000)==0);
+  }
   // Compare the bounded inverse with every legal integer pulse width. The
   // residual current may initially oppose either requested direction.
   for (int side : {-1,1}) {

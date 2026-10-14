@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define RUNTIME_VERSION "1.0.4-lateral-energy-brake-comparison"
+#define RUNTIME_VERSION "1.0.5-lateral-energy-peak-adaptation"
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

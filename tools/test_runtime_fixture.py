@@ -70,8 +70,10 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.4-lateral-energy-brake-comparison'
-assert metadata['energy_control_autonomous_revision']=='lateral_energy_brake_comparison_v4_20261014'
+assert metadata['firmware_revision']=='1.0.5-lateral-energy-peak-adaptation'
+assert metadata['energy_control_autonomous_revision']=='lateral_energy_peak_adaptation_v5_20261014'
+assert metadata['peak_error_adaptation_enabled'] is True
+assert 'signed_wheel_speed_bin' in metadata['peak_error_adaptation_policy']
 assert metadata['legacy_rate_and_Q1_models_active'] is False
 assert metadata['lateral_energy_coefficient_status'].startswith('provisional_58_corrected_polarity_free_foot')
 assert metadata['foot_camera_required_for_autonomous_start'] is False
@@ -115,8 +117,13 @@ assert metadata['control_work_profile']['pulse_on']['log_row']['mean_us']==777
 assert len(metadata['energy_control_autonomous_peak_events']) == 256
 assert len(metadata['energy_control_autonomous_zero_cross_events']) == 256
 assert 'target_energy_j' in metadata['energy_control_autonomous_peak_events'][0]
+assert 'model_residual_j' in metadata['energy_control_autonomous_peak_events'][0]
 assert 'kinetic_energy_j' in metadata['energy_control_autonomous_zero_cross_events'][0]
 assert 'energy_model_extrapolated' in metadata['energy_control_autonomous_zero_cross_events'][0]
+for key in ('prediction_bias_j','predicted_observed_energy_j',
+            'predicted_observed_next_peak_deg','adaptation_mode',
+            'wheel_speed_bin','adaptation_consistent_samples'):
+    assert key in metadata['energy_control_autonomous_zero_cross_events'][0]
 assert len(metadata['foot_frames']) == 768
 assert metadata['foot_observation']['detector'] == 'sparse_rows_identity_v3'
 assert metadata['foot_observation']['weak_candidate_confirmation']==dict(frames=3,min_x_step_px=20,min_y_step_px=16,
