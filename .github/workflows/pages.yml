@@ -100,6 +100,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/deploy-pages@v4
         id: deployment
       - name: Verify live Web Flasher identity, driver provenance and binary hashes
@@ -111,6 +112,7 @@ jobs:
           import hashlib, json, os, time, urllib.request
           base = os.environ['PAGE_URL'].rstrip('/') + '/'
           expected = os.environ['EXPECTED_SHA']
+          expected_version = json.load(open('site/manifest-freefoot-runtime-v2.json'))['version']
           def get(path):
               request = urllib.request.Request(base + path + '?verify=' + expected,
                                                headers={'Cache-Control': 'no-cache'})
@@ -123,7 +125,7 @@ jobs:
                   if published != expected:
                       raise ValueError('Published build SHA differs: ' + published)
                   manifest = json.loads(get('manifest-freefoot-runtime-v2.json'))
-                  if manifest['version'] != '1.0.4-lateral-energy-brake-comparison':
+                  if manifest['version'] != expected_version:
                       raise ValueError('Unexpected firmware version')
                   if '左右揺動エネルギー制御' not in get('index.html').decode():
                       raise ValueError('Published page label differs')
