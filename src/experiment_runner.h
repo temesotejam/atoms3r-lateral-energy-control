@@ -54,6 +54,8 @@ public:
   int16_t energyControlAutonomousInputCurrentMa() const { return energy_control_autonomous_input_current_mA_; }
   bool setEnergyControlAutonomousBrakeMaxMs(uint16_t brake_max_ms);
   uint16_t energyControlAutonomousBrakeMaxMs() const { return energy_control_autonomous_brake_max_ms_; }
+  bool setPeakAdaptationEnabled(bool enabled);
+  bool peakAdaptationEnabled() const { return peak_adaptation_enabled_; }
   void zeroAngleNow();
   bool zeroCurrentRollDisplay();
   bool setCurrentRollTarget(float target_deg);
@@ -422,6 +424,7 @@ private:
       Config::ENERGY_CONTROL_V0_INNER_EDGE_X_M,Config::ENERGY_CONTROL_V0_OUTER_EDGE_X_M};
   lateral_energy::CurrentTable lateral_current_table_;
   peak_error_adaptation::Model peak_error_model_;
+  bool peak_adaptation_enabled_ = true;
   float lateral_target_energy_j_ = NAN;
   float energy_control_autonomous_integral_plus_j_ = 0.0f;
   float energy_control_autonomous_integral_minus_j_ = 0.0f;

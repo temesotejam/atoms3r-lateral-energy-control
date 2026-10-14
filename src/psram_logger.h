@@ -318,6 +318,11 @@ class PsramLogger {
     float pending_q_command_mA_s = NAN;
     float model_residual_j = NAN;  // measured peak minus uncorrected model prediction
     bool model_residual_observed = false;
+    // Snapshot at confirmation, not at the earlier geometric extremum.
+    uint32_t peak_telemetry_capture_time_ms = 0;
+    float peak_wheel_speed_rpm = NAN, peak_measured_current_mA = NAN;
+    uint32_t peak_speed_age_us = UINT32_MAX, peak_current_age_us = UINT32_MAX;
+    bool peak_speed_valid = false, peak_current_valid = false;
     bool antiwindup_upper_hold = false;
     bool antiwindup_lower_hold = false;
   };
@@ -358,6 +363,11 @@ class PsramLogger {
     float delta_energy_required_j = NAN;
     float kinetic_energy_j=NAN, predicted_loss_j=NAN, integral_energy_j=NAN;
     float commanded_energy_deficit_j=NAN, corrected_target_energy_j=NAN;
+    float unclamped_energy_request_j=NAN, maximum_input_work_j=NAN;
+    float unapplied_energy_request_j=NAN;
+    float predicted_current_goal_mA=NAN, predicted_current_rise_tau_s=NAN;
+    float aligned_initial_current_mA=NAN;
+    bool unclamped_inverse_valid=false;
     float work_omega_q_coefficient=NAN, work_q2_coefficient=NAN;
     bool energy_model_extrapolated=false;
     float q1_gain_deg_per_mA_s = NAN;
@@ -383,7 +393,7 @@ class PsramLogger {
     float i0_estimated_mA = NAN;
 
     // V46ak observation-only snapshot taken before the pulse command is queued.
-    // These fields are never consulted by the controller or pulse solver.
+    // Fresh speed selects the learned correction cell; current is diagnostic.
     uint32_t pre_input_capture_time_us = 0;
     float pre_input_measured_current_mA = NAN;
     uint32_t pre_input_current_sample_time_us = 0;
@@ -501,7 +511,8 @@ class PsramLogger {
                  float q1_shadow_target_peak_abs_deg = NAN, bool q_ident_mode = false,
                  uint8_t q_ident_run_schedule_id = 0, bool energy_control_v0_mode = false,
                  bool energy_control_autonomous_mode = false,
-                 float input_peak_percent = 50.0f, uint16_t brake_max_ms = 50);
+                 float input_peak_percent = 50.0f, uint16_t brake_max_ms = 50,
+                 bool peak_adaptation_enabled = true);
   uint16_t beginIdentificationEvent(const IdentificationEvent& event);
   void finishIdentificationEvent(uint16_t event_id, uint32_t peak_ms, int16_t theta_peak_cdeg);
   void addCalibrationPeakEvent(const CalibrationPeakEvent& event);
@@ -656,6 +667,7 @@ private:
   bool energy_control_autonomous_mode_ = false;
   float autonomous_input_peak_percent_ = 0;
   uint16_t autonomous_brake_max_ms_ = 50;
+  bool peak_adaptation_enabled_ = true;
   uint32_t autonomous_timing_compensation_us_ = 0;  // Immutable metadata for the saved run.
   uint16_t identification_event_count_ = 0;
   uint8_t calibration_peak_event_count_ = 0;

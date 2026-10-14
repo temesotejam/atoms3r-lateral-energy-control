@@ -19,6 +19,7 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tools/test_stack_scan_policy.cpp -o /tm
 python3 tools/test_realtime_code_link.py
 python3 tools/test_motion_acquisition_link.py
 python3 tools/fit_lateral_energy_seed.py > /tmp/lateral_energy_seed_fit.json
+python3 tools/test_energy_validation.py
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_lateral_energy.cpp -o /tmp/test_lateral_energy
 /tmp/test_lateral_energy
 python3 tools/test_rwlog_v46_converter.py

@@ -93,7 +93,7 @@ bool WebUi::queueStart() {
   start_command_id_ = control_->commandState().submitted + 1;
   start_submitted_ = control_->request(RunControlWorker::Command::Start, start_target_deg_,
                                        start_input_peak_percent_, start_input_current_mA_,
-                                       start_brake_max_ms_);
+                                       start_brake_max_ms_, start_peak_adaptation_enabled_);
   return start_submitted_;
 }
 OfflineRunSession::StartResult WebUi::startResult() const {
@@ -160,12 +160,18 @@ void WebUi::command(RunControlWorker::Command cmd) {
         !autonomous_brake_limit::parse(server_->arg("brake_max_ms").c_str(), brake_max_ms)) {
       server_->send(400, "text/plain", "brake_max_ms_0_20_50_required_reload_page"); return;
     }
+    if (!server_->hasArg("peak_adaptation") ||
+        (server_->arg("peak_adaptation") != "0" && server_->arg("peak_adaptation") != "1")) {
+      server_->send(400, "text/plain", "peak_adaptation_0_or_1_required_reload_page"); return;
+    }
+    const bool peak_adaptation_enabled = server_->arg("peak_adaptation") == "1";
     const bool ok = offline_.queue(millis());
     if (ok) {
       start_target_deg_ = target_deg;
       start_input_peak_percent_ = input_peak_percent;
       start_input_current_mA_ = input_current_mA;
       start_brake_max_ms_ = brake_max_ms;
+      start_peak_adaptation_enabled_ = peak_adaptation_enabled;
       start_submitted_ = cancel_sent_ = false;
       RuntimeDiag::setRunActive(true);
     }
@@ -201,6 +207,7 @@ void WebUi::status() {
   json += ",\"input_peak_percent\":" + num(s.input_peak_percent);
   json += ",\"input_current_mA\":" + String(s.input_current_mA);
   json += ",\"brake_max_ms\":" + String(s.brake_max_ms);
+  json += ",\"peak_adaptation_enabled\":" + String(s.peak_adaptation_enabled ? "true" : "false");
   json += ",\"motor_mA\":" + String(s.motor_cmd_mA) + ",\"actual_mA\":" + String(s.actual_current_mA);
   json += ",\"battery_mV\":" + String(s.battery_mV);
   json += ",\"imu_ok\":" + String(s.imu_ok ? "true" : "false") + ",\"roller_ok\":" + String(s.roller_ok ? "true" : "false");

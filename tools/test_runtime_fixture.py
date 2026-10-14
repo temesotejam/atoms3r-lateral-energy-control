@@ -70,9 +70,15 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.5-lateral-energy-peak-adaptation'
-assert metadata['energy_control_autonomous_revision']=='lateral_energy_peak_adaptation_v5_20261014'
-assert metadata['peak_error_adaptation_enabled'] is True
+assert metadata['firmware_revision']=='1.0.6-lateral-energy-model-validation'
+assert metadata['energy_control_autonomous_revision']=='lateral_energy_model_validation_v6_20261014'
+assert metadata['peak_error_adaptation_enabled'] is False
+assert metadata['energy_request_audit_revision']=='unrestricted_inverse_v1_20261014'
+audit=metadata['energy_control_autonomous_zero_cross_events'][0]
+assert abs(audit['unclamped_energy_request_j']+.00040325)<1e-8
+assert abs(audit['q_unclamped_mA_s']+9.01853)<1e-5
+assert audit['unclamped_inverse_valid'] is True
+assert abs(audit['maximum_input_work_j']+.00003841)<1e-8
 assert 'signed_wheel_speed_bin' in metadata['peak_error_adaptation_policy']
 assert metadata['legacy_rate_and_Q1_models_active'] is False
 assert metadata['lateral_energy_coefficient_status'].startswith('provisional_58_corrected_polarity_free_foot')

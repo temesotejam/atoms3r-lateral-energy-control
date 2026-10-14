@@ -16,6 +16,9 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p><label for="brake-max">負側ブレーキ時間の上限 </label><select id="brake-max" disabled aria-describedby="brake-max-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="0">0 ms（ブレーキなし）</option><option value="20">20 ms</option><option value="50" selected>50 ms（従来条件）</option></select></p>
 <p class="muted" id="brake-max-help">負側でエネルギーが多いと判断された場合だけ、逆入力の最大時間を制限します。正側の入力と始動キックは変えません。足を前後に動かないよう固定した比較試験用です。</p>
 <p class="muted" id="run-brake" role="status">負側ブレーキ上限は測定開始時に確定します。</p>
+<p><label for="peak-adaptation">予測誤差の学習補正 </label><select id="peak-adaptation" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="1" selected>使用する（通常の制御）</option><option value="0">使用しない（エネルギー式の検証）</option></select></p>
+<p class="muted">式の検証では「使用しない」を選び、目標8°・300 mAで20 msと50 msを比較します。必要量と上限で制限された量、次の到達角をログで確認します。</p>
+<p class="muted" id="run-adaptation" role="status">学習補正の設定は測定開始時に確定します。</p>
 <input id="input-percent" type="hidden" value="0">
 <p class="muted" id="run-percent" role="status">通常入力はZEROクロスで行います。</p>
 <p class="muted">yaw関連機能は停止中です。</p>
@@ -152,6 +155,7 @@ let angleInitialized = false, angleBootId = null, requestedInputPercent = null;
 let currentInitialized = false, currentBootId = null, requestedInputCurrentMa = null;
 let brakeInitialized = false, brakeBootId = null, requestedBrakeMaxMs = null;
 const brakeChoices = [0, 20, 50];
+let adaptationInitialized = false, adaptationBootId = null, requestedAdaptation = null;
 const validInputCurrent = value => Number.isInteger(value) && value >= 100 && value <= 1200 && value % 10 === 0;
 const validInputPercent = value => value === 0;
 const nap = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -184,6 +188,7 @@ function controls() {
   $('input-percent').disabled = $('start').disabled;
   $('input-current').disabled = $('start').disabled;
   $('brake-max').disabled = $('start').disabled;
+  $('peak-adaptation').disabled = $('start').disabled;
   $('clear').disabled = !fresh || busy || transferRunning || building || latest.running || !['FINISHED', 'ESTOP'].includes(latest.state);
   $('download').disabled = !fresh || busy || transferRunning || !latest.downloadable || latest.running;
   $('cancel').disabled = !transferRunning;
@@ -225,6 +230,9 @@ function renderOffline() {
     ? '負側ブレーキ上限はWeb復帰後に確認します。'
     : `開始要求：負側ブレーキ上限 ${requestedBrakeMaxMs} ms`;
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
+  $('run-adaptation').textContent = requestedAdaptation === null
+    ? '学習補正の設定はWeb復帰後に確認します。'
+    : `開始要求：予測誤差の学習補正 ${requestedAdaptation ? '使用する' : '使用しない'}`;
   for (const id of ['pitch', 'current', 'right', 'left', 'fps']) $(id).textContent = '—';
   $('guide').textContent = '本体で制御・観測・記録を行います。開始5秒＋測定15秒＋終了5秒が予定時間です。前後90°以上の傾斜でSTOPします。横倒しは姿勢STOPの対象にしません。表示時間はPC側の目安で、実際の進行・終了を確認した値ではありません。';
   $('foot-status').textContent = '足角度の画面更新を停止。本体内の記録は継続します。';
@@ -293,6 +301,13 @@ function render(s) {
     $('brake-max').value = String(s.brake_max_ms);
     brakeInitialized = true; brakeBootId = s.boot_id;
   }
+  if (!adaptationInitialized || adaptationBootId !== s.boot_id || s.running || terminal) {
+    $('peak-adaptation').value = s.peak_adaptation_enabled ? '1' : '0';
+    adaptationInitialized = true; adaptationBootId = s.boot_id;
+  }
+  $('run-adaptation').textContent = s.running || terminal
+    ? `今回の予測誤差の学習補正：${s.peak_adaptation_enabled ? '使用する' : '使用しない'}`
+    : '学習補正の設定は測定開始時に確定します。';
   $('run-percent').textContent = s.running || terminal
     ? `今回の入力：ZEROクロスで${s.input_current_mA} mA、入力時間は可変`
     : '通常入力はZEROクロスで行います。';
@@ -349,6 +364,7 @@ function adoptStatus(s) {
   if (!s || typeof s.state !== 'string' || typeof s.export_phase !== 'string' ||
       !validInputPercent(s.input_peak_percent) || !validInputCurrent(s.input_current_mA) ||
       !brakeChoices.includes(s.brake_max_ms) ||
+      typeof s.peak_adaptation_enabled !== 'boolean' ||
       !s.foot || !s.upright || !s.command ||
       typeof s.command.pending !== 'boolean' ||
       !Number.isInteger(s.command.completed) || !Number.isInteger(s.command.submitted) ||
@@ -388,13 +404,18 @@ async function startOfflineRun() {
   if (!brakeChoices.includes(brakeMaxMs)) {
     $('message').textContent = '負側ブレーキ上限を0・20・50 msから選択してください。'; return;
   }
+  const adaptationValue = $('peak-adaptation').value;
+  if (!['0', '1'].includes(adaptationValue)) {
+    $('message').textContent = '予測誤差の学習補正の設定を確認してください。'; return;
+  }
+  requestedAdaptation = adaptationValue === '1';
   requestedTargetDeg = target;
   requestedInputPercent = inputPercent;
   requestedInputCurrentMa = inputCurrentMa;
   requestedBrakeMaxMs = brakeMaxMs;
   commandInFlight = true; setOffline(30000); $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
-    await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}`, {method:'POST', kind:'text'});
+    await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}`, {method:'POST', kind:'text'});
     $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
   } catch (error) {
     if (/^\d{3}:/.test(error.message)) { clearOffline(); await refresh(); }

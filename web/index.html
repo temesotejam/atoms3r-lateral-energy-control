@@ -14,6 +14,9 @@
 <p><label for="brake-max">負側ブレーキ時間の上限 </label><select id="brake-max" disabled aria-describedby="brake-max-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="0">0 ms（ブレーキなし）</option><option value="20">20 ms</option><option value="50" selected>50 ms（従来条件）</option></select></p>
 <p class="muted" id="brake-max-help">負側でエネルギーが多いと判断された場合だけ、逆入力の最大時間を制限します。正側の入力と始動キックは変えません。足を前後に動かないよう固定した比較試験用です。</p>
 <p class="muted" id="run-brake" role="status">負側ブレーキ上限は測定開始時に確定します。</p>
+<p><label for="peak-adaptation">予測誤差の学習補正 </label><select id="peak-adaptation" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="1" selected>使用する（通常の制御）</option><option value="0">使用しない（エネルギー式の検証）</option></select></p>
+<p class="muted">式の検証では「使用しない」を選び、目標8°・300 mAで20 msと50 msを比較します。必要量と上限で制限された量、次の到達角をログで確認します。</p>
+<p class="muted" id="run-adaptation" role="status">学習補正の設定は測定開始時に確定します。</p>
 <input id="input-percent" type="hidden" value="0">
 <p class="muted" id="run-percent" role="status">通常入力はZEROクロスで行います。</p>
 <p class="muted">yaw関連機能は停止中です。</p>

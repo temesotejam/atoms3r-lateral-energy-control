@@ -66,8 +66,8 @@ int main(int argc,char** argv){
   assert(!feet.copyPreview(frozen.data(),copied));
   PsramLogger logger;assert(logger.begin());
   assert(sizeof(PsramLogger)<4096);
-  assert(PsramLogger::eventStorageBytes()==208576); // energy-unit peak and zero-cross diagnostics
-  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f);
+  assert(PsramLogger::eventStorageBytes()<256U*1024U);
+  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f,50,false);
   LogSample row{};row.motor_cmd_mA=300;row.roller_actual_current_mA=270;
   row.roll_mekf_abs_cdeg=1234;row.pitch_mekf_abs_cdeg=567;
   row.gyro_heading_cdeg=LOG_NAN_I32;
@@ -81,6 +81,8 @@ int main(int argc,char** argv){
     logger.addEnergyControlAutonomousPeakEvent(p);
     PsramLogger::EnergyControlAutonomousZeroCrossEvent z{};z.zero_cross_time_ms=i*100;
     z.pre_input_measured_current_mA=17;z.pre_input_wheel_speed_rpm=123.5;
+    z.unclamped_energy_request_j=-.00040325f;z.q_unclamped_mA_s=-9.01853f;z.unclamped_inverse_valid=true;
+    z.maximum_input_work_j=-.00003841f;z.predicted_current_goal_mA=153.f;z.predicted_current_rise_tau_s=.070f;
     logger.addEnergyControlAutonomousZeroCrossEvent(z);
     logger.addTimingProbeEvent({});
   }

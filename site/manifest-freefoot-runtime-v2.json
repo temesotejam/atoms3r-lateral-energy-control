@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.5-lateral-energy-peak-adaptation",
+  "version": "1.0.6-lateral-energy-model-validation",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

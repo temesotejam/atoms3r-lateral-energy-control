@@ -65,7 +65,7 @@ const context=vm.createContext({document:{getElementById:get,createElement:el},D
   setTimeout:(fn,ms)=>ms<1000?setTimeout(fn,0):setTimeout(fn,ms),clearTimeout,console});
 vm.runInContext(fs.readFileSync('web/pose_comparison.js','utf8')+'\n'+fs.readFileSync('web/runtime.js','utf8').replace(/poll\(\);\s*$/,''),context);
 vm.runInContext('showEvidence = e => {previewEvidence=e}',context);
-context.good={input_peak_percent:0,input_current_mA:1200,brake_max_ms:50,state:'READY_TO_MEASURE',revision:sample(0).revision,boot_id:123,run_id:0,export_phase:'empty',running:false,
+context.good={input_peak_percent:0,input_current_mA:1200,brake_max_ms:50,peak_adaptation_enabled:true,state:'READY_TO_MEASURE',revision:sample(0).revision,boot_id:123,run_id:0,export_phase:'empty',running:false,
   ready:true,downloadable:false,controller_fresh:true,command:{pending:false,completed:0,submitted:0},
   foot:{zero_ready:true,preview_available:true},upright:{},mekf:sample(0).mekf};
 vm.runInContext('adoptStatus(good)',context);

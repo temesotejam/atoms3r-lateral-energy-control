@@ -5,7 +5,7 @@ const storage=new Map(), elements=new Map();
 const canvas={clearRect(){},fillRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},fillText(){},arc(){},fill(){}};
 const element=id=>{if(!elements.has(id))elements.set(id,{textContent:'',style:{},getContext:()=>canvas});return elements.get(id);};
 const status={state:'READY_TO_MEASURE',ready:true,running:false,downloadable:false,controller_fresh:true,
-  target_deg:8,input_peak_percent:0,input_current_mA:1200,brake_max_ms:50,boot_id:1,
+  target_deg:8,input_peak_percent:0,input_current_mA:1200,brake_max_ms:50,peak_adaptation_enabled:true,boot_id:1,
   export_phase:'empty',command:{pending:false,submitted:0,completed:0,result:''},foot:{},upright:{}};
 const sessionStorage={getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
 const context=vm.createContext({document:{getElementById:element},Date:{now:()=>now},sessionStorage,
@@ -21,6 +21,8 @@ const context=vm.createContext({document:{getElementById:element},Date:{now:()=>
       if(!failStart)status.input_current_mA=current;
       const brake=Number(params.get('brake_max_ms'));assert.ok([0,20,50].includes(brake));
       if(!failStart)status.brake_max_ms=brake;
+      const adaptation=params.get('peak_adaptation');assert.ok(['0','1'].includes(adaptation));
+      if(!failStart)status.peak_adaptation_enabled=adaptation==='1';
       if(!failStart)status.target_deg=target;
       if(loseReply)throw Error('reply lost after acceptance');
       return failStart ? {ok:false,status:409,text:async()=>'busy'} : {ok:true,text:async()=>'offline_run_queued'};
@@ -43,12 +45,12 @@ vm.runInContext(source,context);
     await vm.runInContext('startOfflineRun()',context);assert.equal(calls.length,0); }
   element('input-current').value='500';
   element('brake-max').value='10';calls=[];await vm.runInContext('startOfflineRun()',context);assert.equal(calls.length,0);
-  element('brake-max').value='20';
+  element('brake-max').value='20';element('peak-adaptation').value='0';
   element('target').value='10';await vm.runInContext('refresh()',context);
   assert.equal(element('input-percent').value,'0');assert.equal(element('input-current').value,'500');
   assert.equal(element('target').value,'10'); // polling must not overwrite a user's selection
   calls=[];await vm.runInContext('startOfflineRun()',context);
-  assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=10&input_peak_percent=0&input_current_mA=500&brake_max_ms=20']);
+  assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=10&input_peak_percent=0&input_current_mA=500&brake_max_ms=20&peak_adaptation=0']);
   assert.equal(element('target').disabled,true);assert.match(element('run-target').textContent,/目標角度：10°/);
   await vm.runInContext('poll()',context);now+=20000;await vm.runInContext('poll()',context);
   assert.equal(calls.length,1);assert.equal(element('start').disabled,true);
@@ -69,6 +71,9 @@ vm.runInContext(source,context);
   assert.match(element('run-percent').textContent,/500 mA/);
   assert.match(element('run-percent').textContent,/ZEROクロス/);
   assert.equal(element('target').disabled,true); // sealed run remains associated with its target
+  assert.equal(status.peak_adaptation_enabled,false);
+  assert.equal(element('peak-adaptation').disabled,true);
+  assert.match(element('run-adaptation').textContent,/使用しない/);
   Object.assign(status,{state:'READY_TO_MEASURE',ready:true,downloadable:false,last_error:''});
   await vm.runInContext('refresh()',context);element('target').value='12';
   failStart=true;await vm.runInContext('startOfflineRun()',context);
@@ -90,7 +95,7 @@ vm.runInContext(source,context);
   deliver({ok:true,json:async()=>status});await staleRefresh;
   assert.equal(vm.runInContext('offlineMode',context),true);
   assert.match(element('connection').textContent,/Wi-Fi接続を維持/);
-  await vm.runInContext('poll()',context);assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=12&input_peak_percent=0&input_current_mA=500&brake_max_ms=20']);
+  await vm.runInContext('poll()',context);assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=12&input_peak_percent=0&input_current_mA=500&brake_max_ms=20&peak_adaptation=0']);
   // Default expiry resumes GETs automatically, including normal completion.
   context.fetch=fetch;now+=31000;
   Object.assign(status,{state:'FINISHED',ready:false,downloadable:true,last_error:''});
@@ -103,7 +108,7 @@ vm.runInContext(source,context);
   Object.assign(status,{state:'READY_TO_MEASURE',ready:true,downloadable:false});
   await vm.runInContext('refresh()',context);assert.equal(element('target').disabled,false);
   element('target').value='8';calls=[];await vm.runInContext('startOfflineRun()',context);
-  assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=8&input_peak_percent=0&input_current_mA=500&brake_max_ms=20']);
+  assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=8&input_peak_percent=0&input_current_mA=500&brake_max_ms=20&peak_adaptation=0']);
   vm.runInContext('clearOffline()',context);status.boot_id=2;status.input_peak_percent=0;status.input_current_mA=1200;status.brake_max_ms=50;
   element('target').value='12';await vm.runInContext('refresh()',context);
   assert.equal(element('target').value,'8');

@@ -195,7 +195,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
                              float q1_shadow_target_peak_abs_deg, bool q_ident_mode,
                              uint8_t q_ident_run_schedule_id, bool energy_control_v0_mode,
                              bool energy_control_autonomous_mode, float input_peak_percent,
-                             uint16_t brake_max_ms) {
+                             uint16_t brake_max_ms, bool peak_adaptation_enabled) {
   if (!ready_ || downloading_) return;
   sealed_ = false;
   sample_count_ = 0;
@@ -217,6 +217,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
   autonomous_timing_compensation_us_ = 0;
   autonomous_input_peak_percent_ = energy_control_autonomous_mode ? input_peak_percent : 0;
   autonomous_brake_max_ms_ = energy_control_autonomous_mode ? brake_max_ms : lateral_energy::kBrakeMaxMs;
+  peak_adaptation_enabled_ = peak_adaptation_enabled;
   identification_event_count_ = 0;
   calibration_peak_event_count_ = 0;
   calibration_probe_event_count_ = 0;
@@ -461,7 +462,10 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"lateral_energy_formula\":\"E_free=max(0,c_omega2*omega^2+c_offset);E_target=m*g*height(theta_target);DeltaE=E_target-E_free+I_side-peak_prediction_bias;DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;signed_Q=inverse(DeltaE);width=inverse_current_rise(abs(Q))\",";
   json += "\"lateral_energy_coefficient_status\":\"provisional_58_corrected_polarity_free_foot_events;plus_c2_and_alpha_refit;minus_c2_coast_refit;reverse_response_not_separately_identified\",";
   json += "\"energy_control_autonomous_revision\":\"" + String(lateral_energy::kRevision) + "\",";
-  json += "\"peak_error_adaptation_enabled\":true,";
+  json += "\"peak_error_adaptation_enabled\":" + String(peak_adaptation_enabled_ ? "true" : "false") + ",";
+  json += "\"energy_request_audit_revision\":\"unrestricted_inverse_v1_20261014\",";
+  json += "\"energy_request_audit_semantics\":\"unclamped_energy_request_j=target-free+bounded_integral-bias;q_unclamped_mA_s=unrestricted_near_zero_branch_inverse_or_null;commanded_energy_deficit_j_and_q_ff_energy_mA_s_are_limited;maximum_input_work_j=signed_work_at_allowed_charge_or_brake_vertex;unapplied_energy_request_j=unclamped_request-minus-selected_model_work;diagnostic_only\",";
+  json += "\"peak_telemetry_semantics\":\"snapshot_at_peak_confirmation_time_not_at_geometric_peak;ages_in_us;valid_does_not_imply_fresh;no_additional_hardware_read\",";
   json += "\"peak_error_adaptation_policy\":\"within_run_from_5s;physical_side_x_excite_or_brake_x_signed_wheel_speed_bin;four_consecutive_residuals_same_sign;max_bias_0.000070J;stale_or_invalid_speed_or_coast_zero_bias;one_half_request_guard;mode_change_falls_back_to_unadapted_decision\",";
   json += "\"peak_error_adaptation_speed_bins_rpm\":\"less_than_-100;-100_to_less_than_100;100_to_less_than_300;300_or_more\",";
   json += "\"peak_error_adaptation_residual_definition\":\"measured_peak_energy_minus_uncorrected_model_energy_for_matched_zero_cross\",";
@@ -1391,6 +1395,13 @@ PsramString PsramLogger::buildMetadataJson() const {
     if (isfinite(e.pending_q_command_mA_s)) detail += ",\"pending_q_command_mA_s\":" + jsonFloatOrNull(e.pending_q_command_mA_s, 5);
     else detail += ",\"pending_q_command_mA_s\":null";
     detail += ",\"model_residual_j\":" + jsonFloatOrNull(e.model_residual_j, 8);
+    detail += ",\"peak_telemetry_capture_time_ms\":" + String(e.peak_telemetry_capture_time_ms);
+    detail += ",\"peak_wheel_speed_rpm\":" + jsonFloatOrNull(e.peak_wheel_speed_rpm, 3);
+    detail += ",\"peak_measured_current_mA\":" + jsonFloatOrNull(e.peak_measured_current_mA, 3);
+    detail += ",\"peak_speed_age_us\":" + String(e.peak_speed_age_us);
+    detail += ",\"peak_current_age_us\":" + String(e.peak_current_age_us);
+    detail += ",\"peak_speed_valid\":" + String(e.peak_speed_valid ? "true" : "false");
+    detail += ",\"peak_current_valid\":" + String(e.peak_current_valid ? "true" : "false");
     detail += ",\"model_residual_observed\":" + String(e.model_residual_observed ? "true" : "false");
     detail += ",\"antiwindup_upper_hold\":" + String(e.antiwindup_upper_hold ? "true" : "false");
     detail += ",\"antiwindup_lower_hold\":" + String(e.antiwindup_lower_hold ? "true" : "false") + "}";
@@ -1436,6 +1447,13 @@ PsramString PsramLogger::buildMetadataJson() const {
     appendAutonomousNullable("predicted_loss_j", e.predicted_loss_j, 8);
     appendAutonomousNullable("integral_energy_j", e.integral_energy_j, 8);
     appendAutonomousNullable("commanded_energy_deficit_j", e.commanded_energy_deficit_j, 8);
+    appendAutonomousNullable("unclamped_energy_request_j", e.unclamped_energy_request_j, 8);
+    appendAutonomousNullable("maximum_input_work_j", e.maximum_input_work_j, 8);
+    appendAutonomousNullable("unapplied_energy_request_j", e.unapplied_energy_request_j, 8);
+    appendAutonomousNullable("predicted_current_goal_mA", e.predicted_current_goal_mA, 4);
+    appendAutonomousNullable("predicted_current_rise_tau_s", e.predicted_current_rise_tau_s, 6);
+    appendAutonomousNullable("aligned_initial_current_mA", e.aligned_initial_current_mA, 4);
+    detail += ",\"unclamped_inverse_valid\":" + String(e.unclamped_inverse_valid ? "true" : "false");
     appendAutonomousNullable("corrected_target_energy_j", e.corrected_target_energy_j, 8);
     appendAutonomousNullable("work_omega_q_coefficient", e.work_omega_q_coefficient, 8);
     appendAutonomousNullable("work_q2_coefficient", e.work_q2_coefficient, 8);

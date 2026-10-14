@@ -22,7 +22,7 @@ vm.runInContext(code,context);
   assert.strictEqual(vm.runInContext('latest',context),null);
   assert.strictEqual(element('start').disabled,true);
   assert.match(element('connection').textContent,/状態データ/);
-  const valid={input_peak_percent:0,input_current_mA:1200,brake_max_ms:50,state:'READY_TO_MEASURE',export_phase:'empty',running:false,ready:true,downloadable:false,
+  const valid={input_peak_percent:0,input_current_mA:1200,brake_max_ms:50,peak_adaptation_enabled:true,state:'READY_TO_MEASURE',export_phase:'empty',running:false,ready:true,downloadable:false,
     controller_fresh:true,command:{pending:false,completed:0,submitted:0},
     foot:{available:true,zero_ready:true,age_ms:80,frame_valid:true,frame_timestamp_valid:true,
       right_valid:true,left_valid:true,right_in_range:true,left_in_range:true,

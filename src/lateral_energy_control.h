@@ -13,7 +13,7 @@ constexpr uint16_t kMaxMs = 100;
 // Limit the first braking trials to half of the excitation time budget.
 constexpr uint16_t kBrakeMaxMs = 50; // Absolute limit; trial choices are 0/20/50 ms.
 constexpr float kIntegralGain = .10f;
-constexpr char kRevision[] = "lateral_energy_peak_adaptation_v5_20261014";
+constexpr char kRevision[] = "lateral_energy_model_validation_v6_20261014";
 struct Geometry {
   float mass_g, height, radius, inner_x, center, inner_angle, outer_angle;
   Geometry(float m=.1997f, float gravity=9.80665f, float h=.120f,
@@ -117,6 +117,9 @@ struct Decision {
   float commanded_deficit_j=NAN, corrected_target_j=NAN;
   float requested_q_mAs=NAN, available_q_mAs=NAN, selected_q_mAs=0;
   float predicted_j=NAN, energy_error_j=NAN;
+  // Unrestricted inverse is diagnostic; an invalid root does not change output.
+  float unclamped_deficit_j=NAN, unclamped_q_mAs=NAN;
+  float maximum_input_work_j=NAN;
 };
 static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const CurrentTable& table,
       int8_t side,float rate_dps,float target_j,float integral_j,
@@ -143,6 +146,8 @@ static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const Curre
   // A positive prediction bias means that the measured peak previously had
   // more energy than the uncorrected model predicted for this same state.
   const float raw=d.deficit_j+correction-prediction_bias_j;
+  d.unclamped_deficit_j=raw;
+  d.unclamped_q_mAs=requiredSignedCharge(c,omega,raw);
   const bool braking=raw<0;
   const uint16_t max_ms=braking?brake_max_ms:kMaxMs;
   const float signed_goal=braking?-goal_current_mA:goal_current_mA;
@@ -156,6 +161,7 @@ static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const Curre
     const float vertex_q=-500.f*c.work_omega_q*omega/c.work_q2;
     const float min_q=std::fmax(vertex_q,std::fmin(0.f,limit_q));
     const float min_work=std::fmin(0.f,work(c,omega,min_q));
+    d.maximum_input_work_j=min_work;
     const float desired=std::fmax(raw,-d.free_j);
     d.commanded_deficit_j=std::fmax(desired,min_work);
     d.lower=raw<-d.free_j || desired<min_work;
@@ -166,6 +172,7 @@ static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const Curre
     d.upper=raw>support_energy-d.free_j;
     d.command_sign=raw>0?1:0;
     d.available_q_mAs=std::fmax(0.f,limit_q);
+    d.maximum_input_work_j=work(c,omega,d.available_q_mAs);
   }
   d.requested_q_mAs=requiredSignedCharge(c,omega,d.commanded_deficit_j);
   if (!std::isfinite(d.requested_q_mAs) || !std::isfinite(d.available_q_mAs)) return d;

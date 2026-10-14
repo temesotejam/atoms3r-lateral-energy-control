@@ -55,6 +55,7 @@ static void captureRunState(void*, RunControlSnapshot& out) {
   out.input_peak_percent = runner.energyControlAutonomousInputPeakPercent();
   out.input_current_mA = runner.energyControlAutonomousInputCurrentMa();
   out.brake_max_ms = runner.energyControlAutonomousBrakeMaxMs();
+  out.peak_adaptation_enabled = runner.peakAdaptationEnabled();
   out.led_state = st.led_state; out.sync_event_id = st.sync_event_id;
   out.upright_stable = upright_stable; out.upright_epoch = upright_epoch;
   out.upright_since_us = upright_since_us;
@@ -107,8 +108,10 @@ static bool controlStep(void*) {
   float start_input_peak_percent = autonomous_input_percent::kDefaultPercent;
   int16_t start_input_current_mA = autonomous_input_current::kDefaultMa;
   uint16_t start_brake_max_ms = autonomous_brake_limit::kDefaultMs;
+  bool start_peak_adaptation_enabled = true;
   const auto command = run_control.takeCommand(&start_target_deg, &start_input_peak_percent,
-                                                &start_input_current_mA, &start_brake_max_ms);
+                                                &start_input_current_mA, &start_brake_max_ms,
+                                                &start_peak_adaptation_enabled);
   if (command == RunControlWorker::Command::Start) {
     bool ok = false;
     const char* error = "clear_previous_run_first";
@@ -119,6 +122,7 @@ static bool controlStep(void*) {
         ok = runner.setEnergyControlAutonomousInputPeakPercent(start_input_peak_percent) &&
             runner.setEnergyControlAutonomousInputCurrentMa(start_input_current_mA) &&
             runner.setEnergyControlAutonomousBrakeMaxMs(start_brake_max_ms) &&
+            runner.setPeakAdaptationEnabled(start_peak_adaptation_enabled) &&
             runner.setEnergyControlAutonomousTarget(start_target_deg) &&
             runner.startEnergyControlAutonomousCapture();
         error = ok ? "started" : runner.status().last_error;

@@ -122,5 +122,18 @@ int main() {
   assert(updateIntegral(0,.0001f,.001f,true,false,true)==0);
   assert(!decide(g,table,1,65,potential(g,10),0,0,0).valid);
   assert(!decide(g,table,1,75,potential(g,8),0,0,300,51).valid);
+  // Recorded hardware case: requested removal greatly exceeds a 20 ms pulse.
+  const auto limited=decide(g,table,-1,69.2887f,potential(g,8),-.00001078f,0,153.f,20);
+  assert(limited.valid && limited.lower && limited.ms==20);
+  assert(limited.unclamped_deficit_j < -.00039f);
+  assert(limited.unclamped_q_mAs < -8.8f);
+  assert(limited.requested_q_mAs > -1.f);
+  assert(near(work(coefficients(-1),69.2887f*kRadPerDeg,limited.unclamped_q_mAs),
+              limited.unclamped_deficit_j,1.e-7f));
+  // A negative discriminant is recorded as unavailable, while bounded output
+  // still works. Diagnostic failures cannot turn a valid pulse into STOP.
+  const auto no_root=decide(g,table,1,95,potential(g,8),-.5f*potential(g,8),0,300,20);
+  assert(no_root.valid && no_root.ms<=20);
+  assert(!std::isfinite(no_root.unclamped_q_mAs));
   std::puts("lateral energy model: OK");
 }

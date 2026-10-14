@@ -28,6 +28,7 @@ struct RunControlSnapshot {
   float input_peak_percent = autonomous_input_percent::kDefaultPercent;
   int16_t input_current_mA = autonomous_input_current::kDefaultMa;
   uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs;
+  bool peak_adaptation_enabled = true;
   MekfAttitudeSnapshot mekf_attitude;
   steering::Snapshot steering = steering::disabledSnapshot();
   float upright_error_deg = 180, upright_pitch_error_deg = 180, accel_norm_g = 0, gyro_norm_dps = 0;
@@ -101,7 +102,8 @@ class RunControlWorker {
                float target_deg = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG,
                float input_peak_percent = autonomous_input_percent::kDefaultPercent,
                int16_t input_current_mA = autonomous_input_current::kDefaultMa,
-               uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs) {
+               uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs,
+               bool peak_adaptation_enabled = true) {
     if (!ready() || command == Command::None) return false;
     if (command == Command::Start && (!autonomous_target::selectable(target_deg) ||
         !autonomous_input_percent::valid(input_peak_percent) ||
@@ -113,6 +115,7 @@ class RunControlWorker {
       command_ = command; command_target_deg_ = target_deg; command_input_peak_percent_ = input_peak_percent;
       command_input_current_mA_ = input_current_mA;
       command_brake_max_ms_ = brake_max_ms;
+      command_peak_adaptation_enabled_ = peak_adaptation_enabled;
       command_state_.pending = true; ++command_state_.submitted;
     }
     portEXIT_CRITICAL(&mux_);
@@ -120,7 +123,8 @@ class RunControlWorker {
   }
   Command takeCommand(float* target_deg = nullptr, float* input_peak_percent = nullptr,
                       int16_t* input_current_mA = nullptr,
-                      uint16_t* brake_max_ms = nullptr) {
+                      uint16_t* brake_max_ms = nullptr,
+                      bool* peak_adaptation_enabled = nullptr) {
     portENTER_CRITICAL(&mux_);
     const Command command = stop_requested_ ? Command::None : command_;
     if (command != Command::None) {
@@ -128,6 +132,7 @@ class RunControlWorker {
       if (input_peak_percent) *input_peak_percent = command_input_peak_percent_;
       if (input_current_mA) *input_current_mA = command_input_current_mA_;
       if (brake_max_ms) *brake_max_ms = command_brake_max_ms_;
+      if (peak_adaptation_enabled) *peak_adaptation_enabled = command_peak_adaptation_enabled_;
       command_ = Command::None;
     }
     portEXIT_CRITICAL(&mux_);
@@ -332,6 +337,7 @@ class RunControlWorker {
   float command_input_peak_percent_ = autonomous_input_percent::kDefaultPercent;
   int16_t command_input_current_mA_ = autonomous_input_current::kDefaultMa;
   uint16_t command_brake_max_ms_ = autonomous_brake_limit::kDefaultMs;
+  bool command_peak_adaptation_enabled_ = true;
   float command_target_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   CommandState command_state_;
   RunControlSnapshot snapshot_;

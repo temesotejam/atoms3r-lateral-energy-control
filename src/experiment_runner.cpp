@@ -945,6 +945,13 @@ bool ExperimentRunner::setEnergyControlAutonomousBrakeMaxMs(uint16_t brake_max_m
   status_.last_error = ""; return true;
 }
 
+bool ExperimentRunner::setPeakAdaptationEnabled(bool enabled) {
+  if (running()) { status_.last_error = "adaptation_setting_locked_while_running"; return false; }
+  peak_adaptation_enabled_ = enabled;
+  peak_error_model_.reset();
+  status_.last_error = "";
+  return true;
+}
 const char* ExperimentRunner::energyControlAutonomousPhaseName() const {
   switch (energy_control_autonomous_phase_) {
     case EnergyControlAutonomousPhase::STRONG_START_KICK: return "STRONG_START_KICK";
@@ -1220,7 +1227,7 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
                     q_ident_mode_ ? static_cast<uint8_t>(q_ident_run_schedule_id_ + 1) : 0,
                      energy_control_v0_mode_, energy_control_autonomous_mode_,
                      energy_control_autonomous_input_peak_percent_,
-                     energy_control_autonomous_brake_max_ms_);
+                     energy_control_autonomous_brake_max_ms_, peak_adaptation_enabled_);
   last_log_us_ = 0;
   status_.state = ExperimentState::START_SYNC;
   status_.sync_event_id = 1;
@@ -2632,12 +2639,23 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       ? energy_control_autonomous_pending_q_command_mA_s_ : NAN;
   event.target_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.target_peak_deg);
   event.measured_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.peak_amplitude_deg);
+  if (roller_) {
+    const uint32_t capture_us=micros();
+    const auto telemetry=roller_->telemetrySnapshot();
+    event.peak_telemetry_capture_time_ms=millis()-run_start_ms_;
+    event.peak_speed_age_us=telemetry.speed_sample_time_us ? capture_us-telemetry.speed_sample_time_us : UINT32_MAX;
+    event.peak_current_age_us=telemetry.current_sample_time_us ? capture_us-telemetry.current_sample_time_us : UINT32_MAX;
+    event.peak_speed_valid=telemetry.speed_valid && telemetry.speed_sample_time_us != 0;
+    event.peak_current_valid=telemetry.current_valid && telemetry.current_sample_time_us != 0;
+    event.peak_wheel_speed_rpm=event.peak_speed_valid ? telemetry.speed_rpm : NAN;
+    event.peak_measured_current_mA=event.peak_current_valid ? telemetry.actual_current_mA : NAN;
+  }
   event.energy_error_j = event.target_energy_j - event.measured_energy_j;
   if (event.pending_command_matched && std::isfinite(event.measured_energy_j) &&
       std::isfinite(energy_control_autonomous_pending_model_energy_j_)) {
     event.model_residual_j = event.measured_energy_j - energy_control_autonomous_pending_model_energy_j_;
     event.model_residual_observed = true;
-    peak_error_model_.observe(energy_control_autonomous_pending_zero_ms_, physical_side,
+    if (peak_adaptation_enabled_) peak_error_model_.observe(energy_control_autonomous_pending_zero_ms_, physical_side,
         energy_control_autonomous_pending_mode_, energy_control_autonomous_pending_wheel_rpm_,
         energy_control_autonomous_pending_wheel_valid_,
         energy_control_autonomous_pending_wheel_age_us_, event.model_residual_j);
@@ -2971,10 +2989,10 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   if (requested_mode == peak_error_adaptation::Brake &&
       event.physical_next_peak_side < 0 && energy_control_autonomous_brake_max_ms_ == 0)
     requested_mode = peak_error_adaptation::Coast;
-  float prediction_bias_j = peak_error_model_.correction(event.physical_next_peak_side,
+  float prediction_bias_j = peak_adaptation_enabled_ ? peak_error_model_.correction(event.physical_next_peak_side,
       requested_mode, event.pre_input_wheel_speed_rpm, event.pre_input_wheel_speed_valid,
       event.pre_input_wheel_speed_age_us, &event.wheel_speed_bin,
-      &event.adaptation_consistent_samples);
+      &event.adaptation_consistent_samples) : 0.f;
   // A learned correction cannot reverse the selected drive/brake decision.
   const float bias_limit_j = .5f * fabsf(uncorrected_request_j);
   prediction_bias_j = fmaxf(-bias_limit_j, fminf(bias_limit_j, prediction_bias_j));
@@ -3014,7 +3032,14 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.corrected_target_energy_j=decision.corrected_target_j;
   event.q_available_mA_s=decision.available_q_mAs;
   event.q_ff_energy_mA_s=decision.requested_q_mAs;
-  event.q_unclamped_mA_s=decision.requested_q_mAs;
+  event.q_unclamped_mA_s=decision.unclamped_q_mAs;
+  event.unclamped_inverse_valid=std::isfinite(decision.unclamped_q_mAs);
+  event.unclamped_energy_request_j=decision.unclamped_deficit_j;
+  event.maximum_input_work_j=decision.maximum_input_work_j;
+  event.unapplied_energy_request_j=decision.unclamped_deficit_j - (decision.predicted_j-decision.free_j);
+  event.predicted_current_goal_mA=goal_current_mA;
+  event.predicted_current_rise_tau_s=lateral_current_table_.tau;
+  event.aligned_initial_current_mA=aligned_initial_mA;
   event.q_saturated_upper=decision.upper;event.q_saturated_lower=decision.lower;
   event.work_omega_q_coefficient=energy_coeff.work_omega_q;
   event.work_q2_coefficient=energy_coeff.work_q2;
