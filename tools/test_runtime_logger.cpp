@@ -17,6 +17,11 @@ FootObserver feet;
 RollerTelemetry Roller485Manager::telemetrySnapshot() const {return {};}
 void ImuManager::appendAcquisitionDiagnostics(PsramString& json) const {json += "{\"host_fixture\":true}";}
 // Camera and RTOS are not exercised here; actual serializers/export code are.
+CameraOneShotSnapshot OneShotCamera::snapshot() const { return {}; }
+bool OneShotCamera::startContinuous() { return false; }
+camera_fb_t* OneShotCamera::acquireContinuous(uint32_t) { return nullptr; }
+void OneShotCamera::releaseContinuous(camera_fb_t*) {}
+void OneShotCamera::stopContinuous() {}
 int main(int argc,char** argv){
   assert(argc==2);
   run_control.snapshot_.state_id=5;
@@ -68,7 +73,7 @@ int main(int argc,char** argv){
   assert(sizeof(PsramLogger)<4096);
   assert(PsramLogger::eventStorageBytes()<256U*1024U);
   upright_reference::Record reference{upright_reference::kMagic,1,3,801,2.2f,.038f,.05f};
-  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f,50,false,reference);
+  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f,50,false,true,reference);
   logger.recordMeasurementStartAngle(3.2f);
   logger.recordMeasurementStartAngle(9.2f); // Cannot replace the actual start snapshot.
   reference.pitch_deg = 7.7f; // Operator changes after the run cannot mutate its metadata.
@@ -85,8 +90,8 @@ int main(int argc,char** argv){
     logger.addEnergyControlAutonomousPeakEvent(p);
     PsramLogger::EnergyControlAutonomousZeroCrossEvent z{};z.zero_cross_time_ms=i*100;
     z.pre_input_measured_current_mA=17;z.pre_input_wheel_speed_rpm=123.5;
-    z.unclamped_energy_request_j=-.00040325f;z.q_unclamped_mA_s=-9.01853f;z.unclamped_inverse_valid=true;
-    z.maximum_input_work_j=-.00003841f;z.predicted_current_goal_mA=153.f;z.predicted_current_rise_tau_s=.070f;
+    z.unclamped_energy_request_j=.00040325f;z.q_unclamped_mA_s=9.01853f;z.unclamped_inverse_valid=true;
+    z.maximum_input_work_j=.00003841f;z.predicted_current_goal_mA=153.f;z.predicted_current_rise_tau_s=.070f;
     logger.addEnergyControlAutonomousZeroCrossEvent(z);
     logger.addTimingProbeEvent({});
   }

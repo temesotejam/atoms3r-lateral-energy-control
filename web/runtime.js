@@ -14,6 +14,7 @@ let currentInitialized = false, currentBootId = null, requestedInputCurrentMa = 
 let brakeInitialized = false, brakeBootId = null, requestedBrakeMaxMs = null;
 const brakeChoices = [0, 20, 50];
 let adaptationInitialized = false, adaptationBootId = null, requestedAdaptation = null;
+let modelInitialized = false, modelBootId = null, requestedEnergyModel = null;
 const validInputCurrent = value => Number.isInteger(value) && value >= 100 && value <= 1200 && value % 10 === 0;
 const validInputPercent = value => value === 0;
 const nap = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -48,7 +49,8 @@ function controls() {
   $('target').disabled = $('start').disabled;
   $('input-percent').disabled = $('start').disabled;
   $('input-current').disabled = $('start').disabled;
-  $('brake-max').disabled = $('start').disabled;
+  $('energy-model').disabled = $('start').disabled;
+  $('brake-max').disabled = $('start').disabled || $('energy-model').value === 'bridge';
   $('peak-adaptation').disabled = $('start').disabled;
   $('clear').disabled = !fresh || busy || transferRunning || building || latest.running || !['FINISHED', 'ESTOP'].includes(latest.state);
   $('download').disabled = !fresh || busy || transferRunning || !latest.downloadable || latest.running;
@@ -90,6 +92,9 @@ function renderOffline() {
   $('run-brake').textContent = requestedBrakeMaxMs === null
     ? '負側ブレーキ上限はWeb復帰後に確認します。'
     : `開始要求：負側ブレーキ上限 ${requestedBrakeMaxMs} ms`;
+  $('run-model').textContent = requestedEnergyModel === 'bridge'
+    ? '開始要求：旧到達角予測をエネルギーに換算（逆入力なし）'
+    : requestedEnergyModel === 'quadratic' ? '開始要求：二次エネルギー式' : '予測式はWeb復帰後に確認します。';
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
   $('run-adaptation').textContent = requestedAdaptation === null
     ? '学習補正の設定はWeb復帰後に確認します。'
@@ -162,6 +167,11 @@ function render(s) {
     $('brake-max').value = String(s.brake_max_ms);
     brakeInitialized = true; brakeBootId = s.boot_id;
   }
+  if (['bridge','quadratic'].includes(s.energy_model) &&
+      (!modelInitialized || modelBootId !== s.boot_id || s.running || terminal)) {
+    $('energy-model').value = s.energy_model;
+    modelInitialized = true; modelBootId = s.boot_id;
+  }
   if (!adaptationInitialized || adaptationBootId !== s.boot_id || s.running || terminal) {
     $('peak-adaptation').value = s.peak_adaptation_enabled ? '1' : '0';
     adaptationInitialized = true; adaptationBootId = s.boot_id;
@@ -176,8 +186,11 @@ function render(s) {
     ? `今回の目標角度：${format(s.target_deg, 0)}°`
     : '目標角度は測定開始時に確定します。';
   $('run-brake').textContent = s.running || terminal
-    ? `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
+    ? s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';
+  $('run-model').textContent = s.running || terminal
+    ? s.energy_model === 'bridge' ? '今回の予測式：旧到達角予測をエネルギーに換算' : '今回の予測式：二次エネルギー式'
+    : '予測式は測定開始時に確定します。';
   $('right').textContent = f.right_valid && (!stale || terminal) ? format(f.right_deg) + '°' : '—';
   $('left').textContent = f.left_valid && (!stale || terminal) ? format(f.left_deg) + '°' : '—';
   $('fps').textContent = terminal ? '停止中' : `${format(stale ? 0 : f.fps, 1)} / 15 fps`;
@@ -273,7 +286,11 @@ async function startOfflineRun() {
   if (!currentText || !validInputCurrent(inputCurrentMa)) {
     $('message').textContent = '指令電流を100〜1200 mAの範囲で10 mA刻みで設定してください。'; return;
   }
-  const brakeMaxMs = Number($('brake-max').value);
+  const energyModel = $('energy-model').value;
+  if (!['bridge', 'quadratic'].includes(energyModel)) {
+    $('message').textContent = '予測式を選択してください。'; return;
+  }
+  const brakeMaxMs = energyModel === 'bridge' ? 0 : Number($('brake-max').value);
   if (!brakeChoices.includes(brakeMaxMs)) {
     $('message').textContent = '負側ブレーキ上限を0・20・50 msから選択してください。'; return;
   }
@@ -286,9 +303,10 @@ async function startOfflineRun() {
   requestedInputPercent = inputPercent;
   requestedInputCurrentMa = inputCurrentMa;
   requestedBrakeMaxMs = brakeMaxMs;
+  requestedEnergyModel = energyModel;
   commandInFlight = true; setOffline(30000); $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
-    await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}`, {method:'POST', kind:'text'});
+    await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}&energy_model=${energyModel}`, {method:'POST', kind:'text'});
     $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
   } catch (error) {
     if (/^\d{3}:/.test(error.message)) { clearOffline(); await refresh(); }
@@ -574,6 +592,7 @@ async function capturePose(baseline) {
   } finally { poseRunning = false; controls(); }
 }
 $('start').onclick = startOfflineRun;
+$('energy-model').onchange = controls;
 $('upright-reference-capture').onclick = () => command('/upright-reference/capture');
 if ($('stop')) $('stop').onclick = () => { poseCancelled = true; return command('/stop'); };
 if ($('reconnect')) $('reconnect').onclick = () => refresh(true);

@@ -1,11 +1,12 @@
 #pragma once
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include "realtime_code.h"
 
-// SI energy model. External Q/log units remain mA*s; every energy formula
-// converts Q to A*s and gyro rate to rad/s. Seed coefficients are empirical,
-// not measured inertia/torque constants. See docs/lateral_energy_refit_20261014.md.
+// The quadratic model converts logged Q (mA*s) to A*s and rate to rad/s.
+// The historical angle bridge below uses logged Q in mA*s and rate in deg/s.
+// Both coefficient sets are empirical, not measured inertia/torque constants.
 namespace lateral_energy {
 constexpr float kRadPerDeg = 0.01745329251994329577f;
 constexpr uint16_t kMaxMs = 100;
@@ -13,7 +14,8 @@ constexpr uint16_t kMaxMs = 100;
 // Limit the first braking trials to half of the excitation time budget.
 constexpr uint16_t kBrakeMaxMs = 50; // Absolute limit; trial choices are 0/20/50 ms.
 constexpr float kIntegralGain = .10f;
-constexpr char kRevision[] = "lateral_energy_saved_upright_v7_20261014";
+constexpr char kRevision[] = "lateral_energy_angle_bridge_v8_20261015";
+constexpr char kQuadraticRevision[] = "lateral_energy_saved_upright_v7_20261014";
 struct Geometry {
   float mass_g, height, radius, inner_x, center, inner_angle, outer_angle;
   Geometry(float m=.1997f, float gravity=9.80665f, float h=.120f,
@@ -210,6 +212,112 @@ static inline RW_SPEED_CODE Decision decide(const Geometry& geometry,const Curre
   d.extrapolated=d.extrapolated || d.selected_q_mAs<0 || d.selected_q_mAs>c.charge_max_mAs;
   if (d.ms==0) d.command_sign=0;
   return d;
+}
+
+// 0.47.31 measured a next-peak angle map, not motor work.  Mapping that
+// predicted turning point through gravitational potential gives a conditional
+// *arrival energy*.  Its difference from the no-command arrival energy is an
+// effective response, not a measurement of electrical or shaft work.
+struct BridgeCoefficients {
+  float at_65_deg, per_dps, gain_deg_per_mAs, rate_min_dps, rate_max_dps;
+};
+static inline RW_SPEED_CODE BridgeCoefficients bridgeCoefficients(int8_t side) {
+  return side>0
+      ? BridgeCoefficients{6.730502640f,.187441879f,.29032f,17.9508f,92.2064f}
+      : BridgeCoefficients{7.691200794f,.194970900f,.25455f,35.7375f,91.4938f};
+}
+static inline RW_SPEED_CODE float bridgeFreeAngle(int8_t side,float rate_dps) {
+  if ((side!=1 && side!=-1) || !std::isfinite(rate_dps) || rate_dps<0) return NAN;
+  const auto c=bridgeCoefficients(side);
+  return std::fmax(0.f,c.at_65_deg+c.per_dps*(rate_dps-65.f));
+}
+static inline RW_SPEED_CODE float bridgeArrivalEnergy(const Geometry& geometry,int8_t side,
+      float rate_dps,float q_mAs) {
+  if (!std::isfinite(q_mAs) || q_mAs<0) return NAN;
+  const auto c=bridgeCoefficients(side);
+  return potential(geometry,bridgeFreeAngle(side,rate_dps)+c.gain_deg_per_mAs*q_mAs);
+}
+// The inverse operates in arrival-energy coordinates.  The historical
+// positive-input map is preserved; a negative Q is deliberately unavailable
+// because the 0.47.31 gain did not identify reverse-command response.
+static inline RW_SPEED_CODE Decision decideBridge(const Geometry& geometry,const CurrentTable& table,
+      int8_t side,float rate_dps,float target_j,float integral_j,
+      float initial_current_mA,float goal_current_mA,float prediction_bias_j=0.f) {
+  Decision d;
+  if ((side!=1 && side!=-1) || !table.ready || !std::isfinite(rate_dps) || rate_dps<0 ||
+      !std::isfinite(target_j) || target_j<=0 || !std::isfinite(integral_j) ||
+      !std::isfinite(prediction_bias_j) || !std::isfinite(initial_current_mA) ||
+      !std::isfinite(goal_current_mA) || goal_current_mA<=0) return d;
+  const auto c=bridgeCoefficients(side);
+  const float free_angle=bridgeFreeAngle(side,rate_dps);
+  const float outer_angle=geometry.outer_angle/kRadPerDeg;
+  const float support_energy=potential(geometry,outer_angle);
+  d.free_j=potential(geometry,free_angle);
+  if (!std::isfinite(d.free_j) || !std::isfinite(support_energy) ||
+      target_j>support_energy || free_angle>outer_angle || !(c.gain_deg_per_mAs>0)) return d;
+  d.target_j=target_j;
+  d.deficit_j=target_j-d.free_j;
+  const float correction_limit=.5f*target_j;
+  const float correction=std::fmax(-correction_limit,std::fmin(correction_limit,integral_j));
+  const float raw=d.deficit_j+correction-prediction_bias_j;
+  d.unclamped_deficit_j=raw;
+  d.lower=raw<0;
+  d.upper=target_j+correction-prediction_bias_j>support_energy;
+  d.corrected_target_j=std::fmax(d.free_j,
+      std::fmin(support_energy,target_j+correction-prediction_bias_j));
+  d.commanded_deficit_j=d.corrected_target_j-d.free_j;
+  const float desired_angle=angle(geometry,d.corrected_target_j);
+  if (!std::isfinite(desired_angle)) return d;
+  d.requested_q_mAs=std::fmax(0.f,(desired_angle-free_angle)/c.gain_deg_per_mAs);
+  const float raw_target=target_j+correction-prediction_bias_j;
+  d.unclamped_q_mAs=raw_target>=d.free_j && raw_target<=support_energy
+      ? (angle(geometry,raw_target)-free_angle)/c.gain_deg_per_mAs : NAN;
+  const float limit_q=charge(table,kMaxMs,initial_current_mA,goal_current_mA);
+  if (!std::isfinite(limit_q)) return d;
+  d.available_q_mAs=std::fmax(0.f,std::fmin(limit_q,
+      (outer_angle-free_angle)/c.gain_deg_per_mAs));
+  const float max_angle=free_angle+c.gain_deg_per_mAs*d.available_q_mAs;
+  d.maximum_input_work_j=potential(geometry,max_angle)-d.free_j;
+  d.upper=d.upper || d.requested_q_mAs>d.available_q_mAs;
+  d.extrapolated=rate_dps<c.rate_min_dps || rate_dps>c.rate_max_dps ||
+      d.requested_q_mAs>7.3f; // The 0.47.31 steady-state validation reached 7.21 mA*s.
+  d.predicted_j=d.free_j;
+  d.energy_error_j=std::fabs(d.corrected_target_j-d.free_j);
+  d.valid=true;
+  const float requested=std::fmin(d.requested_q_mAs,d.available_q_mAs);
+  if (requested<=0) return d;
+  uint16_t lo=0,hi=kMaxMs;
+  while (hi-lo>1) {
+    const uint16_t mid=static_cast<uint16_t>((lo+hi)/2);
+    ++d.evaluations;
+    if (charge(table,mid,initial_current_mA,goal_current_mA)<requested) lo=mid;
+    else hi=mid;
+  }
+  for (uint16_t n : {lo,hi,kMaxMs}) {
+    ++d.evaluations;
+    const float q=charge(table,n,initial_current_mA,goal_current_mA);
+    if (q<0 || q>d.available_q_mAs) continue;
+    const float predicted=potential(geometry,free_angle+c.gain_deg_per_mAs*q);
+    if (!std::isfinite(predicted)) continue;
+    const float error=std::fabs(predicted-d.corrected_target_j);
+    if (error<d.energy_error_j || (error==d.energy_error_j && n<d.ms)) {
+      d.ms=n;d.selected_q_mAs=q;d.predicted_j=predicted;d.energy_error_j=error;
+    }
+  }
+  if (d.ms>0) d.command_sign=1;
+  return d;
+}
+static inline RW_SPEED_CODE float updateBridgeIntegral(float value,float error,float target,
+      int8_t side,bool upper,bool lower,bool matched) {
+  if (!matched || !std::isfinite(value) || !std::isfinite(error) ||
+      !std::isfinite(target) || target<=0 || (side!=1 && side!=-1))
+    return std::isfinite(value)?value:0;
+  if ((upper && error>0) || (lower && error<0)) return value;
+  // Near the target, dE/dA converts the old 0.1 mA*s/degree integral to
+  // dE feedback with dimensionless gain 0.1*gain_deg_per_mAs.
+  const float gain=.10f*bridgeCoefficients(side).gain_deg_per_mAs;
+  const float limit=.5f*target;
+  return std::fmax(-limit,std::fmin(limit,value+gain*error));
 }
 static inline RW_SPEED_CODE float updateIntegral(float value,float error,float target,
       bool upper,bool lower,bool matched) {

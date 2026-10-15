@@ -62,6 +62,45 @@ int main() {
     assert(coast.valid && coast.ms==0 && coast.command_sign==0);
     assert(!coast.lower && !coast.upper);
   }
+  // The bridge must preserve the historical angle predictor exactly after
+  // mapping through U, and must never infer an unmeasured reverse-Q gain.
+  for (int side : {-1,1}) {
+    const auto c=bridgeCoefficients(side);
+    for (float rate : {45.f,60.f,75.f}) {
+      const float free_angle=std::fmax(0.f,c.at_65_deg+c.per_dps*(rate-65.f));
+      for (float q : {0.f,1.f,3.f,6.f}) {
+        const float predicted=bridgeArrivalEnergy(g,side,rate,q);
+        assert(near(angle(g,predicted),free_angle+c.gain_deg_per_mAs*q,.0001f));
+      }
+      const auto d=decideBridge(g,table,side,rate,potential(g,10.f),0,0,300);
+      assert(d.valid && d.ms<=100 && d.selected_q_mAs>=0);
+      assert(!std::isfinite(d.kinetic_j) && !std::isfinite(d.loss_j));
+      assert(near(d.free_j,potential(g,free_angle),1.e-7f));
+      assert(near(d.predicted_j,bridgeArrivalEnergy(g,side,rate,d.selected_q_mAs),1.e-7f));
+      float best=std::fabs(d.corrected_target_j-d.free_j);
+      for (uint16_t ms=1;ms<=100;++ms) {
+        const float q=charge(table,ms,0,300);
+        if (q>d.available_q_mAs) continue;
+        const float e=bridgeArrivalEnergy(g,side,rate,q);
+        if (std::isfinite(e)) best=std::fmin(best,std::fabs(d.corrected_target_j-e));
+      }
+      assert(d.energy_error_j<=best+1.e-8f);
+    }
+    const auto excess=decideBridge(g,table,side,80,potential(g,8.f),0,0,300);
+    assert(excess.valid && excess.ms==0 && excess.command_sign==0 && excess.lower);
+    assert(!std::isfinite(excess.unclamped_q_mAs));
+    assert(!std::isfinite(bridgeArrivalEnergy(g,side,65,-1.f)));
+    assert(near(updateBridgeIntegral(0,.0001f,.001f,side,false,false,true),
+                .00001f*c.gain_deg_per_mAs,1.e-8f));
+  }
+  // At the same 65 dps zero crossing, the old predictor needs positive Q
+  // for an 8-degree goal, while the newer quadratic free model is above it.
+  for (int side : {-1,1}) {
+    const auto historical=decideBridge(g,table,side,65,potential(g,8.f),0,0,300);
+    const auto quadratic=decide(g,table,side,65,potential(g,8.f),0,0,300,0);
+    assert(historical.valid && historical.requested_q_mAs>1.f && historical.command_sign==1);
+    assert(quadratic.valid && quadratic.free_j>potential(g,8.f) && quadratic.ms==0);
+  }
   const auto reverse=decide(g,table,1,65,potential(g,10),0,-150,300);
   assert(reverse.valid && reverse.ms<=100 && reverse.selected_q_mAs>=0);
   {

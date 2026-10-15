@@ -1017,6 +1017,13 @@ bool ExperimentRunner::setPeakAdaptationEnabled(bool enabled) {
   status_.last_error = "";
   return true;
 }
+bool ExperimentRunner::setEnergyBridgeEnabled(bool enabled) {
+  if (running()) { status_.last_error = "energy_model_setting_locked_while_running"; return false; }
+  energy_bridge_enabled_ = enabled;
+  peak_error_model_.reset();
+  status_.last_error = "";
+  return true;
+}
 const char* ExperimentRunner::energyControlAutonomousPhaseName() const {
   switch (energy_control_autonomous_phase_) {
     case EnergyControlAutonomousPhase::STRONG_START_KICK: return "STRONG_START_KICK";
@@ -1296,6 +1303,7 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
                      energy_control_v0_mode_, energy_control_autonomous_mode_,
                      energy_control_autonomous_input_peak_percent_,
                       energy_control_autonomous_brake_max_ms_, peak_adaptation_enabled_,
+                      energy_bridge_enabled_,
                       energy_control_autonomous_mode_ ? upright_reference_ : upright_reference::Record{});
   last_log_us_ = 0;
   status_.state = ExperimentState::START_SYNC;
@@ -2748,9 +2756,13 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       energy_control_autonomous_pending_saturated_lower_ && event.energy_error_j < 0;
   float* integral = physical_side > 0 ? &energy_control_autonomous_integral_plus_j_ :
       &energy_control_autonomous_integral_minus_j_;
-  *integral = lateral_energy::updateIntegral(*integral,event.energy_error_j,event.target_energy_j,
-      energy_control_autonomous_pending_saturated_upper_,energy_control_autonomous_pending_saturated_lower_,
-      event.pending_command_matched);
+  *integral = energy_bridge_enabled_
+      ? lateral_energy::updateBridgeIntegral(*integral,event.energy_error_j,event.target_energy_j,
+            physical_side,energy_control_autonomous_pending_saturated_upper_,
+            energy_control_autonomous_pending_saturated_lower_,event.pending_command_matched)
+      : lateral_energy::updateIntegral(*integral,event.energy_error_j,event.target_energy_j,
+            energy_control_autonomous_pending_saturated_upper_,energy_control_autonomous_pending_saturated_lower_,
+            event.pending_command_matched);
   energy_control_autonomous_pending_peak_ = false;
   energy_control_autonomous_pending_model_energy_j_ = NAN;
   energy_control_autonomous_last_peak_valid_ = true;
@@ -3014,19 +3026,27 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.previous_peak_side = energy_control_autonomous_last_peak_side_;
   event.previous_peak_amplitude_deg = energy_control_autonomous_last_peak_amplitude_deg_;
   event.target_peak_deg = energy_control_autonomous_target_peak_deg_;
-  // The solver chooses excitation or braking from the signed energy error.
+  // The selected model chooses an input from the arrival-energy error.
   // Its residual-current input always uses the zero-cross motion coordinate.
   event.q_command_direction = event.physical_next_peak_side;
   event.vbat_mV = status_.roller_battery_mV;
   const uint32_t v46l_free_model_t0_us = micros();
   const auto energy_coeff = lateral_energy::coefficients(event.physical_next_peak_side);
   const float omega = event.zero_cross_abs_rate_dps * lateral_energy::kRadPerDeg;
-  event.passive_energy_j = lateral_energy::freeEnergy(energy_coeff,omega);
+  const float bridge_free_angle=energy_bridge_enabled_ ?
+      lateral_energy::bridgeFreeAngle(event.physical_next_peak_side,event.zero_cross_abs_rate_dps) : NAN;
+  event.passive_energy_j = energy_bridge_enabled_
+      ? lateral_energy::potential(lateral_energy_geometry_,bridge_free_angle)
+      : lateral_energy::freeEnergy(energy_coeff,omega);
   event.target_energy_j = lateral_target_energy_j_;
-  event.free_next_peak_amplitude_deg = lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
-  event.rate_support_diagnostic = event.zero_cross_abs_rate_dps >= energy_coeff.rate_min_dps &&
-      event.zero_cross_abs_rate_dps <= energy_coeff.rate_max_dps;
-  event.rate_baseline_reason = 255; // old angle-domain baseline is not the controller
+  event.free_next_peak_amplitude_deg = energy_bridge_enabled_ ? bridge_free_angle :
+      lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
+  const auto bridge_coeff=lateral_energy::bridgeCoefficients(event.physical_next_peak_side);
+  event.rate_support_diagnostic = event.zero_cross_abs_rate_dps >=
+      (energy_bridge_enabled_ ? bridge_coeff.rate_min_dps : energy_coeff.rate_min_dps) &&
+      event.zero_cross_abs_rate_dps <=
+      (energy_bridge_enabled_ ? bridge_coeff.rate_max_dps : energy_coeff.rate_max_dps);
+  event.rate_baseline_reason = energy_bridge_enabled_ ? 0 : 255;
   audit.free_model_us = static_cast<uint32_t>(micros() - v46l_free_model_t0_us);
   const uint32_t now_ms = run_start_ms_ + t_test_ms;
   event.i0_estimated_mA = predicted_current_end_ms_ == 0 ? 0.0f :
@@ -3068,6 +3088,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       bounded_integral_j;
   auto requested_mode = uncorrected_request_j > 0.f ? peak_error_adaptation::Excite :
       (uncorrected_request_j < 0.f ? peak_error_adaptation::Brake : peak_error_adaptation::Coast);
+  if (energy_bridge_enabled_ && requested_mode == peak_error_adaptation::Brake)
+    requested_mode = peak_error_adaptation::Coast;
   if (requested_mode == peak_error_adaptation::Brake &&
       event.physical_next_peak_side < 0 && energy_control_autonomous_brake_max_ms_ == 0)
     requested_mode = peak_error_adaptation::Coast;
@@ -3079,20 +3101,24 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   const float bias_limit_j = .5f * fabsf(uncorrected_request_j);
   prediction_bias_j = fmaxf(-bias_limit_j, fminf(bias_limit_j, prediction_bias_j));
   audit.solver_started=1; audit.solver_start_us=micros();
-  auto decision=lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
-      event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
-      event.integral_energy_j,aligned_initial_mA,goal_current_mA,
-      event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs,
-      prediction_bias_j);
+  auto decide_selected=[&](float bias) RW_SPEED_CODE {
+    return energy_bridge_enabled_
+        ? lateral_energy::decideBridge(lateral_energy_geometry_,lateral_current_table_,
+            event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
+            event.integral_energy_j,aligned_initial_mA,goal_current_mA,bias)
+        : lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
+            event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
+            event.integral_energy_j,aligned_initial_mA,goal_current_mA,
+            event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs,
+            bias);
+  };
+  auto decision=decide_selected(prediction_bias_j);
   if (decision.valid && prediction_bias_j != 0.f &&
       peak_error_adaptation::modeForSignedCharge(decision.selected_q_mAs) != requested_mode) {
     // At a mode boundary, retain the original controller decision rather
     // than applying a correction learned from a different pulse direction.
     prediction_bias_j = 0.f;
-    decision = lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
-        event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
-        event.integral_energy_j,aligned_initial_mA,goal_current_mA,
-        event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs);
+    decision = decide_selected(0.f);
   }
   if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
     audit.stage=1;audit.solver_end_us=micros();
@@ -3123,8 +3149,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.predicted_current_rise_tau_s=lateral_current_table_.tau;
   event.aligned_initial_current_mA=aligned_initial_mA;
   event.q_saturated_upper=decision.upper;event.q_saturated_lower=decision.lower;
-  event.work_omega_q_coefficient=energy_coeff.work_omega_q;
-  event.work_q2_coefficient=energy_coeff.work_q2;
+  event.work_omega_q_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_omega_q;
+  event.work_q2_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_q2;
   event.energy_model_extrapolated=decision.extrapolated || energy_control_autonomous_input_current_mA_!=300;
   event.q_command_mA_s=selected_q_mA_s;event.q_effective_pred_mA_s=selected_q_mA_s;
   event.predicted_energy_j=decision.predicted_j;
@@ -3135,7 +3161,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.solver_required_width_ms=static_cast<float>(selected_width_ms);
   event.solver_selected_integer_width_ms=selected_width_ms;
   // Audit fields are retained for old log readers; current energy-unit fields
-  // live on the zero-cross record. There is no angle-to-Q inverse here.
+  // live on the zero-cross record. Bridge mode inverts the potential and
+  // historical positive-Q angle response, not a motor-work equation.
   audit.signed_target_current_mA=event.q_command_direction*goal_current_mA;
   audit.tau_s=lateral_current_table_.tau;
   audit.ff_q_mA_s=decision.requested_q_mAs;audit.ff_width_ms=65535;audit.ff_valid=true;

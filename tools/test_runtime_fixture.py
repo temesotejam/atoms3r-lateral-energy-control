@@ -70,8 +70,12 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.7-lateral-energy-upright-reference'
-assert metadata['energy_control_autonomous_revision']=='lateral_energy_saved_upright_v7_20261014'
+assert metadata['firmware_revision']=='1.0.8-lateral-energy-angle-bridge'
+assert metadata['energy_model']=='angle_energy_bridge'
+assert metadata['energy_control_autonomous_revision']=='lateral_energy_angle_bridge_v8_20261015'
+assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==0
+assert metadata['energy_control_autonomous_integral_Ki_J_per_J'] is None
+assert abs(metadata['energy_control_autonomous_integral_Ki_plus_J_per_J']-.029032)<1e-6
 assert metadata['upright_reference_valid'] is True
 assert metadata['upright_reference_revision'] == 3
 assert abs(metadata['upright_reference_abs_pitch_deg'] - 2.2) < 1e-6
@@ -81,18 +85,19 @@ assert 'no_measurement_start_rezero' in metadata['angle_reference_policy']
 assert metadata['peak_error_adaptation_enabled'] is False
 assert metadata['energy_request_audit_revision']=='unrestricted_inverse_v1_20261014'
 audit=metadata['energy_control_autonomous_zero_cross_events'][0]
-assert abs(audit['unclamped_energy_request_j']+.00040325)<1e-8
-assert abs(audit['q_unclamped_mA_s']+9.01853)<1e-5
+assert abs(audit['unclamped_energy_request_j']-.00040325)<1e-8
+assert abs(audit['q_unclamped_mA_s']-9.01853)<1e-5
 assert audit['unclamped_inverse_valid'] is True
-assert abs(audit['maximum_input_work_j']+.00003841)<1e-8
+assert audit['maximum_input_work_j'] is None
+assert abs(audit['maximum_effective_arrival_energy_increment_j']-.00003841)<1e-8
 assert 'signed_wheel_speed_bin' in metadata['peak_error_adaptation_policy']
 assert metadata['legacy_rate_and_Q1_models_active'] is False
-assert metadata['lateral_energy_coefficient_status'].startswith('provisional_58_corrected_polarity_free_foot')
+assert metadata['lateral_energy_coefficient_status'].startswith('historical_04731_positive_Q_peak_angle_fit')
 assert metadata['foot_camera_required_for_autonomous_start'] is False
 assert metadata['motor_driver_polarity']==-1
 assert metadata['normal_autonomous_motor_output_sign']==-1
-assert metadata['energy_control_autonomous_brake_width_max_ms']==50
-assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==50
+assert metadata['energy_control_autonomous_brake_width_max_ms']==0
+assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==0
 assert 'motor_cmd_mA_is_signed_current_sent_to_Roller485' in metadata['motor_direction_semantics']
 assert metadata['autonomous_input_advance_us']==0
 assert metadata['autonomous_total_timing_projection_us']==0
@@ -132,6 +137,7 @@ assert 'target_energy_j' in metadata['energy_control_autonomous_peak_events'][0]
 assert 'model_residual_j' in metadata['energy_control_autonomous_peak_events'][0]
 assert 'kinetic_energy_j' in metadata['energy_control_autonomous_zero_cross_events'][0]
 assert 'energy_model_extrapolated' in metadata['energy_control_autonomous_zero_cross_events'][0]
+assert 'maximum_effective_arrival_energy_increment_j' in metadata['energy_control_autonomous_zero_cross_events'][0]
 for key in ('prediction_bias_j','predicted_observed_energy_j',
             'predicted_observed_next_peak_deg','adaptation_mode',
             'wheel_speed_bin','adaptation_consistent_samples'):
@@ -167,6 +173,10 @@ with tempfile.TemporaryDirectory() as tmp:
     shutil.copyfile('tools/convert_rwlog_to_csv.py', standalone)
     subprocess.run([sys.executable,str(standalone),str(source),'--out',str(Path(tmp)/'standalone')],check=True)
     converter.convert(source, output)
+    with (output/'energy_control_autonomous_zero_cross_events.csv').open() as stream:
+        converted_zero=next(csv.DictReader(stream))
+    assert abs(float(converted_zero['maximum_effective_arrival_energy_increment_j'])-.00003841)<1e-8
+    assert converted_zero['maximum_input_work_j']==''
     with (output/'timeseries.csv').open() as stream:
         samples=list(csv.DictReader(stream))
     for name in ('gyro_heading_deg','steering_actual_difference_deg',

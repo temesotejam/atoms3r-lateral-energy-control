@@ -94,7 +94,8 @@ bool WebUi::queueStart() {
   start_command_id_ = control_->commandState().submitted + 1;
   start_submitted_ = control_->request(RunControlWorker::Command::Start, start_target_deg_,
                                        start_input_peak_percent_, start_input_current_mA_,
-                                       start_brake_max_ms_, start_peak_adaptation_enabled_);
+                                       start_brake_max_ms_, start_peak_adaptation_enabled_,
+                                       start_energy_bridge_enabled_);
   return start_submitted_;
 }
 OfflineRunSession::StartResult WebUi::startResult() const {
@@ -175,6 +176,14 @@ void WebUi::command(RunControlWorker::Command cmd) {
       server_->send(400, "text/plain", "peak_adaptation_0_or_1_required_reload_page"); return;
     }
     const bool peak_adaptation_enabled = server_->arg("peak_adaptation") == "1";
+    if (!server_->hasArg("energy_model") ||
+        (server_->arg("energy_model") != "bridge" && server_->arg("energy_model") != "quadratic")) {
+      server_->send(400, "text/plain", "energy_model_bridge_or_quadratic_required_reload_page"); return;
+    }
+    const bool energy_bridge_enabled = server_->arg("energy_model") == "bridge";
+    if (energy_bridge_enabled && brake_max_ms != 0) {
+      server_->send(400, "text/plain", "bridge_model_requires_brake_max_ms_0_reload_page"); return;
+    }
     const bool ok = offline_.queue(millis());
     if (ok) {
       start_target_deg_ = target_deg;
@@ -182,6 +191,7 @@ void WebUi::command(RunControlWorker::Command cmd) {
       start_input_current_mA_ = input_current_mA;
       start_brake_max_ms_ = brake_max_ms;
       start_peak_adaptation_enabled_ = peak_adaptation_enabled;
+      start_energy_bridge_enabled_ = energy_bridge_enabled;
       start_submitted_ = cancel_sent_ = false;
       RuntimeDiag::setRunActive(true);
     }
@@ -218,6 +228,7 @@ void WebUi::status() {
   json += ",\"input_current_mA\":" + String(s.input_current_mA);
   json += ",\"brake_max_ms\":" + String(s.brake_max_ms);
   json += ",\"peak_adaptation_enabled\":" + String(s.peak_adaptation_enabled ? "true" : "false");
+  json += ",\"energy_model\":\"" + String(s.energy_bridge_enabled ? "bridge" : "quadratic") + "\"";
   json += ",\"upright_reference\":{\"valid\":" + String(upright_reference::valid(s.upright_reference) ? "true" : "false");
   json += ",\"abs_pitch_deg\":" + num(upright_reference::valid(s.upright_reference) ? s.upright_reference.pitch_deg : NAN);
   json += ",\"relative_pitch_deg\":" + num(upright_reference::relative(s.mekf_attitude.pitch_deg, s.upright_reference));

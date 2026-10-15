@@ -1084,6 +1084,13 @@ ENERGY_CONTROL_AUTONOMOUS_ZERO_CROSS_COLUMNS = [
     "solver_required_width_ms", "solver_selected_integer_width_ms",
     "command_current_mA", "pulse_width_ms", "pulse_start_ms", "pulse_end_ms",
     "output_executed", "valid", "reason", "reason_code",
+    "kinetic_energy_j", "predicted_loss_j", "integral_energy_j",
+    "commanded_energy_deficit_j", "unclamped_energy_request_j",
+    "maximum_input_work_j", "maximum_effective_arrival_energy_increment_j",
+    "unapplied_energy_request_j", "corrected_target_energy_j",
+    "unclamped_inverse_valid", "predicted_energy_j", "prediction_bias_j",
+    "predicted_observed_energy_j", "predicted_observed_next_peak_deg",
+    "energy_model_extrapolated", "rate_support_diagnostic",
 ]
 
 

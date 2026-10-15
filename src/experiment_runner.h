@@ -57,6 +57,8 @@ public:
   uint16_t energyControlAutonomousBrakeMaxMs() const { return energy_control_autonomous_brake_max_ms_; }
   bool setPeakAdaptationEnabled(bool enabled);
   bool peakAdaptationEnabled() const { return peak_adaptation_enabled_; }
+  bool setEnergyBridgeEnabled(bool enabled);
+  bool energyBridgeEnabled() const { return energy_bridge_enabled_; }
   bool beginUprightReferenceCapture();
   bool pollUprightReferenceCapture(bool& ok, const char*& result);
   const upright_reference::Record& uprightReference() const { return upright_reference_; }
@@ -434,7 +436,8 @@ private:
       Config::ENERGY_CONTROL_V0_INNER_EDGE_X_M,Config::ENERGY_CONTROL_V0_OUTER_EDGE_X_M};
   lateral_energy::CurrentTable lateral_current_table_;
   peak_error_adaptation::Model peak_error_model_;
-  bool peak_adaptation_enabled_ = true;
+  bool peak_adaptation_enabled_ = false;
+  bool energy_bridge_enabled_ = true;
   float lateral_target_energy_j_ = NAN;
   float energy_control_autonomous_integral_plus_j_ = 0.0f;
   float energy_control_autonomous_integral_minus_j_ = 0.0f;

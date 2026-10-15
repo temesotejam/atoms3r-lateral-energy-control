@@ -9,4 +9,5 @@ path = root / 'src/runtime_web.h'
 if '--check' in sys.argv:
     assert path.read_text(encoding='utf-8') == output, 'Run python tools/embed_runtime_web.py'
 else:
-    path.write_text(output, encoding='utf-8', newline='\n')
+    with path.open('w', encoding='utf-8', newline='\n') as generated:
+        generated.write(output)

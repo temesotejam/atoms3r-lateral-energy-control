@@ -196,6 +196,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
                              uint8_t q_ident_run_schedule_id, bool energy_control_v0_mode,
                              bool energy_control_autonomous_mode, float input_peak_percent,
                              uint16_t brake_max_ms, bool peak_adaptation_enabled,
+                             bool energy_bridge_enabled,
                              const upright_reference::Record& upright_reference) {
   if (!ready_ || downloading_) return;
   sealed_ = false;
@@ -219,6 +220,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
   autonomous_input_peak_percent_ = energy_control_autonomous_mode ? input_peak_percent : 0;
   autonomous_brake_max_ms_ = energy_control_autonomous_mode ? brake_max_ms : lateral_energy::kBrakeMaxMs;
   peak_adaptation_enabled_ = peak_adaptation_enabled;
+  energy_bridge_enabled_ = energy_bridge_enabled;
   run_upright_reference_ = upright_reference;
   measurement_start_abs_deg_ = NAN;
   identification_event_count_ = 0;
@@ -459,25 +461,39 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_v0_potential_role\":\"geometry_potential_only;not_a_J_eff_or_dissipation_fit\",";
   json += "\"passive_motor_command_policy\":\"passive_capture_only:all_recorded_samples_command_0mA_and_output_off\",";
   json += "\"energy_control_v0_output_policy\":\"sole_actual_output_path;accepted_zero_cross_only;no_braking;all_other_paths_fail_closed\",";
-  json += "\"energy_control_autonomous_policy\":\"MEKF_posterior_lateral_peak_and_zero_cross;startup_100ms_kick_then_signed_energy_inverse_at_zero_cross;excite_max_100ms;negative_side_brake_max_selected_0_20_50ms;positive_side_brake_max_50ms;one_command_per_accepted_halfcycle\",";
-  json += "\"lateral_energy_revision\":\"" + String(lateral_energy::kRevision) + "\",";
-  json += "\"lateral_energy_units\":\"omega_rad_per_s;energy_J;Q_log_mA_s;Q_fit_A_s;time_ms\",";
-  json += "\"lateral_energy_formula\":\"E_free=max(0,c_omega2*omega^2+c_offset);E_target=m*g*height(theta_target);DeltaE=E_target-E_free+I_side-peak_prediction_bias;DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;signed_Q=inverse(DeltaE);width=inverse_current_rise(abs(Q))\",";
-  json += "\"lateral_energy_coefficient_status\":\"provisional_58_corrected_polarity_free_foot_events;plus_c2_and_alpha_refit;minus_c2_coast_refit;reverse_response_not_separately_identified\",";
-  json += "\"energy_control_autonomous_revision\":\"" + String(lateral_energy::kRevision) + "\",";
+  json += "\"energy_model\":\"" + String(energy_bridge_enabled_ ? "angle_energy_bridge" : "quadratic_energy_inverse") + "\",";
+  json += "\"energy_control_autonomous_policy\":\"" + String(energy_bridge_enabled_
+      ? "MEKF_peak_and_zero_cross;historical_positive_Q_angle_map_transformed_to_potential;excess_coasts;no_reverse_command;excite_max_100ms"
+      : "MEKF_peak_and_zero_cross;quadratic_signed_energy_inverse;excite_max_100ms;selected_reverse_brake_limit") + "\",";
+  json += "\"lateral_energy_revision\":\"" + String(energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\",";
+  json += "\"lateral_energy_units\":\"" + String(energy_bridge_enabled_
+      ? "rate_deg_per_s;arrival_energy_J;Q_fit_mA_s;time_ms"
+      : "omega_rad_per_s;effective_energy_J;Q_log_mA_s;Q_fit_A_s;time_ms") + "\",";
+  json += "\"lateral_energy_formula\":\"" + String(energy_bridge_enabled_
+      ? "A_free=max(0,a_side+b_side*(abs_rate_dps-65));E_free=U(A_free);E_target=U(target_deg);E_arrival(Q)=U(A_free+g_side*Q_mAs);Q_positive=inverse_U(E_target+integral-bias);width=inverse_current_rise(Q);negative_request=coast"
+      : "E_free=max(0,c_omega2*omega^2+c_offset);E_target=U(target_deg);DeltaE=E_target-E_free+I_side-bias;DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;signed_Q=inverse(DeltaE)") + "\",";
+  json += "\"lateral_energy_coefficient_status\":\"" + String(energy_bridge_enabled_
+      ? "historical_04731_positive_Q_peak_angle_fit;energy_is_potential_mapping_not_measured_shaft_work;current_upright_reference_closed_loop_validation_pending"
+      : "provisional_58_corrected_polarity_free_foot_events;reverse_response_not_separately_identified") + "\",";
+  json += "\"energy_control_autonomous_revision\":\"" + String(energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\",";
   json += "\"peak_error_adaptation_enabled\":" + String(peak_adaptation_enabled_ ? "true" : "false") + ",";
   json += "\"energy_request_audit_revision\":\"unrestricted_inverse_v1_20261014\",";
-  json += "\"energy_request_audit_semantics\":\"unclamped_energy_request_j=target-free+bounded_integral-bias;q_unclamped_mA_s=unrestricted_near_zero_branch_inverse_or_null;commanded_energy_deficit_j_and_q_ff_energy_mA_s_are_limited;maximum_input_work_j=signed_work_at_allowed_charge_or_brake_vertex;unapplied_energy_request_j=unclamped_request-minus-selected_model_work;diagnostic_only\",";
+  json += "\"energy_request_audit_semantics\":\"" + String(energy_bridge_enabled_
+      ? "unclamped_energy_request_j=target-free+bounded_integral-bias;q_unclamped_mA_s=potential_inverse_then_historical_positive_Q_angle_inverse_or_null;maximum_input_work_j=null;maximum_effective_arrival_energy_increment_j=U(max_reachable_angle)-U(free_angle);unapplied_energy_request_j=unclamped_request_minus_selected_arrival_energy_increment;kinetic_loss_and_work_coefficients_null"
+      : "unclamped_energy_request_j=target-free+bounded_integral-bias;q_unclamped_mA_s=quadratic_inverse_or_null;maximum_input_work_j=signed_quadratic_model_response;unapplied_energy_request_j=unclamped_request_minus_selected_model_response") + "\",";
   json += "\"peak_telemetry_semantics\":\"snapshot_at_peak_confirmation_time_not_at_geometric_peak;ages_in_us;valid_does_not_imply_fresh;no_additional_hardware_read\",";
   json += "\"peak_error_adaptation_policy\":\"within_run_from_5s;physical_side_x_excite_or_brake_x_signed_wheel_speed_bin;four_consecutive_residuals_same_sign;max_bias_0.000070J;stale_or_invalid_speed_or_coast_zero_bias;one_half_request_guard;mode_change_falls_back_to_unadapted_decision\",";
   json += "\"peak_error_adaptation_speed_bins_rpm\":\"less_than_-100;-100_to_less_than_100;100_to_less_than_300;300_or_more\",";
   json += "\"peak_error_adaptation_residual_definition\":\"measured_peak_energy_minus_uncorrected_model_energy_for_matched_zero_cross\",";
   json += "\"energy_control_autonomous_base_revision\":\"V7_hardware_and_MEKF_event_path\",";
   json += "\"legacy_rate_and_Q1_models_active\":false,";
-  json += "\"normal_excitation_direction_policy\":\"energy_deficit_positive_same_as_zero_cross_roll_rate;negative_opposite_as_active_braking\",";
+  json += "\"historical_04731_angle_predictor_active\":" + String(energy_bridge_enabled_ ? "true" : "false") + ",";
+  json += "\"normal_excitation_direction_policy\":\"" + String(energy_bridge_enabled_
+      ? "positive_arrival_energy_request_same_as_zero_cross_motion;excess_coasts"
+      : "energy_deficit_positive_same_as_zero_cross_roll_rate;negative_opposite_as_active_braking") + "\",";
   json += "\"normal_direction_sign_fix\":true,";
   json += "\"start_kick_direction_changed\":false,";
-  json += "\"side_response_correction_enabled\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_CORRECTION_ENABLED ? "true" : "false") + ",";
+  json += "\"side_response_correction_enabled\":false,";
   json += "\"side_response_correction_source\":\"" + String(Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_CORRECTION_SOURCE) + "\",";
   json += "\"side_response_correction_model\":\"A_pred=A_free+g_side_base*Q;legacy_residual_disabled;historical_fit_coordinate=firmware_scaled_gyro_peak\",";
   json += "\"side_response_correction_blend_lambda\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_BLEND_LAMBDA, 3) + ",";
@@ -488,7 +504,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"side_response_correction_fit_g_minus_deg_per_mA_s\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_SIDE_RESPONSE_FIT_G_MINUS_DEG_PER_MAS, 6) + ",";
   json += "\"side_response_correction_base_P1_unchanged\":false,";
   json += "\"side_response_correction_base_Q1_gains_unchanged\":true,";
-  json += "\"side_response_correction_Ki_unchanged\":true,";
+  json += "\"side_response_correction_Ki_unchanged\":" + String(energy_bridge_enabled_ ? "false" : "true") + ",";
   json += "\"side_response_correction_direction_policy_unchanged\":false,";
   json += "\"energy_control_autonomous_state_machine\":\"IDLE->STRONG_START_KICK->WAIT_FIRST_PEAK->ENERGY_CONTROL->HOLD;physical_halfcycle=WAIT_PEAK->WAIT_ZERO_CROSS->PULSE_ACTIVE->WAIT_PEAK;STOP_only_abnormal\",";
   json += "\"physical_event_policy\":\"peak_zero_pulse_halfcycle_v5\",";
@@ -496,7 +512,9 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"min_zero_to_peak_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_ZERO_TO_PEAK_MS) + ",";
   json += "\"events_accepted_during_pulse\":false,";
   json += "\"autonomous_duration_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS) + ",";
-  json += "\"energy_control_autonomous_free_model\":\"E_free=max(0,c_omega2*omega^2+c_offset);side_specific_empirical_effective_loss\",";
+  json += "\"energy_control_autonomous_free_model\":\"" + String(energy_bridge_enabled_
+      ? "U(max(0,a_side+b_side*(rate_dps-65)));historical_angle_predictor"
+      : "max(0,c_omega2*omega^2+c_offset);empirical_effective_energy") + "\",";
   json += "\"energy_control_autonomous_peak_policy\":\"uncompensated_posterior_MEKF_extremum_plus_3_returning_MEKF_rate_samples;gyro_sign_change_alone_never_generates_peak;candidate_events_during_pulse_never_accepted;pending_peak_tracks_expected_side_only;no_peak_rate_or_amplitude_minimum\",";
   json += "\"energy_control_autonomous_target_peak_deg\":" + String(control_target_cdeg_ / 100.0f, 3) + ",";
   json += "\"energy_control_autonomous_target_choices_deg\":\"8.0,10.0,12.0\",";
@@ -507,9 +525,13 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_autonomous_startup_pump\":false,";
   json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);saved_operator_upright_reference;no_delay_projection;no_output_scaling\",";
   json += "\"energy_control_autonomous_rate_coordinate\":\"(gy_dps-mekf_bias_y_dps)*mekf_gyro_y_scale;live_MEKF_bias;historical_Q1_rate_support_rescaled\",";
-  json += "\"energy_control_autonomous_model_coordinate_status\":\"fixed_foot_3run_MEKF_refit;base_Q1_unchanged;old_8deg_residual_disabled;new_closed_loop_hardware_validation_pending\",";
+  json += "\"energy_control_autonomous_model_coordinate_status\":\"" + String(energy_bridge_enabled_
+      ? "04731_measurement_start_relative_fit_reused_with_saved_upright_reference;coordinate_shift_and_hardware_validation_pending"
+      : "fixed_foot_3run_MEKF_refit;new_closed_loop_hardware_validation_pending") + "\",";
   json += "\"rate_baseline_revision\":\"fixed_foot_mekf_rate_refit_04731_20260929\",";
-  json += "\"rate_baseline_policy\":\"all_accepted_zero_crosses_from_first_decision;all_targets_all_delays;rate_only_no_state_gate_no_P1;Q_gains_unchanged\",";
+  json += "\"rate_baseline_policy\":\"" + String(energy_bridge_enabled_
+      ? "active_historical_04731_fit_in_arrival_energy_coordinates;rate_only_no_state_gate;positive_Q_only"
+      : "historical_diagnostic_only") + "\",";
   json += "\"rate_baseline_blend\":1.0,\"rate_baseline_delta_cap_enabled\":false,\"rate_baseline_delta_cap_deg\":null,";
   json += "\"rate_baseline_formula\":\"A_rate_plus=6.730502640+0.187441879*(abs_rate-65);A_rate_minus=7.691200794+0.194970900*(abs_rate-65);A_baseline=max(0,A_rate);A_next=A_baseline+g_side*Q\",";
   json += "\"rate_baseline_state_gate\":\"none;previous_peak_target_delay_elapsed_time_not_predictor_inputs\",";
@@ -518,20 +540,25 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"previous_peak_residual_enabled\":false,\"previous_peak_residual_disabled_reason\":\"old_residual_belongs_to_retired_baseline\",";
   json += "\"rate_baseline_p1_fallback_enabled\":false,";
   json += "\"rate_baseline_zero_floor_deg\":0.0,";
-  json += "\"rate_baseline_legacy_columns\":\"p1_free_peak_before_rate_deg=null;rate_baseline_correction_deg=null;rate_baseline_peak_deg=raw_formula_before_zero_floor;free_next_peak_amplitude_deg=used_baseline\",";
+  json += "\"rate_baseline_legacy_columns\":\"p1_free_peak_before_rate_deg=null;rate_baseline_correction_deg=null;rate_baseline_peak_deg=null;free_next_peak_amplitude_deg=selected_model_free_prediction\",";
   json += "\"rate_baseline_fit_source\":\"20260929_102026_917_7279;20260929_103329_014_99a5;20260929_103650_324_4ebe;204_matched_normal_commands;MEKF_posterior_teacher;fixed_Q_gains;leave_one_run_out_RMSE_0.497deg;not_closed_loop_validation\",";
   json += "\"energy_control_autonomous_zero_cross_detector\":\"posterior_measurement_relative_last_peak_percentage_inward_threshold;no_timing_projection;one_consumed_cross_per_accepted_peak\",";
   json += "\"energy_control_autonomous_side_policy\":\"next_side_from_interpolated_rate;peak_side_mismatch_logged_diagnostic_only\",";
   json += "\"energy_control_autonomous_integral_enable_rule\":\"matched_command_peak_only;per_physical_peak_side;energy_J;antiwindup\",";
-  json += "\"energy_control_autonomous_integral_Ki_J_per_J\":0.1,";
+  json += "\"energy_control_autonomous_integral_Ki_J_per_J\":";
+  json += energy_bridge_enabled_ ? "null," : "0.1,";
+  json += "\"energy_control_autonomous_integral_Ki_plus_J_per_J\":" + String(energy_bridge_enabled_ ? .1f*lateral_energy::bridgeCoefficients(1).gain_deg_per_mAs : lateral_energy::kIntegralGain, 6) + ",";
+  json += "\"energy_control_autonomous_integral_Ki_minus_J_per_J\":" + String(energy_bridge_enabled_ ? .1f*lateral_energy::bridgeCoefficients(-1).gain_deg_per_mAs : lateral_energy::kIntegralGain, 6) + ",";
   json += "\"energy_control_autonomous_normal_current_mA\":" + String(run_current_mA_) + ",";
   json += "\"energy_control_autonomous_start_kick_current_mA\":" + String(run_current_mA_) + ",";
   json += "\"energy_control_autonomous_normal_width_min_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_normal_width_max_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS) + ",";
-  json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(lateral_energy::kBrakeMaxMs) + ",";
-  json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(autonomous_brake_max_ms_) + ",";
+  json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : lateral_energy::kBrakeMaxMs) + ",";
+  json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
   json += "\"autonomous_uses_q_ident_limits\":false,";
-  json += "\"energy_control_autonomous_q_policy\":\"signed_energy_error_to_signed_Q_analytic_inverse;current_rise_table_and_binary_search;excite_0_to_100ms;negative_side_brake_0_to_selected_max;positive_side_brake_0_to_50ms;negative_Q_extrapolated\",";
+  json += "\"energy_control_autonomous_q_policy\":\"" + String(energy_bridge_enabled_
+      ? "positive_Q_from_inverse_potential_and_historical_angle_gain;current_rise_binary_search;negative_request_coasts;reverse_Q_not_identified"
+      : "signed_energy_error_to_signed_Q_quadratic_inverse;current_rise_binary_search;reverse_brake_limit_selected;negative_Q_extrapolated") + "\",";
   json += "\"energy_control_autonomous_event_overflow\":" + String(energy_control_autonomous_event_overflow_ ? "true" : "false") + ",";
   json += "\"energy_control_autonomous_event_overflow_policy\":\"diagnostic_only;no_control_stop\",";
   json += "\"q1_model_name\":\"" + String(Config::Q1_SHADOW_MODEL_NAME) + "\",";
@@ -1449,7 +1476,7 @@ PsramString PsramLogger::buildMetadataJson() const {
     appendAutonomousNullable("rate_baseline_peak_deg", e.rate_baseline_peak_deg, 5);
     appendAutonomousNullable("rate_baseline_correction_deg", e.rate_baseline_correction_deg, 5);
     detail += ",\"rate_baseline_reason\":" + String(e.rate_baseline_reason);
-    detail += ",\"free_model_revision\":\"" + String(Config::ENERGY_CONTROL_AUTONOMOUS_FREE_MODEL_REVISION) + "\"";
+    detail += ",\"free_model_revision\":\"" + String(energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
     appendAutonomousNullable("passive_energy_j", e.passive_energy_j, 8);
     appendAutonomousNullable("target_peak_deg", e.target_peak_deg, 5);
     appendAutonomousNullable("target_energy_j", e.target_energy_j, 8);
@@ -1459,7 +1486,8 @@ PsramString PsramLogger::buildMetadataJson() const {
     appendAutonomousNullable("integral_energy_j", e.integral_energy_j, 8);
     appendAutonomousNullable("commanded_energy_deficit_j", e.commanded_energy_deficit_j, 8);
     appendAutonomousNullable("unclamped_energy_request_j", e.unclamped_energy_request_j, 8);
-    appendAutonomousNullable("maximum_input_work_j", e.maximum_input_work_j, 8);
+    appendAutonomousNullable("maximum_input_work_j", energy_bridge_enabled_ ? NAN : e.maximum_input_work_j, 8);
+    appendAutonomousNullable("maximum_effective_arrival_energy_increment_j", energy_bridge_enabled_ ? e.maximum_input_work_j : NAN, 8);
     appendAutonomousNullable("unapplied_energy_request_j", e.unapplied_energy_request_j, 8);
     appendAutonomousNullable("predicted_current_goal_mA", e.predicted_current_goal_mA, 4);
     appendAutonomousNullable("predicted_current_rise_tau_s", e.predicted_current_rise_tau_s, 6);
