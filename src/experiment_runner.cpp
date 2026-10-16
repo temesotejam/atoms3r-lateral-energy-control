@@ -5851,6 +5851,7 @@ void ExperimentRunner::logSampleIfDue() {
   const uint32_t now_us = micros();
   const auto observation = roller_->telemetrySnapshot();
   const bool new_wheel_observation = observation.speed_sequence != last_logged_speed_sequence_ ||
+      observation.position_sequence != last_logged_position_sequence_ ||
       observation.applied_command_sequence != last_logged_command_sequence_;
   // Preserve the normal 20 ms time series. While an already-authorized pulse
   // is live, add rows at the current-audit period so fresh-read gaps can be
@@ -5904,6 +5905,7 @@ void ExperimentRunner::logSampleNow() {
     logger_->addSample(row);
   }
   last_logged_speed_sequence_ = roller_telemetry.speed_sequence;
+  last_logged_position_sequence_ = roller_telemetry.position_sequence;
   last_logged_command_sequence_ = roller_telemetry.applied_command_sequence;
   if (status_.sync_event_id == 2 || status_.sync_event_id == 3 || status_.sync_event_id == 6 ||
       status_.sync_event_id == 7) {

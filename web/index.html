@@ -47,10 +47,10 @@
 <button id="download" disabled>RWLOGを取得・再開</button><button id="cancel" disabled>取得を一時停止</button><button id="csv" disabled>足角度CSVを保存</button>
 <progress id="progress" value="0" max="1"></progress><div id="transfer" role="status">測定待ち</div><p class="muted">RWLOGにIMU・制御イベント・電流・LED同期・足角度をまとめて保存します。USB診断ログは書き込みページから保存できます。</p></section>
 <section class="card"><h2>ホイールが機体に与えた仕事</h2>
-<p>RWLOG取得後、入力中の回転速度と機体の角速度からブラウザで計算します。正なら加振、負なら制動です。慣性と軸の符号は暫定値です。速度の読み値の遅れは補正していません。</p>
+<p>RWLOG取得後、ホイールの位置変化から求めた速度と、同じ時刻の機体角速度を使って計算します。正なら加振、負なら制動です。位置の読み取りは5 ms間隔を目標にします。慣性と軸の符号は暫定値です。</p>
 <p><label>慣性モーメント［kg·m²］ <input id="work-inertia" type="number" value="0.000028" min="0.000000001" step="any"></label>
 <label>生の正回転と機体の正方向 <select id="work-sign"><option value="-1" selected>逆向き（暫定）</option><option value="1">同じ向き</option></select></label></p>
-<button id="work-calculate">取得したRWLOGから再計算</button><button id="work-pulses">入力別CSVを保存</button><button id="work-intervals">全区間CSVを保存</button>
+<button id="work-calculate">取得したRWLOGから再計算</button><button id="work-pulses">入力別CSVを保存</button><button id="work-intervals">全区間CSVを保存</button><button id="work-kinematics">位置由来の速度CSVを保存</button>
 <pre id="work-result" role="status">RWLOGを取得すると計算結果を表示します。</pre></section>
 <details class="card"><summary>診断情報</summary><label><input type="checkbox" id="usb-diag">USB診断を有効にする</label><p class="muted">起動ごとにOFFです。運転中の変更はUSB側から行えます。メモリ・スタックの調査は有効時の待機中だけ行い、診断JSONには測定時刻付きで保持します。未測定のメモリ値は0です。</p><p class="muted">MEKFのroll・pitch、姿勢確認用クォータニオン、有効性・更新時刻を保存します。方位には独立したジャイロ推定を使用します。</p><button id="diagnostics">診断JSONを保存</button><pre id="diagnostic-view">—</pre></details>
 <script>

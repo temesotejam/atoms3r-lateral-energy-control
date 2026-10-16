@@ -628,6 +628,7 @@ $('cancel').onclick = () => { cancelTransfer = true; };
 $('work-calculate').onclick = calculateWheelWork;
 $('work-pulses').onclick = () => saveWheelWorkCsv('pulses');
 $('work-intervals').onclick = () => saveWheelWorkCsv('intervals');
+$('work-kinematics').onclick = () => saveWheelWorkCsv('kinematics');
 $('csv').onclick = () => saveBlob(new Blob(['\ufeff', footCsv(completedFoot)], {type: 'text/csv;charset=utf-8'}), completedName.replace(/\.rwlog$/, '_foot.csv'));
 $('preview').onclick = capturePreview;
 $('preview-save').onclick = () => saveBlob(new Blob([JSON.stringify(previewEvidence, null, 2)], {type:'application/json'}), `freefoot-vision-diagnostics-${previewEvidence.sequence}.json`);

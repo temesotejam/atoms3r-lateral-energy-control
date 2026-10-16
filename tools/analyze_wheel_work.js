@@ -9,5 +9,5 @@ const options={};if(sign!==undefined)options.sign=Number(sign);if(inertia!==unde
 const report=work.fromBytes(new Uint8Array(fs.readFileSync(input)),options);
 fs.mkdirSync(outDir,{recursive:true});
 fs.writeFileSync(path.join(outDir,'wheel_work.json'),JSON.stringify(report,null,2));
-for(const kind of ['pulses','intervals'])fs.writeFileSync(path.join(outDir,`wheel_work_${kind}.csv`),'\ufeff'+work.csv(report[kind],report));
+for(const kind of ['pulses','intervals','kinematics'])fs.writeFileSync(path.join(outDir,`wheel_work_${kind}.csv`),'\ufeff'+work.csv(report[kind],report));
 console.log(work.describe(report));

@@ -88,6 +88,12 @@ void encodeLogSample(LogSample& row, const ExperimentStatus& status,
   row.roller_applied_current_mA = roller.applied_current_mA;
   row.roller_applied_command_sequence = roller.applied_command_sequence;
   row.roller_applied_command_time_us = roller.applied_command_time_us;
+  row.roller_position_raw_cdeg = roller.position_raw_cdeg;
+  row.roller_position_read_start_us = roller.position_read_start_us;
+  row.roller_position_sample_time_us = roller.position_sample_time_us;
+  row.roller_position_read_end_us = roller.position_read_end_us;
+  row.roller_position_sequence = roller.position_sequence;
+  row.roller_position_valid = roller.position_valid ? 1 : 0;
 }
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC pop_options

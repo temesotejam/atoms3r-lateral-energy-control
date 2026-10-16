@@ -14,6 +14,7 @@ static constexpr uint8_t REG_CURRENT = 0xB0;
 static constexpr uint8_t REG_CURRENT_READBACK = 0xC0;
 // M5Stack Unit Roller485 I2C protocol: Speed Readback X100 Int at 0x60.
 static constexpr uint8_t REG_SPEED_READBACK = 0x60;
+static constexpr uint8_t REG_POSITION_READBACK = 0x90;
 
 bool Roller485Manager::begin() {
   // V46j: do not touch Wire from the Arduino/control core. Core 0 will own the
@@ -99,6 +100,9 @@ bool Roller485Manager::initializeIoOwner() {
   ++telemetry_.speed_sequence;
   telemetry_.speed_valid = false;
   last_speed_due_us_ = 0;
+  ++telemetry_.position_sequence;
+  telemetry_.position_valid = false;
+  last_position_due_us_ = 0;
 
   // Force one full status read before declaring READY. This makes battery=0 or
   // an inaccessible device a startup failure instead of a later motor surprise.
@@ -236,6 +240,12 @@ void Roller485Manager::update() {
   }
 
   // An already queued output transition has priority over optional telemetry.
+  if (requested_current_mA_ != command_mA_) return;
+  if (last_position_due_us_ == 0 ||
+      static_cast<uint32_t>(now_us - last_position_due_us_) >= Config::WHEEL_POSITION_READ_PERIOD_US) {
+    last_position_due_us_ = now_us;
+    readPositionFresh();
+  }
   if (requested_current_mA_ != command_mA_) return;
   if (last_speed_due_us_ == 0 ||
       static_cast<uint32_t>(now_us - last_speed_due_us_) >= Config::WHEEL_SPEED_READ_PERIOD_US) {
@@ -432,6 +442,23 @@ void Roller485Manager::recordCurrentReadFailure(bool audit_sample) {
     current_audit_read_failed_ = true;
     telemetry_.q_meas_observed_valid = false;
   }
+}
+
+bool Roller485Manager::readPositionFresh() {
+  int32_t raw = 0;
+  ++telemetry_.position_sequence;
+  Wire.setTimeOut(Config::WHEEL_POSITION_READ_TIMEOUT_MS);
+  telemetry_.position_read_start_us = micros();
+  const bool ok = readI32(REG_POSITION_READBACK, raw);
+  telemetry_.position_read_end_us = micros();
+  Wire.setTimeOut(Config::I2C_TIMEOUT_MS);
+  telemetry_.position_sample_time_us = telemetry_.position_read_start_us +
+      static_cast<uint32_t>(telemetry_.position_read_end_us - telemetry_.position_read_start_us) / 2;
+  telemetry_.position_valid = ok;
+  if (ok) telemetry_.position_raw_cdeg = raw;
+  else ++telemetry_.position_read_failure_count;
+  // Position failure makes work unavailable, never changes the controller input.
+  return ok;
 }
 
 bool Roller485Manager::readSpeedFresh() {

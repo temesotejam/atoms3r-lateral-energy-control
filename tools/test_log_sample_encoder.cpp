@@ -262,6 +262,16 @@ int main() {
   roller.speed_rpm=NAN;roller.speed_valid=false;
   encodeLogSample(row,status,roller,1234,0,0,ceilings);
   assert(row.roller_speed_crpm==LOG_NAN_I32 && row.roller_speed_valid==0);
+  roller.position_raw_cdeg=INT32_MIN;roller.position_valid=true;
+  roller.position_read_start_us=0xfffffff0U;roller.position_sample_time_us=0;
+  roller.position_read_end_us=16;roller.position_sequence=88;
+  encodeLogSample(row,status,roller,1234,0,0,ceilings);
+  assert(row.roller_position_raw_cdeg==INT32_MIN && row.roller_position_valid==1);
+  assert(row.roller_position_read_start_us==0xfffffff0U && row.roller_position_read_end_us==16);
+  assert(row.roller_position_sequence==88 && row.roller_position_sample_time_us==0);
+  roller.position_valid=false;
+  encodeLogSample(row,status,roller,1234,0,0,ceilings);
+  assert(row.roller_position_valid==0);
   std::cout << "Packed RWLOG rows equal frozen 0.47.12: " << checked
             << " cases, all retained fields; states/sync/wrap/nonfinite/saturation preserved PASS\n";
 }

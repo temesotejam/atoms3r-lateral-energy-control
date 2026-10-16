@@ -85,6 +85,9 @@ int main(int argc,char** argv){
   row.physical_roll_rate_cdps=6000;row.body_rate_sample_time_us=1000000;
   row.roller_applied_current_mA=300;row.roller_applied_command_sequence=1;
   row.roller_applied_command_time_us=999000;
+  row.roller_position_raw_cdeg=INT32_MIN;row.roller_position_valid=1;
+  row.roller_position_read_start_us=999800;row.roller_position_sample_time_us=999900;
+  row.roller_position_read_end_us=1000000;row.roller_position_sequence=9;
   row.gyro_heading_cdeg=LOG_NAN_I32;
   row.steering_actual_difference_cdeg=LOG_NAN_I16;
   row.steering_desired_difference_cdeg=LOG_NAN_I16;

@@ -70,7 +70,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.9-lateral-wheel-work'
+assert metadata['firmware_revision']=='1.0.10-lateral-position-work'
 assert metadata['energy_model']=='angle_energy_bridge'
 assert metadata['energy_control_autonomous_revision']=='lateral_energy_angle_bridge_v8_20261015'
 assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==0
@@ -215,15 +215,21 @@ with tempfile.TemporaryDirectory() as tmp:
         assert 'CRC' in str(error)
 print('maximum RWLOG JSON, complete event/foot counts, CSV and corrupt-file refusal PASS')
 
-assert metadata["columns"]["timeseries"] == converter.CSV_COLUMNS_V55
+assert metadata["columns"]["timeseries"] == converter.CSV_COLUMNS_V56
 assert metadata['mekf_roll_pitch_semantics'].startswith('v54_posterior_ZYX_roll_and_pitch_deg_same_sample')
-assert header["format_version"] == 55 and header["log_sample_size"] == 151
+assert header["format_version"] == 56 and header["log_sample_size"] == 172
 assert samples[0]['roll_mekf_abs_deg'] == '12.34'
 assert samples[0]['pitch_mekf_abs_deg'] == '5.67'
 assert samples[0]['roller_speed_rpm'] == '123.45'
 assert samples[0]['physical_roll_rate_dps'] == '60.0'
 assert samples[0]['roller_speed_sequence'] == '1'
 assert samples[0]['roller_applied_command_time_us'] == '999000'
+assert samples[0]['roller_position_raw_cdeg'] == '-2147483648'
+assert samples[0]['roller_position_deg'] == '-21474836.48'
+assert samples[0]['roller_position_sample_time_us'] == '999900'
+assert samples[0]['roller_position_sequence'] == '9'
+assert samples[0]['roller_position_valid'] == '1'
+assert metadata['wheel_work_velocity_source']=='position_local_quadratic_5_points'
 assert metadata['wheel_work_inertia_kg_m2'] == .000028
 assert metadata['wheel_speed_to_body_sign'] == -1
 assert "magnetometer" not in metadata

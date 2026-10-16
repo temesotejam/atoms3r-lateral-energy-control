@@ -22,6 +22,14 @@ struct RollerTelemetry {
   uint32_t speed_sequence = 0;
   uint32_t speed_read_failure_count = 0;
   bool speed_valid = false;
+  // Observation only: 0x90 cumulative mechanical position, centidegrees.
+  int32_t position_raw_cdeg = 0;
+  uint32_t position_sample_time_us = 0;
+  uint32_t position_read_start_us = 0;
+  uint32_t position_read_end_us = 0;
+  uint32_t position_sequence = 0;
+  uint32_t position_read_failure_count = 0;
+  bool position_valid = false;
   uint32_t i2c_error_count = 0;
   uint8_t consecutive_errors = 0;
   uint8_t mode_raw = 0;
@@ -90,6 +98,7 @@ private:
   bool readU8(uint8_t reg, uint8_t& value);
   bool readCurrentFresh(bool audit_sample);
   bool readSpeedFresh();
+  bool readPositionFresh();
   void recordFreshCurrent(int32_t current_raw, uint32_t sample_time_us, bool audit_sample);
   void recordCurrentReadFailure(bool audit_sample);
   void recordSpeedReadFailure();
@@ -114,6 +123,7 @@ private:
   uint32_t last_read_due_us_ = 0;
   uint32_t last_fast_current_due_us_ = 0;
   uint32_t last_speed_due_us_ = 0;
+  uint32_t last_position_due_us_ = 0;
   int16_t command_mA_ = 0;
   int16_t current_audit_previous_mA_ = 0;
   uint32_t current_audit_previous_sample_us_ = 0;

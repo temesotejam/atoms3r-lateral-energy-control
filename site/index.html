@@ -14,16 +14,16 @@
       <p class="eyebrow">ATOMS3R / FREE-FOOT AMPLITUDE CONTROL</p>
       <h1>左右揺動エネルギー制御<br><span>MEKF・リアクションホイール・ログ</span></h1>
       <p class="lead">MEKFで左右の姿勢を推定し、ZEROクロスごとに目標ピーク角へ必要な入力を計算します。初期選択の旧到達角予測モードでは余剰時に入力を止めます。二次式の比較モードでは逆入力も選べます。係数は予備データに基づく暫定値です。</p>
-      <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v55</span><span>MEKF</span><span>左右足角度</span></div>
+      <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
-      <h2>1.0.9：入力中の回転速度と機体にした仕事</h2>
-      <p>入力中も10 ms間隔を目標にホイール回転速度を記録します。RWLOG取得後、機体の角速度と合わせて仕事を計算し、入力別・全区間のCSVを保存できます。慣性は回転部分を合わせた暫定値2.8×10⁻⁵ kg·m²です。<a href="wheel-work.html">保存済みRWLOGから仕事を計算</a></p>
+      <h2>1.0.10：ホイールの位置変化から機体にした仕事を計算</h2>
+      <p>ホイールの位置と読み取り時刻を5 ms間隔を目標に記録します。RWLOG取得後、位置変化から求めた速度と同じ時刻の機体角速度を使って仕事を計算し、入力別・全区間・位置由来速度のCSVを保存できます。制御則は1.0.9と同じです。慣性は回転部分を合わせた暫定値2.8×10⁻⁵ kg·m²です。<a href="wheel-work.html">保存済みRWLOGから仕事を計算</a></p>
       <p><strong>左右別の予測補正：</strong>同じ試行中に観測した次のピークと予測の差を、左右・入力方向・入力前のホイール回転数帯ごとに小さく補正します。十分な観測がない間は従来の計算を使います。負側の逆入力上限は0・20・50 msから選べます。</p>
       <p>目標角は8°・10°・12°から選択できます。比較時は8°と300 mAに固定してください。加速入力は最大100 msです。足のカメラ認識は任意で、yaw自動補正は使用しません。</p>
       <p>計算したエネルギーと入力時間、次のピークをRWLOGに記録します。16°の左右角制限があります。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/README.md">制御の詳細と係数の根拠</a></p>
       <p>横揺れのMEKF推定、設定角度での入力、15秒測定、開始・終了のLED同期、足角度観測を維持します。足角度は制御入力に使わず、カメラやマーカーを認識できなくても測定を開始できます。</p>
-      <p>RWLOGは1試料151バイト。MEKFのroll・pitch推定角と、ホイール回転速度・機体の角速度・取得時刻を記録します。足・イベントは項目名を共有して保存します。測定後にログを確定し、CRCで検証できる4KB以下のチャンクで取得します。ブラウザの一時停止・再接続・再読み込み後も保存済みの部分を再利用できます。</p>
+      <p>RWLOGは1試料172バイト。MEKFのroll・pitch推定角と、ホイール位置・回転速度・機体の角速度・取得時刻を記録します。足・イベントは項目名を共有して保存します。測定後にログを確定し、CRCで検証できる4KB以下のチャンクで取得します。ブラウザの一時停止・再接続・再読み込み後も保存済みの部分を再利用できます。</p>
       <p><strong>足角度の校正はMEKFを基準にした暫定値です。係数決定に使わなかった手持ち2姿勢では、再計算上の残差が左右とも約0.26〜0.32°です。</strong>ビルドとホスト検証の範囲、実機で確認する項目は<a href="https://github.com/temesotejam/atoms3r-free-foot-amplitude-control/blob/main/docs/FOOT_CALIBRATION_0477.md">校正の根拠</a>を参照してください。カメラは15fpsを目標に設定し、画面に実測値を表示します。</p>
       <p>目標角の選択は入力時間の計算に使います。初期電流は300 mAです。実機の揺動と実電流を測定後のRWLOGで確認してください。</p>
       <p>公開ビルド：<code id="build-sha">取得中</code><br><a href="build-sha.txt">ビルドSHA</a> / <a href="firmware/SHA256SUMS.txt">ファームウェアSHA-256</a></p>

@@ -18,7 +18,7 @@ extern FootObserver feet;
 #include "config.h"
 #include "lateral_energy_control.h"
 
-static constexpr uint16_t RWLOG_FORMAT_VERSION = 55;
+static constexpr uint16_t RWLOG_FORMAT_VERSION = 56;
 static constexpr uint32_t RWLOG_FLAG_CRC32 = 1U << 0;
 namespace {
 String jsonFloatOrNull(float value, unsigned int decimals) {
@@ -635,15 +635,22 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"resolved_m5unified_version\":\"" + String(Config::RESOLVED_M5UNIFIED_VERSION) + "\",";
   json += "\"resolved_m5gfx_version\":\"" + String(Config::RESOLVED_M5GFX_VERSION) + "\",";
   json += "\"resolved_adafruit_ahrs_version\":\"" + String(Config::RESOLVED_ADAFRUIT_AHRS_VERSION) + "\",";
-  json += "\"wheel_work_revision\":\"reaction_couple_work_v1_20261016\",";
+  json += "\"wheel_work_revision\":\"reaction_couple_position_work_v2_20261016\",";
   json += "\"wheel_work_inertia_kg_m2\":" + jsonFloatOrNull(Config::WHEEL_ROTATING_INERTIA_KG_M2, 9) + ",";
   json += "\"wheel_work_inertia_provisional\":true,";
   json += "\"wheel_work_inertia_basis\":\"motor_pulse_identification_conditional_on_nominal_200KV_torque_constant;wheel_weights_and_motor_rotor\",";
   json += "\"wheel_speed_to_body_sign\":" + String(Config::WHEEL_SPEED_TO_BODY_SIGN) + ",\"wheel_speed_to_body_sign_provisional\":true,";
   json += "\"wheel_work_body_rate\":\"physical_roll_rate_dps=raw_gy_minus_startup_y_bias;planar_lateral_motion\",";
-  json += "\"wheel_work_formula\":\"omega_abs=s*2*pi/60*rpm+Omega;W=-J*sum(mean(Omega)*delta(omega_abs))\",";
+  json += "\"wheel_work_formula\":\"omega_relative=s*d(position_deg)/dt*pi/180;omega_abs=omega_relative+Omega;W=-J*sum(mean(Omega)*delta(omega_abs))\",";
   json += "\"wheel_work_energy_definition\":\"reaction_couple_work_on_body_excluding_rotor_absolute_axial_spin_energy;not_wheel_spin_energy_change;not_net_energy_at_next_peak\",";
   json += "\"wheel_work_analysis\":\"post_run_browser;no_feedback;no_unmeasured_loss_or_readback_delay_compensation\",";
+  json += "\"wheel_work_velocity_source\":\"position_local_quadratic_5_points\",";
+  json += "\"wheel_position_read_period_us\":" + String(Config::WHEEL_POSITION_READ_PERIOD_US) + ",";
+  json += "\"wheel_position_read_timeout_ms\":" + String(Config::WHEEL_POSITION_READ_TIMEOUT_MS) + ",";
+  json += "\"wheel_position_register\":\"0x90_signed_int32_accumulated_centidegrees\",";
+  json += "\"wheel_position_to_speed_sign\":1,";
+  json += "\"wheel_position_sample_time_semantics\":\"micros_modulo_2pow32_host_read_midpoint;start_end_sequence_validity_saved;not_internal_encoder_time\",";
+  json += "\"wheel_position_analysis\":\"offline_centered_5_point_quadratic;about_20ms_span_at_5ms_reads;no_RPM_fallback;no_extrapolation;no_control_feedback;INT32_MIN_is_valid_position\",";
   json += "\"wheel_speed_read_period_us\":" + String(Config::WHEEL_SPEED_READ_PERIOD_US) + ",";
   json += "\"wheel_speed_read_timeout_ms\":" + String(Config::WHEEL_SPEED_READ_TIMEOUT_MS) + ",";
   json += "\"wheel_speed_sample_time_semantics\":\"micros_modulo_2pow32_host_I2C_read_midpoint;start_and_end_saved;not_internal_encoder_sample_time\",";
@@ -1595,7 +1602,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"beta_x10000\":\"beta * 10000\",";
   json += "\"acc_norm_mg\":\"g * 1000\",\"roller_battery_mV\":\"mV\",";
   json += "\"beta_model_vbat_mV\":\"mV used after fallback or clamp\"},";
-  json += "\"columns\":{\"timeseries\":[\"time_s\",\"log_time_s\",\"t_test_ms\",\"state_id\",\"pulse_id\",\"pulse_active\",\"pulse_direction\",\"motor_cmd_mA\",\"pulse_width_ms_setting\",\"gyro_bias_x_dps\",\"gyro_bias_y_dps\",\"gyro_bias_z_dps\",\"ax_g\",\"ay_g\",\"az_g\",\"gx_dps\",\"gy_dps\",\"gz_dps\",\"acc_norm_g\",\"roller_actual_current_mA\",\"roller_battery_mV\",\"led_state\",\"sync_event_id\",\"physical_roll_abs_deg\",\"roller_current_sample_time_us\",\"roller_current_sequence\",\"roller_q_meas_observed_mA_s\",\"pulse_q_target_mA_s\",\"pulse_q_pred_mA_s\",\"roller_current_valid\",\"roller_q_meas_observed_valid\",\"pitch_mekf_abs_deg\",\"roll_mekf_abs_deg\",\"pitch_mekf_measurement_relative_deg\",\"pitch_mekf_detector_relative_deg\",\"mekf_bias_x_dps\",\"mekf_bias_y_dps\",\"mekf_bias_z_dps\",\"mekf_accel_confidence\",\"mekf_accel_residual_deg\",\"mekf_accel_mag_error_g\",\"imu_update_dt_us\",\"imu_sample_age_us\",\"mekf_accel_used\",\"gyro_heading_deg\",\"steering_delta_deg\",\"steering_actual_difference_deg\",\"steering_desired_difference_deg\",\"steering_cycle_yaw_rate_dps\",\"steering_cycles\",\"gyro_heading_valid\",\"steering_reason\",\"roller_speed_rpm\",\"roller_speed_read_start_us\",\"roller_speed_sample_time_us\",\"roller_speed_read_end_us\",\"roller_speed_sequence\",\"roller_speed_valid\",\"physical_roll_rate_dps\",\"body_rate_sample_time_us\",\"roller_applied_current_mA\",\"roller_applied_command_sequence\",\"roller_applied_command_time_us\"]}";
+  json += "\"columns\":{\"timeseries\":[\"time_s\",\"log_time_s\",\"t_test_ms\",\"state_id\",\"pulse_id\",\"pulse_active\",\"pulse_direction\",\"motor_cmd_mA\",\"pulse_width_ms_setting\",\"gyro_bias_x_dps\",\"gyro_bias_y_dps\",\"gyro_bias_z_dps\",\"ax_g\",\"ay_g\",\"az_g\",\"gx_dps\",\"gy_dps\",\"gz_dps\",\"acc_norm_g\",\"roller_actual_current_mA\",\"roller_battery_mV\",\"led_state\",\"sync_event_id\",\"physical_roll_abs_deg\",\"roller_current_sample_time_us\",\"roller_current_sequence\",\"roller_q_meas_observed_mA_s\",\"pulse_q_target_mA_s\",\"pulse_q_pred_mA_s\",\"roller_current_valid\",\"roller_q_meas_observed_valid\",\"pitch_mekf_abs_deg\",\"roll_mekf_abs_deg\",\"pitch_mekf_measurement_relative_deg\",\"pitch_mekf_detector_relative_deg\",\"mekf_bias_x_dps\",\"mekf_bias_y_dps\",\"mekf_bias_z_dps\",\"mekf_accel_confidence\",\"mekf_accel_residual_deg\",\"mekf_accel_mag_error_g\",\"imu_update_dt_us\",\"imu_sample_age_us\",\"mekf_accel_used\",\"gyro_heading_deg\",\"steering_delta_deg\",\"steering_actual_difference_deg\",\"steering_desired_difference_deg\",\"steering_cycle_yaw_rate_dps\",\"steering_cycles\",\"gyro_heading_valid\",\"steering_reason\",\"roller_speed_rpm\",\"roller_speed_read_start_us\",\"roller_speed_sample_time_us\",\"roller_speed_read_end_us\",\"roller_speed_sequence\",\"roller_speed_valid\",\"physical_roll_rate_dps\",\"body_rate_sample_time_us\",\"roller_applied_current_mA\",\"roller_applied_command_sequence\",\"roller_applied_command_time_us\",\"roller_position_raw_cdeg\",\"roller_position_read_start_us\",\"roller_position_sample_time_us\",\"roller_position_read_end_us\",\"roller_position_sequence\",\"roller_position_valid\",\"roller_position_deg\"]}";
   json += ",";
   feet.appendMetadata(json);
   const String final_size_key = ",\"metadata_json_final_bytes\":";

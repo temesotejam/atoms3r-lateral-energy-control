@@ -106,6 +106,8 @@ static constexpr uint16_t LOG_PERIOD_MS = 20;
 static constexpr uint16_t ROLLER_READ_PERIOD_MS = 20;
 // Wheel work observation, including active motor pulses. No controller reads it.
 static constexpr uint32_t WHEEL_SPEED_READ_PERIOD_US = 10000UL;
+static constexpr uint32_t WHEEL_POSITION_READ_PERIOD_US = 5000UL;
+static constexpr uint16_t WHEEL_POSITION_READ_TIMEOUT_MS = 2;
 static constexpr uint16_t WHEEL_SPEED_READ_TIMEOUT_MS = 2;
 static constexpr float WHEEL_ROTATING_INERTIA_KG_M2 = 2.8e-5f;
 // Provisional mounting sign: raw positive wheel RPM is negative body +gy rotation.

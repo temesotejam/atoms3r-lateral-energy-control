@@ -1,3 +1,23 @@
+## v56：ホイールの位置と取得時刻（1.0.10）
+
+v55の151 bytesの先頭部分はそのまま保持し、以下21 bytesを末尾へ追加する。1行172 bytes。
+
+| オフセット | 型 | 内容 |
+|---|---|---|
+|151|int32|roller_position_raw_cdeg：0x90、累積位置の100分の1度|
+|155|uint32|roller_position_read_start_us|
+|159|uint32|roller_position_sample_time_us：読取開始・終了の中点|
+|163|uint32|roller_position_read_end_us|
+|167|uint32|roller_position_sequence：失敗を含む試行ごとに増加|
+|171|uint8|roller_position_valid|
+
+時刻はmicros()の32bit周回を含むホスト時刻。内部エンコーダ時刻ではない。
+位置のINT32_MINは欠測の印ではなく有効な値であり、成否はvalidで判定する。
+CSVは生値と、valid時だけのroller_position_degを出す。
+位置の正方向と速度0x60の正方向は固定試験では一致した。機体軸との符号は別に扱う。
+5 ms目標の位置読取と、従来10 ms目標の速度読取は別の通し番号・時刻で保存する。
+位置または成功指令の通し番号が変わったときもログを記録する。
+
 # RWLOG v30: Vbat蜍慕噪ﾎｲ繝ｻ蜈･蜉帷ｵゆｺ・ｾ・3 ms菫晄戟繝ｻﾏ・3 ms繝ｻ蝗ｺ螳墅ｲ豈碑ｼ・
 
 譛ｬ繝励Ο繧ｸ繧ｧ繧ｯ繝医・RWLOG蠖｢蠑竣30繧貞・蜉帙＠縺ｾ縺吶ＡRwLogFileHeader` 縺ｯ110 bytes縲｝acked `LogSample` 縺ｯ121 bytes縺ｧ縺吶・

@@ -33,6 +33,16 @@ FIELDS_V55 = FIELDS_V54 + [
 ]
 SAMPLE_FORMAT_V55 = '<' + ''.join(field[0] for field in FIELDS_V55)
 CSV_COLUMNS_V55 = ['time_s'] + [field[1] for field in FIELDS_V55]
+FIELDS_V56 = FIELDS_V55 + [
+    ('i', 'roller_position_raw_cdeg', 1),
+    ('I', 'roller_position_read_start_us', 1),
+    ('I', 'roller_position_sample_time_us', 1),
+    ('I', 'roller_position_read_end_us', 1),
+    ('I', 'roller_position_sequence', 1),
+    ('B', 'roller_position_valid', 1),
+]
+SAMPLE_FORMAT_V56 = '<' + ''.join(field[0] for field in FIELDS_V56)
+CSV_COLUMNS_V56 = ['time_s'] + [field[1] for field in FIELDS_V56] + ['roller_position_deg']
 
 
 def expand_tables(value):
@@ -338,6 +348,8 @@ CSV_COLUMNS_V33 = CSV_COLUMNS_COMMON_PREFIX + [
     "beta_phase_state", "beta_phase_progress", "beta_phase_peak_angle_deg", "beta_phase_angle_deg", "beta_phase_ceiling",
 ]
 def csv_columns_for_version(format_version: int) -> list[str]:
+    if format_version >= 56:
+        return CSV_COLUMNS_V56
     if format_version >= 55:
         return CSV_COLUMNS_V55
     if format_version >= 54:
@@ -382,6 +394,8 @@ def csv_columns_for_version(format_version: int) -> list[str]:
 
 
 def sample_format_for_version(format_version: int) -> str:
+    if format_version >= 56:
+        return SAMPLE_FORMAT_V56
     if format_version >= 55:
         return SAMPLE_FORMAT_V55
     if format_version >= 54:
@@ -821,12 +835,14 @@ def magnetic_values(aux, trim, sequence):
 
 
 def convert_sample(values, format_version: int, mag_trim=None):
-    if format_version in (53, 54, 55):
+    if format_version in (53, 54, 55, 56):
         row = {}
-        fields = FIELDS_V55 if format_version == 55 else FIELDS_V54 if format_version == 54 else FIELDS_V53
+        fields = FIELDS_V56 if format_version == 56 else FIELDS_V55 if format_version == 55 else FIELDS_V54 if format_version == 54 else FIELDS_V53
         for value, (fmt, name, scale) in zip(values, fields):
-            invalid = (fmt == 'h' and value == -32768) or (fmt == 'i' and value == -2147483648)
+            invalid = (fmt == 'h' and value == -32768) or (fmt == 'i' and value == -2147483648 and name != 'roller_position_raw_cdeg')
             row[name] = '' if invalid else value / scale if scale != 1 else value
+        if format_version == 56:
+            row['roller_position_deg'] = row['roller_position_raw_cdeg'] / 100 if row['roller_position_valid'] else ''
         row['time_s'] = values[1] / 1000.0
         return row
     if format_version >= 52:
@@ -1161,8 +1177,8 @@ def write_foot_frames(metadata: dict, out_dir: Path) -> int:
 def convert(path: Path, out_dir: Path) -> None:
     data = path.read_bytes()
     header = parse_header(data)
-    if header["format_version"] not in (23, 24, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55):
-        raise ValueError(f"this converter expects rwlog format v23-v27, v29-v55, got v{header['format_version']}")
+    if header["format_version"] not in (23, 24, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56):
+        raise ValueError(f"this converter expects rwlog format v23-v27, v29-v56, got v{header['format_version']}")
     sample_format = sample_format_for_version(header["format_version"])
     if header["log_sample_size"] != struct.calcsize(sample_format):
         raise ValueError("unexpected sample size")
@@ -1224,7 +1240,7 @@ def convert(path: Path, out_dir: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert supported RWLOG v23-v55 files to CSV, including control and diagnostic metadata events.")
+    parser = argparse.ArgumentParser(description="Convert supported RWLOG v23-v56 files to CSV, including control and diagnostic metadata events.")
     parser.add_argument("rwlog", type=Path)
     parser.add_argument("--out", type=Path, default=Path("converted_dynamic_beta_hold73_tau73_compare"))
     args = parser.parse_args()

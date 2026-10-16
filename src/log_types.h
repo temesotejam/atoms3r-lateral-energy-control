@@ -51,7 +51,7 @@ struct RwLogFileHeader {
 
 #pragma pack(push, 1)
 struct LogSample {
-  // v55: v54 MEKF roll/pitch prefix plus wheel work observations.
+  // v56: v55 prefix plus timed wheel position observations.
   // 0.47.30 leaves heading/differences unavailable, delta/cycles zero, reason 8.
   uint32_t time_us;
   uint32_t t_test_ms;
@@ -116,8 +116,15 @@ struct LogSample {
   int16_t roller_applied_current_mA;
   uint32_t roller_applied_command_sequence;
   uint32_t roller_applied_command_time_us;
+  // v56: append only. Raw INT32_MIN is a valid position; use the validity flag.
+  int32_t roller_position_raw_cdeg;
+  uint32_t roller_position_read_start_us;
+  uint32_t roller_position_sample_time_us;
+  uint32_t roller_position_read_end_us;
+  uint32_t roller_position_sequence;
+  uint8_t roller_position_valid;
 };
 #pragma pack(pop)
 
 static_assert(sizeof(RwLogFileHeader) == 110, "RwLogFileHeader binary size changed");
-static_assert(sizeof(LogSample) == 151, "LogSample binary size changed");
+static_assert(sizeof(LogSample) == 172, "LogSample binary size changed");

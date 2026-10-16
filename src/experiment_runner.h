@@ -111,6 +111,7 @@ public:
 
 private:
   uint32_t last_logged_speed_sequence_ = 0;
+  uint32_t last_logged_position_sequence_ = 0;
   uint32_t last_logged_command_sequence_ = 0;
   upright_reference::Record upright_reference_;
   upright_reference::Capture upright_reference_capture_;
