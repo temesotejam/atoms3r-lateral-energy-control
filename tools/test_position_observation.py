@@ -1,4 +1,4 @@
-"""Freeze the authorized 1.0.9 controller; allow only observation additions."""
+"""Guard position observation and the pre-probe controller math."""
 from pathlib import Path
 import subprocess
 
@@ -8,15 +8,10 @@ allowed={
     'src/config.h':[
         'static constexpr uint32_t WHEEL_POSITION_READ_PERIOD_US = 5000UL;\n',
         'static constexpr uint16_t WHEEL_POSITION_READ_TIMEOUT_MS = 2;\n'],
-    'src/experiment_runner.cpp':[
-        '      observation.position_sequence != last_logged_position_sequence_ ||\n',
-        '  last_logged_position_sequence_ = roller_telemetry.position_sequence;\n'],
-    'src/experiment_runner.h':[
-        '  uint32_t last_logged_position_sequence_ = 0;\n'],
 }
 unchanged=['src/lateral_energy_control.h','src/peak_error_adaptation.h',
            'src/previous_peak_control_correction.h','src/control_math_cache.h',
-           'src/run_control_worker.h','src/mekf6.cpp','src/mekf6.hpp',
+           'src/mekf6.cpp','src/mekf6.hpp',
            'src/upright_reference_store.cpp','src/upright_reference.h']
 for name in list(allowed)+unchanged:
     before=subprocess.check_output(['git','show',baseline+':'+name],cwd=root).decode().replace('\r\n','\n')
@@ -25,6 +20,16 @@ for name in list(allowed)+unchanged:
         assert after.count(line)==1,(name,line)
         after=after.replace(line,'')
     assert before==after,'unauthorized controller change: '+name
+runner_before=subprocess.check_output(['git','show',baseline+':src/experiment_runner.cpp'],cwd=root).decode().replace('\r\n','\n')
+runner_after=(root/'src/experiment_runner.cpp').read_text(encoding='utf-8')
+def selected_decision(source):
+    return source.split('  auto decide_selected=[&]',1)[1].split('  if (!decision.valid',1)[0]
+assert selected_decision(runner_before)==selected_decision(runner_after), \
+    'legacy bridge/quadratic decision changed during probe addition'
+assert '      observation.position_sequence != last_logged_position_sequence_ ||\n' in runner_after
+assert '  last_logged_position_sequence_ = roller_telemetry.position_sequence;\n' in runner_after
+assert '  uint32_t last_logged_position_sequence_ = 0;\n' in \
+    (root/'src/experiment_runner.h').read_text(encoding='utf-8')
 source=(root/'src/roller485_manager.cpp').read_text()
 position=source.split('bool Roller485Manager::readPositionFresh() {',1)[1].split('bool Roller485Manager::readSpeedFresh()',1)[0]
 assert 'readI32(REG_POSITION_READBACK, raw)' in position
@@ -32,4 +37,4 @@ assert 'recordIo(' not in position and 'setCurrentMa(' not in position and 'stop
 update=source.split('void Roller485Manager::update() {',1)[1].split('bool Roller485Manager::setCurrentMa',1)[0]
 assert update.index('requested_current_mA_ != command_mA_')<update.index('readPositionFresh()')
 assert 'if (requested_current_mA_ != command_mA_) return;\n  if (last_speed_due_us_' in update
-print('1.0.9 controller, coefficients, model, MEKF, reference unchanged; position is observation only PASS')
+print('Legacy decision math, MEKF and position observation guarded; probe additions allowed PASS')
