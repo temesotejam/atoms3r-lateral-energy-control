@@ -4,12 +4,12 @@
 #define private public
 #include "../src/run_control_worker.h"
 #undef private
-struct Model {bool running=false;bool adaptation=true;unsigned steps=0;float target=8,angle=0;int16_t current=300;uint16_t brake=50;RunControlWorker* worker=nullptr;};
+struct Model {bool running=false;bool adaptation=true,probe=false;unsigned steps=0;float target=8,angle=0;int16_t current=300;uint16_t brake=50;RunControlWorker* worker=nullptr;};
 static bool step(void* p) {
   auto& m=*static_cast<Model*>(p); ++m.steps;
   if(m.worker->takeStopRequest()) m.running=false;
   float target=0,angle=0;int16_t current=0;uint16_t brake=50;
-  const auto command=m.worker->takeCommand(&target,&angle,&current,&brake,&m.adaptation);
+  const auto command=m.worker->takeCommand(&target,&angle,&current,&brake,&m.adaptation,nullptr,&m.probe);
   if(command==RunControlWorker::Command::Start){m.target=target;m.angle=angle;m.current=current;m.brake=brake;m.running=true;m.worker->beginRunAudit();m.worker->completeCommand(true,"started");
     assert(!m.worker->commandPublished(m.worker->commandState().completed));}
   if(command==RunControlWorker::Command::Clear){m.running=false;m.worker->completeCommand(true,"cleared");}
@@ -23,6 +23,7 @@ static void capture(void* p,RunControlSnapshot& s) {
   s.input_current_mA=static_cast<Model*>(p)->current;
   s.brake_max_ms=static_cast<Model*>(p)->brake;
   s.peak_adaptation_enabled=static_cast<Model*>(p)->adaptation;
+  s.negative_probe_mode=static_cast<Model*>(p)->probe;
 }
 int main(){
   for(const char* bad : {"", "9", "0", "-10", "14", "10junk", "nan", "inf", "1e999", "1e-999"}) {
@@ -59,6 +60,11 @@ int main(){
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,90));
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,1210));
   assert(!w.request(RunControlWorker::Command::Start,10,0.0f,500,10));
+  assert(!w.request(RunControlWorker::Command::Start,8,0.0f,300,20,false,true,true));
+  assert(!w.request(RunControlWorker::Command::Start,10,0.0f,300,15,false,true,true));
+  assert(!w.request(RunControlWorker::Command::Start,8,0.0f,500,15,false,true,true));
+  assert(!w.request(RunControlWorker::Command::Start,8,0.0f,300,15,true,true,true));
+  assert(!w.request(RunControlWorker::Command::Start,8,0.0f,300,15,false,false,true));
   assert(w.request(RunControlWorker::Command::CaptureUprightReference));
   assert(w.takeCommand()==RunControlWorker::Command::CaptureUprightReference);
   assert(w.commandState().pending);
@@ -67,7 +73,7 @@ int main(){
   assert(!w.request(RunControlWorker::Command::CaptureUprightReference));
   w.completeCommand(true,"upright_reference_saved");
   w.oneStep(); assert(w.commandPublished(w.commandState().completed));
-  assert(w.request(RunControlWorker::Command::Start,10,0.0f,500,20,false));
+  assert(w.request(RunControlWorker::Command::Start,10,0.0f,500,20,false,false));
   bool applied_adaptation=true;
   assert(!w.request(RunControlWorker::Command::Start,12)); // cannot replace accepted target
   assert(!w.request(RunControlWorker::Command::Clear)); // pending start blocks clear
@@ -121,6 +127,14 @@ int main(){
     assert(w.request(RunControlWorker::Command::Start,target));
     w.oneStep();assert(m.target==target&&w.snapshot().target_deg==target);
     assert(!w.request(RunControlWorker::Command::Start,8)); // running target is fixed
+    assert(w.requestStop());w.oneStep();
+    assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
+  }
+  for(uint16_t width : {0,15,30}) {
+    assert(w.request(RunControlWorker::Command::Start,8,0.0f,300,width,false,true,true));
+    w.oneStep();
+    assert(m.probe&&w.snapshot().negative_probe_mode&&m.brake==width);
+    assert(m.target==8&&m.current==300&&!m.adaptation);
     assert(w.requestStop());w.oneStep();
     assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
   }

@@ -66,6 +66,7 @@ static void captureRunState(void*, RunControlSnapshot& out) {
   out.input_peak_percent = runner.energyControlAutonomousInputPeakPercent();
   out.input_current_mA = runner.energyControlAutonomousInputCurrentMa();
   out.brake_max_ms = runner.energyControlAutonomousBrakeMaxMs();
+  out.negative_probe_mode = runner.negativeProbeMode();
   out.peak_adaptation_enabled = runner.peakAdaptationEnabled();
   out.energy_bridge_enabled = runner.energyBridgeEnabled();
   out.upright_reference = runner.uprightReference();
@@ -132,10 +133,12 @@ static bool controlStep(void*) {
   uint16_t start_brake_max_ms = autonomous_brake_limit::kDefaultMs;
   bool start_peak_adaptation_enabled = true;
   bool start_energy_bridge_enabled = true;
+  bool start_negative_probe_mode = false;
   const auto command = run_control.takeCommand(&start_target_deg, &start_input_peak_percent,
                                                 &start_input_current_mA, &start_brake_max_ms,
                                                 &start_peak_adaptation_enabled,
-                                                &start_energy_bridge_enabled);
+                                                &start_energy_bridge_enabled,
+                                                &start_negative_probe_mode);
   if (command == RunControlWorker::Command::Start) {
     bool ok = false;
     const char* error = "clear_previous_run_first";
@@ -148,6 +151,7 @@ static bool controlStep(void*) {
             runner.setEnergyControlAutonomousBrakeMaxMs(start_brake_max_ms) &&
             runner.setPeakAdaptationEnabled(start_peak_adaptation_enabled) &&
             runner.setEnergyBridgeEnabled(start_energy_bridge_enabled) &&
+            runner.setNegativeProbeMode(start_negative_probe_mode) &&
             runner.setEnergyControlAutonomousTarget(start_target_deg) &&
             runner.startEnergyControlAutonomousCapture();
         error = ok ? "started" : runner.status().last_error;

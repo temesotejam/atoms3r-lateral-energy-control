@@ -59,6 +59,8 @@ public:
   bool peakAdaptationEnabled() const { return peak_adaptation_enabled_; }
   bool setEnergyBridgeEnabled(bool enabled);
   bool energyBridgeEnabled() const { return energy_bridge_enabled_; }
+  bool setNegativeProbeMode(bool enabled);
+  bool negativeProbeMode() const { return negative_probe_mode_; }
   bool beginUprightReferenceCapture();
   bool pollUprightReferenceCapture(bool& ok, const char*& result);
   const upright_reference::Record& uprightReference() const { return upright_reference_; }
@@ -432,6 +434,7 @@ private:
   float energy_control_autonomous_input_peak_percent_ = autonomous_input_percent::kDefaultPercent;
   int16_t energy_control_autonomous_input_current_mA_ = autonomous_input_current::kDefaultMa;
   uint16_t energy_control_autonomous_brake_max_ms_ = autonomous_brake_limit::kDefaultMs;
+  bool negative_probe_mode_ = false;
   float energy_control_autonomous_target_peak_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   lateral_energy::Geometry lateral_energy_geometry_{
       Config::ENERGY_CONTROL_V0_MASS_KG,Config::ENERGY_CONTROL_V0_GRAVITY_M_S2,
@@ -467,6 +470,7 @@ private:
   int8_t energy_control_autonomous_last_peak_side_ = 0;
   uint32_t energy_control_autonomous_last_peak_ms_ = 0;
   bool energy_control_autonomous_pending_peak_ = false;
+  bool energy_control_autonomous_pending_probe_ = false;
   int8_t energy_control_autonomous_pending_next_side_ = 0;
   float energy_control_autonomous_pending_q_command_mA_s_ = 0.0f;
   float energy_control_autonomous_pending_model_energy_j_ = NAN;

@@ -371,6 +371,7 @@ class PsramLogger {
     bool unclamped_inverse_valid=false;
     float work_omega_q_coefficient=NAN, work_q2_coefficient=NAN;
     bool energy_model_extrapolated=false;
+    bool fixed_negative_probe=false;
     float q1_gain_deg_per_mA_s = NAN;
     float q_ff_energy_mA_s = NAN;
     float q_angle_diagnostic_mA_s = NAN;
@@ -515,6 +516,7 @@ class PsramLogger {
                  float input_peak_percent = 50.0f, uint16_t brake_max_ms = 50,
                  bool peak_adaptation_enabled = true,
                  bool energy_bridge_enabled = true,
+                 bool negative_probe_mode = false,
                  const upright_reference::Record& upright_reference = upright_reference::Record{});
   void recordMeasurementStartAngle(float absolute_deg) {
     if (!sealed_ && energy_control_autonomous_mode_ && !isfinite(measurement_start_abs_deg_))
@@ -676,6 +678,7 @@ private:
   uint16_t autonomous_brake_max_ms_ = 50;
   bool peak_adaptation_enabled_ = true;
   bool energy_bridge_enabled_ = true;
+  bool negative_probe_mode_ = false;
   upright_reference::Record run_upright_reference_;
   float measurement_start_abs_deg_ = NAN;
   uint32_t autonomous_timing_compensation_us_ = 0;  // Immutable metadata for the saved run.

@@ -17,6 +17,10 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
+      <h2>1.0.11：固定脚・負側仕事応答の試験</h2>
+      <p>実機のWeb画面に「基準0 ms」「試験15 ms」「試験30 ms」の専用ボタンを追加しました。各ボタンが目標8°、300 mA、学習補正なし、正側の旧式換算制御、負側の固定入力時間をまとめて設定します。測定後はRWLOGを保存してから次の条件へ進みます。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/negative_work_probe_20261016.md">測定の順番と確認項目</a></p>
+    </section>
+    <section class="panel important">
       <h2>1.0.10：ホイールの位置変化から機体にした仕事を計算</h2>
       <p>ホイールの位置と読み取り時刻を5 ms間隔を目標に記録します。RWLOG取得後、位置変化から求めた速度と同じ時刻の機体角速度を使って仕事を計算し、入力別・全区間・位置由来速度のCSVを保存できます。制御則は1.0.9と同じです。慣性は回転部分を合わせた暫定値2.8×10⁻⁵ kg·m²です。<a href="wheel-work.html">保存済みRWLOGから仕事を計算</a></p>
       <p><strong>左右別の予測補正：</strong>同じ試行中に観測した次のピークと予測の差を、左右・入力方向・入力前のホイール回転数帯ごとに小さく補正します。十分な観測がない間は従来の計算を使います。負側の逆入力上限は0・20・50 msから選べます。</p>

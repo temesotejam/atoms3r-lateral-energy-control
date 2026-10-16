@@ -25,6 +25,13 @@
 <p><label for="peak-adaptation">予測誤差の学習補正 </label><select id="peak-adaptation" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="0" selected>使用しない（式の比較）</option><option value="1">使用する</option></select></p>
 <p class="muted">まず学習補正なし、目標8°・300 mAで式を比較してください。次ピーク角、入力時間、実電流とホイール速度をRWLOGで確認します。</p>
 <p class="muted" id="run-adaptation" role="status">学習補正の設定は測定開始時に確定します。</p>
+<div id="negative-probe-packages">
+  <p><strong>固定脚・負側仕事応答の測定パッケージ</strong></p>
+  <p class="muted">3つとも目標8°、指令300 mA、正側は旧式換算、負側は指定した固定時間のRAW +300 mA、学習補正なし、15秒記録です。各ボタンを1回押すだけで条件を設定して測定します。測定ごとにRWLOGを保存し、ログを消去してから次を開始してください。</p>
+  <button id="probe-0" type="button" disabled>基準：負側0 msを測定</button>
+  <button id="probe-15" type="button" disabled>試験：負側15 msを測定</button>
+  <button id="probe-30" type="button" disabled>試験：負側30 msを測定</button>
+</div>
 <input id="input-percent" type="hidden" value="0">
 <p class="muted" id="run-percent" role="status">通常入力はZEROクロスで行います。</p>
 <p class="muted">yaw関連機能は停止中です。</p>

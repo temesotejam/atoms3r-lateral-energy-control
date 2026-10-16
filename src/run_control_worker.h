@@ -31,6 +31,7 @@ struct RunControlSnapshot {
   uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs;
   bool peak_adaptation_enabled = true;
   bool energy_bridge_enabled = true;
+  bool negative_probe_mode = false;
   upright_reference::Record upright_reference;
   bool upright_reference_capturing = false;
   uint32_t upright_reference_capture_samples = 0;
@@ -107,14 +108,19 @@ class RunControlWorker {
                float target_deg = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG,
                float input_peak_percent = autonomous_input_percent::kDefaultPercent,
                int16_t input_current_mA = autonomous_input_current::kDefaultMa,
-               uint16_t brake_max_ms = autonomous_brake_limit::kDefaultMs,
+               uint16_t brake_max_ms = 0,
                bool peak_adaptation_enabled = true,
-               bool energy_bridge_enabled = true) {
+               bool energy_bridge_enabled = true,
+               bool negative_probe_mode = false) {
     if (!ready() || command == Command::None) return false;
     if (command == Command::Start && (!autonomous_target::selectable(target_deg) ||
         !autonomous_input_percent::valid(input_peak_percent) ||
         !autonomous_input_current::valid(input_current_mA) ||
-        !autonomous_brake_limit::valid(brake_max_ms))) return false;
+        !autonomous_brake_limit::valid(brake_max_ms) ||
+        (negative_probe_mode && (!energy_bridge_enabled || !autonomous_brake_limit::probe(brake_max_ms) ||
+          target_deg != 8.0f || input_current_mA != 300 || peak_adaptation_enabled)) ||
+        (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0) ||
+        (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms)))) return false;
     portENTER_CRITICAL(&mux_);
     const bool accepted = !command_state_.pending && !snapshot_.running && !stop_requested_;
     if (accepted) {
@@ -123,6 +129,7 @@ class RunControlWorker {
       command_brake_max_ms_ = brake_max_ms;
       command_peak_adaptation_enabled_ = peak_adaptation_enabled;
       command_energy_bridge_enabled_ = energy_bridge_enabled;
+      command_negative_probe_mode_ = negative_probe_mode;
       command_state_.pending = true; ++command_state_.submitted;
     }
     portEXIT_CRITICAL(&mux_);
@@ -132,7 +139,8 @@ class RunControlWorker {
                       int16_t* input_current_mA = nullptr,
                       uint16_t* brake_max_ms = nullptr,
                       bool* peak_adaptation_enabled = nullptr,
-                      bool* energy_bridge_enabled = nullptr) {
+                      bool* energy_bridge_enabled = nullptr,
+                      bool* negative_probe_mode = nullptr) {
     portENTER_CRITICAL(&mux_);
     const Command command = stop_requested_ ? Command::None : command_;
     if (command != Command::None) {
@@ -142,6 +150,7 @@ class RunControlWorker {
       if (brake_max_ms) *brake_max_ms = command_brake_max_ms_;
       if (peak_adaptation_enabled) *peak_adaptation_enabled = command_peak_adaptation_enabled_;
       if (energy_bridge_enabled) *energy_bridge_enabled = command_energy_bridge_enabled_;
+      if (negative_probe_mode) *negative_probe_mode = command_negative_probe_mode_;
       command_ = Command::None;
     }
     portEXIT_CRITICAL(&mux_);
@@ -348,6 +357,7 @@ class RunControlWorker {
   uint16_t command_brake_max_ms_ = autonomous_brake_limit::kDefaultMs;
   bool command_peak_adaptation_enabled_ = true;
   bool command_energy_bridge_enabled_ = true;
+  bool command_negative_probe_mode_ = false;
   float command_target_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   CommandState command_state_;
   RunControlSnapshot snapshot_;

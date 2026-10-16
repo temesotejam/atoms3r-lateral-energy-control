@@ -73,7 +73,7 @@ int main(int argc,char** argv){
   assert(sizeof(PsramLogger)<4096);
   assert(PsramLogger::eventStorageBytes()<256U*1024U);
   upright_reference::Record reference{upright_reference::kMagic,1,3,801,2.2f,.038f,.05f};
-  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f,50,false,true,reference);
+  logger.startRun(1,123456,300,100,1000,false,0,800,0,false,NAN,false,0,false,true,65.0f,50,false,true,false,reference);
   logger.recordMeasurementStartAngle(3.2f);
   logger.recordMeasurementStartAngle(9.2f); // Cannot replace the actual start snapshot.
   reference.pitch_deg = 7.7f; // Operator changes after the run cannot mutate its metadata.

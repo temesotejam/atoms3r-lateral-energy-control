@@ -196,7 +196,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
                              uint8_t q_ident_run_schedule_id, bool energy_control_v0_mode,
                              bool energy_control_autonomous_mode, float input_peak_percent,
                              uint16_t brake_max_ms, bool peak_adaptation_enabled,
-                             bool energy_bridge_enabled,
+                             bool energy_bridge_enabled, bool negative_probe_mode,
                              const upright_reference::Record& upright_reference) {
   if (!ready_ || downloading_) return;
   sealed_ = false;
@@ -221,6 +221,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
   autonomous_brake_max_ms_ = energy_control_autonomous_mode ? brake_max_ms : lateral_energy::kBrakeMaxMs;
   peak_adaptation_enabled_ = peak_adaptation_enabled;
   energy_bridge_enabled_ = energy_bridge_enabled;
+  negative_probe_mode_ = negative_probe_mode;
   run_upright_reference_ = upright_reference;
   measurement_start_abs_deg_ = NAN;
   identification_event_count_ = 0;
@@ -555,8 +556,12 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_autonomous_normal_width_max_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : lateral_energy::kBrakeMaxMs) + ",";
   json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
+  json += "\"fixed_negative_work_probe\":" + String(negative_probe_mode_ ? "true" : "false") + ",";
+  json += "\"fixed_negative_work_probe_width_ms\":" + String(negative_probe_mode_ ? autonomous_brake_max_ms_ : 0) + ",";
   json += "\"autonomous_uses_q_ident_limits\":false,";
-  json += "\"energy_control_autonomous_q_policy\":\"" + String(energy_bridge_enabled_
+  json += "\"energy_control_autonomous_q_policy\":\"" + String(negative_probe_mode_
+      ? "positive_side_bridge;negative_side_fixed_raw_positive_probe;no_negative_peak_learning"
+      : energy_bridge_enabled_
       ? "positive_Q_from_inverse_potential_and_historical_angle_gain;current_rise_binary_search;negative_request_coasts;reverse_Q_not_identified"
       : "signed_energy_error_to_signed_Q_quadratic_inverse;current_rise_binary_search;reverse_brake_limit_selected;negative_Q_extrapolated") + "\",";
   json += "\"energy_control_autonomous_event_overflow\":" + String(energy_control_autonomous_event_overflow_ ? "true" : "false") + ",";
@@ -1518,6 +1523,7 @@ PsramString PsramLogger::buildMetadataJson() const {
     appendAutonomousNullable("work_omega_q_coefficient", e.work_omega_q_coefficient, 8);
     appendAutonomousNullable("work_q2_coefficient", e.work_q2_coefficient, 8);
     detail += ",\"energy_model_extrapolated\":" + String(e.energy_model_extrapolated ? "true" : "false");
+    detail += ",\"fixed_negative_probe\":" + String(e.fixed_negative_probe ? "true" : "false");
     appendAutonomousNullable("q1_gain_deg_per_mA_s", e.q1_gain_deg_per_mA_s, 5);
     appendAutonomousNullable("q_ff_energy_mA_s", e.q_ff_energy_mA_s, 5);
     appendAutonomousNullable("q_angle_diagnostic_mA_s", e.q_angle_diagnostic_mA_s, 5);
