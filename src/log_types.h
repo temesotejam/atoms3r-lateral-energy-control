@@ -51,7 +51,7 @@ struct RwLogFileHeader {
 
 #pragma pack(push, 1)
 struct LogSample {
-  // v54: v53 plus MEKF roll from the same posterior as the existing pitch.
+  // v55: v54 MEKF roll/pitch prefix plus wheel work observations.
   // 0.47.30 leaves heading/differences unavailable, delta/cycles zero, reason 8.
   uint32_t time_us;
   uint32_t t_test_ms;
@@ -104,8 +104,20 @@ struct LogSample {
   uint16_t steering_cycles;
   uint8_t gyro_heading_valid;
   uint8_t steering_reason;
+  // v55 appends wheel work observations; the v54 prefix is unchanged.
+  int32_t roller_speed_crpm;
+  uint32_t roller_speed_read_start_us;
+  uint32_t roller_speed_sample_time_us;
+  uint32_t roller_speed_read_end_us;
+  uint32_t roller_speed_sequence;
+  uint8_t roller_speed_valid;
+  int16_t physical_roll_rate_cdps;
+  uint32_t body_rate_sample_time_us;
+  int16_t roller_applied_current_mA;
+  uint32_t roller_applied_command_sequence;
+  uint32_t roller_applied_command_time_us;
 };
 #pragma pack(pop)
 
 static_assert(sizeof(RwLogFileHeader) == 110, "RwLogFileHeader binary size changed");
-static_assert(sizeof(LogSample) == 114, "LogSample binary size changed");
+static_assert(sizeof(LogSample) == 151, "LogSample binary size changed");

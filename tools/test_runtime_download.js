@@ -23,7 +23,8 @@ const context=vm.createContext({document:{getElementById:element,createElement:(
     header.setUint32(12,vm.runInContext('crc32(payload)',context),true);packet.set(payload,16);
     return {ok:true,arrayBuffer:async()=>packet.buffer};
   }});
-vm.runInContext(fs.readFileSync('web/pose_comparison.js','utf8')+'\n'+fs.readFileSync('web/runtime.js','utf8').replace(/poll\(\);\s*$/,''),context);
+vm.runInContext(fs.readFileSync('site/wheel-work.js','utf8')+'\n'+fs.readFileSync('web/pose_comparison.js','utf8')+'\n'+fs.readFileSync('web/runtime.js','utf8').replace(/poll\(\);\s*$/,''),context);
+element('work-inertia').value='0.000028';element('work-sign').value='-1';
 vm.runInContext("latest={state:'ESTOP',export_phase:'ready',running:false,ready:false,downloadable:true,controller_fresh:true,command:{pending:false},foot:{},upright:{}};lastSeen=Date.now();",context);
 (async()=>{
   await vm.runInContext('download()',context);
@@ -36,6 +37,9 @@ vm.runInContext("latest={state:'ESTOP',export_phase:'ready',running:false,ready:
   assert(Buffer.from(vm.runInContext('completedFile',context)).equals(file));assert.equal(saved,1);
   assert.equal(vm.runInContext('completedFoot.length',context),768);assert.equal(element('csv').disabled,false);
   assert.match(element('transfer').textContent,/CRC検証完了/);
+  assert.equal(vm.runInContext('wheelWorkReport.speed_attempts',context),1);
+  assert.equal(vm.runInContext('wheelWorkReport.measurement.observed_net_j',context),null);
+  assert.match(element('work-result').textContent,/review.rwlog/);
   assert.equal(vm.runInContext('footCsv(completedFoot)',context).split('\r\n').filter(Boolean).length,769);
   console.log(`RWLOG ${file.length} bytes: 8192-byte interruption/resume, exact content/CRC, 768 foot CSV rows PASS`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

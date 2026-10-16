@@ -77,6 +77,17 @@ void encodeLogSample(LogSample& row, const ExperimentStatus& status,
   row.steering_cycles = status.steering.cycles;
   row.gyro_heading_valid = status.steering.gyro_valid;
   row.steering_reason = static_cast<uint8_t>(status.steering.reason);
+  row.roller_speed_crpm = roller.speed_valid ? roller.speed_raw_x100 : LOG_NAN_I32;
+  row.roller_speed_read_start_us = roller.speed_read_start_us;
+  row.roller_speed_sample_time_us = roller.speed_sample_time_us;
+  row.roller_speed_read_end_us = roller.speed_read_end_us;
+  row.roller_speed_sequence = roller.speed_sequence;
+  row.roller_speed_valid = roller.speed_valid ? 1 : 0;
+  row.physical_roll_rate_cdps = log_quantization::scaledI16(status.physical_roll_rate_dps, 100.0f);
+  row.body_rate_sample_time_us = status.body_rate_sample_time_us;
+  row.roller_applied_current_mA = roller.applied_current_mA;
+  row.roller_applied_command_sequence = roller.applied_command_sequence;
+  row.roller_applied_command_time_us = roller.applied_command_time_us;
 }
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC pop_options

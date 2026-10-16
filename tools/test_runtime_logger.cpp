@@ -79,6 +79,12 @@ int main(int argc,char** argv){
   reference.pitch_deg = 7.7f; // Operator changes after the run cannot mutate its metadata.
   LogSample row{};row.motor_cmd_mA=300;row.roller_actual_current_mA=270;
   row.roll_mekf_abs_cdeg=1234;row.pitch_mekf_abs_cdeg=567;
+  row.roller_speed_crpm=12345;
+  row.roller_speed_read_start_us=999900;row.roller_speed_sample_time_us=1000000;
+  row.roller_speed_read_end_us=1000100;row.roller_speed_sequence=1;row.roller_speed_valid=1;
+  row.physical_roll_rate_cdps=6000;row.body_rate_sample_time_us=1000000;
+  row.roller_applied_current_mA=300;row.roller_applied_command_sequence=1;
+  row.roller_applied_command_time_us=999000;
   row.gyro_heading_cdeg=LOG_NAN_I32;
   row.steering_actual_difference_cdeg=LOG_NAN_I16;
   row.steering_desired_difference_cdeg=LOG_NAN_I16;

@@ -624,6 +624,7 @@ void ExperimentRunner::updateCurrentRollState(const ImuReading& r, uint32_t now_
       Config::PHYSICAL_ROLL_AFFINE_SLOPE * status_.physical_roll_candidate_deg +
       Config::PHYSICAL_ROLL_AFFINE_OFFSET_DEG;
   status_.physical_roll_rate_raw_dps = r.gy_dps;
+  status_.body_rate_sample_time_us = bias_ready_ && r.imu_ok ? r.last_gyro_update_us : 0;
   status_.physical_roll_rate_dps =
       bias_ready_ ? r.gy_dps - status_.gyro_bias_y_dps : 0.0f;
   status_.display_zero_offset_deg = display_zero_offset_deg_;
@@ -5848,12 +5849,16 @@ uint16_t ExperimentRunner::betaHoldAfterInputMsForStrategy(uint8_t index) const 
 }
 void ExperimentRunner::logSampleIfDue() {
   const uint32_t now_us = micros();
+  const auto observation = roller_->telemetrySnapshot();
+  const bool new_wheel_observation = observation.speed_sequence != last_logged_speed_sequence_ ||
+      observation.applied_command_sequence != last_logged_command_sequence_;
   // Preserve the normal 20 ms time series. While an already-authorized pulse
   // is live, add rows at the current-audit period so fresh-read gaps can be
   // evaluated offline. Logging rate cannot alter the motor command.
   const uint32_t period_us = status_.pulse_active
       ? Config::CURRENT_AUDIT_LOG_PERIOD_US : Config::LOG_PERIOD_MS * 1000UL;
-  if (last_log_us_ != 0 && static_cast<uint32_t>(now_us - last_log_us_) < period_us) return;
+  if (!new_wheel_observation && last_log_us_ != 0 &&
+      static_cast<uint32_t>(now_us - last_log_us_) < period_us) return;
   const bool probe_log = timing_probe_pending_ && !timing_probe_log_captured_ &&
       status_.pulse_active && status_.pulse_id == timing_probe_event_.pulse_id;
   const uint32_t log_start_us = probe_log ? micros() : 0;
@@ -5898,6 +5903,8 @@ void ExperimentRunner::logSampleNow() {
         status_.state == ExperimentState::RUNNING_BATCH_SWEEP, status_.pulse_active);
     logger_->addSample(row);
   }
+  last_logged_speed_sequence_ = roller_telemetry.speed_sequence;
+  last_logged_command_sequence_ = roller_telemetry.applied_command_sequence;
   if (status_.sync_event_id == 2 || status_.sync_event_id == 3 || status_.sync_event_id == 6 ||
       status_.sync_event_id == 7) {
     status_.sync_event_id = 0;

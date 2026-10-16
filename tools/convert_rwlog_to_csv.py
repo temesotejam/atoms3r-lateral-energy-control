@@ -18,6 +18,21 @@ FIELDS_V54.insert(next(i for i, field in enumerate(FIELDS_V54) if field[1] == 'p
                   ('h', 'roll_mekf_abs_deg', 100))
 SAMPLE_FORMAT_V54 = '<' + ''.join(field[0] for field in FIELDS_V54)
 CSV_COLUMNS_V54 = ['time_s'] + [field[1] for field in FIELDS_V54]
+FIELDS_V55 = FIELDS_V54 + [
+    ('i', 'roller_speed_rpm', 100),
+    ('I', 'roller_speed_read_start_us', 1),
+    ('I', 'roller_speed_sample_time_us', 1),
+    ('I', 'roller_speed_read_end_us', 1),
+    ('I', 'roller_speed_sequence', 1),
+    ('B', 'roller_speed_valid', 1),
+    ('h', 'physical_roll_rate_dps', 100),
+    ('I', 'body_rate_sample_time_us', 1),
+    ('h', 'roller_applied_current_mA', 1),
+    ('I', 'roller_applied_command_sequence', 1),
+    ('I', 'roller_applied_command_time_us', 1),
+]
+SAMPLE_FORMAT_V55 = '<' + ''.join(field[0] for field in FIELDS_V55)
+CSV_COLUMNS_V55 = ['time_s'] + [field[1] for field in FIELDS_V55]
 
 
 def expand_tables(value):
@@ -323,6 +338,8 @@ CSV_COLUMNS_V33 = CSV_COLUMNS_COMMON_PREFIX + [
     "beta_phase_state", "beta_phase_progress", "beta_phase_peak_angle_deg", "beta_phase_angle_deg", "beta_phase_ceiling",
 ]
 def csv_columns_for_version(format_version: int) -> list[str]:
+    if format_version >= 55:
+        return CSV_COLUMNS_V55
     if format_version >= 54:
         return CSV_COLUMNS_V54
     if format_version >= 53:
@@ -365,6 +382,8 @@ def csv_columns_for_version(format_version: int) -> list[str]:
 
 
 def sample_format_for_version(format_version: int) -> str:
+    if format_version >= 55:
+        return SAMPLE_FORMAT_V55
     if format_version >= 54:
         return SAMPLE_FORMAT_V54
     if format_version >= 53:
@@ -802,9 +821,9 @@ def magnetic_values(aux, trim, sequence):
 
 
 def convert_sample(values, format_version: int, mag_trim=None):
-    if format_version in (53, 54):
+    if format_version in (53, 54, 55):
         row = {}
-        fields = FIELDS_V54 if format_version == 54 else FIELDS_V53
+        fields = FIELDS_V55 if format_version == 55 else FIELDS_V54 if format_version == 54 else FIELDS_V53
         for value, (fmt, name, scale) in zip(values, fields):
             invalid = (fmt == 'h' and value == -32768) or (fmt == 'i' and value == -2147483648)
             row[name] = '' if invalid else value / scale if scale != 1 else value
@@ -1142,8 +1161,8 @@ def write_foot_frames(metadata: dict, out_dir: Path) -> int:
 def convert(path: Path, out_dir: Path) -> None:
     data = path.read_bytes()
     header = parse_header(data)
-    if header["format_version"] not in (23, 24, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54):
-        raise ValueError(f"this converter expects rwlog format v23-v27, v29-v54, got v{header['format_version']}")
+    if header["format_version"] not in (23, 24, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55):
+        raise ValueError(f"this converter expects rwlog format v23-v27, v29-v55, got v{header['format_version']}")
     sample_format = sample_format_for_version(header["format_version"])
     if header["log_sample_size"] != struct.calcsize(sample_format):
         raise ValueError("unexpected sample size")
@@ -1205,7 +1224,7 @@ def convert(path: Path, out_dir: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert supported RWLOG v23-v54 files to CSV, including control and diagnostic metadata events.")
+    parser = argparse.ArgumentParser(description="Convert supported RWLOG v23-v55 files to CSV, including control and diagnostic metadata events.")
     parser.add_argument("rwlog", type=Path)
     parser.add_argument("--out", type=Path, default=Path("converted_dynamic_beta_hold73_tau73_compare"))
     args = parser.parse_args()

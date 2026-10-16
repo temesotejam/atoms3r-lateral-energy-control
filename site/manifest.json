@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.8-lateral-energy-angle-bridge",
+  "version": "1.0.9-lateral-wheel-work",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

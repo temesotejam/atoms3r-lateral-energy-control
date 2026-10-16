@@ -104,6 +104,13 @@ static constexpr uint32_t ROLLER_IO_RETRY_PERIOD_MS = 100UL;
 static constexpr uint8_t ROLLER_IO_RECOVERY_ERROR_LIMIT = 3;
 static constexpr uint16_t LOG_PERIOD_MS = 20;
 static constexpr uint16_t ROLLER_READ_PERIOD_MS = 20;
+// Wheel work observation, including active motor pulses. No controller reads it.
+static constexpr uint32_t WHEEL_SPEED_READ_PERIOD_US = 10000UL;
+static constexpr uint16_t WHEEL_SPEED_READ_TIMEOUT_MS = 2;
+static constexpr float WHEEL_ROTATING_INERTIA_KG_M2 = 2.8e-5f;
+// Provisional mounting sign: raw positive wheel RPM is negative body +gy rotation.
+// Kept separate from motor command polarity; selectable again during analysis.
+static constexpr int8_t WHEEL_SPEED_TO_BODY_SIGN = -1;
 // Actual-current audit only. While a motor command is active, CURRENT_READBACK
 // is sampled on this independent schedule. These samples are observational and
 // cannot select, shorten, extend, or otherwise alter a motor pulse.

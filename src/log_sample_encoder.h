@@ -5,7 +5,7 @@
 
 // Encode one synchronous row from the controller's current status and the
 // single Roller snapshot captured before now_us. No clocks, I/O, allocation,
-// mutable global state, or delayed work here. RWLOG v54 uses 114 bytes per row.
+// mutable global state, or delayed work here. RWLOG v55 uses 151 bytes per row.
 void RW_HOT_CODE encodeLogSample(LogSample& row, const ExperimentStatus& status,
     const RollerTelemetry& roller, uint32_t now_us, uint32_t t_test_ms,
     uint32_t run_start_us, const float* beta_ceilings);

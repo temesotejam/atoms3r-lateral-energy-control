@@ -17,6 +17,7 @@ struct ExperimentStatus {
   uint32_t trial_duration_ms = Config::BETA_SWEEP_TRIAL_DURATION_MS;
   uint32_t calibration_sample_count = 0;
   uint32_t pulse_id = 0;
+  uint32_t body_rate_sample_time_us = 0;
   bool pulse_active = false;
   int8_t pulse_direction = 0;
   int16_t motor_cmd_mA = 0;

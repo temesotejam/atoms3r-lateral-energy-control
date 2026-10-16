@@ -93,6 +93,12 @@ bool Roller485Manager::initializeIoOwner() {
   telemetry_.output_raw = 0;
   telemetry_.requested_current_mA = 0;
   telemetry_.applied_current_mA = 0;
+  telemetry_.applied_command_sequence = ++command_sequence_;
+  telemetry_.applied_command_time_us = micros();
+  // Break any integration interval spanning a reinitialization/recovery.
+  ++telemetry_.speed_sequence;
+  telemetry_.speed_valid = false;
+  last_speed_due_us_ = 0;
 
   // Force one full status read before declaring READY. This makes battery=0 or
   // an inaccessible device a startup failure instead of a later motor surprise.
@@ -229,6 +235,15 @@ void Roller485Manager::update() {
     current_already_fresh = readCurrentFresh(true);
   }
 
+  // An already queued output transition has priority over optional telemetry.
+  if (requested_current_mA_ != command_mA_) return;
+  if (last_speed_due_us_ == 0 ||
+      static_cast<uint32_t>(now_us - last_speed_due_us_) >= Config::WHEEL_SPEED_READ_PERIOD_US) {
+    last_speed_due_us_ = now_us;
+    readSpeedFresh();
+  }
+  if (requested_current_mA_ != command_mA_) return;
+
   const uint32_t period_us = Config::ROLLER_READ_PERIOD_MS * 1000UL;
   if (last_read_due_us_ != 0 && static_cast<uint32_t>(now_us - last_read_due_us_) < period_us) return;
   last_read_due_us_ = now_us;
@@ -242,14 +257,6 @@ void Roller485Manager::update() {
   // If the fast audit already obtained a valid current in this same loop,
   // reuse it instead of immediately reading CURRENT_READBACK a second time.
   bool ok = current_already_fresh || readCurrentFresh(command_mA_ != 0);
-
-  // V46ak: speed is observation-only. Read it only while no current command is
-  // active or pending, so this extra I2C transaction never joins the active
-  // pulse current-audit path. Failure does not change roller_ok or authorize/
-  // block control; the sample is simply marked invalid.
-  if (command_mA_ == 0 && requested_current_mA_ == 0) {
-    readSpeedFresh();
-  }
 
   ok &= readI32(REG_VIN, vin_raw);
   ok &= readU8(REG_MODE, mode);
@@ -336,6 +343,7 @@ bool Roller485Manager::applyCurrentMa(const RollerCommand& cmd) {
 
   command_mA_ = cmd.current_mA;
   telemetry_.applied_command_sequence = cmd.sequence;
+  telemetry_.applied_command_time_us = applied_us;
   telemetry_.mode_raw = Config::ROLLER_MODE_CURRENT;
   telemetry_.output_raw = cmd.current_mA == 0 ? 0 : 1;
   telemetry_.applied_current_mA = cmd.current_mA;
@@ -429,12 +437,21 @@ void Roller485Manager::recordCurrentReadFailure(bool audit_sample) {
 bool Roller485Manager::readSpeedFresh() {
   int32_t speed_raw_x100 = 0;
   ++telemetry_.speed_sequence;
-  if (!readI32(REG_SPEED_READBACK, speed_raw_x100)) {
+  // Bound the extra observation transaction, especially when STOP arrives.
+  // The midpoint is a host-read timestamp, not a calibrated encoder timestamp.
+  Wire.setTimeOut(Config::WHEEL_SPEED_READ_TIMEOUT_MS);
+  telemetry_.speed_read_start_us = micros();
+  const bool ok = readI32(REG_SPEED_READBACK, speed_raw_x100);
+  telemetry_.speed_read_end_us = micros();
+  Wire.setTimeOut(Config::I2C_TIMEOUT_MS);
+  telemetry_.speed_sample_time_us = telemetry_.speed_read_start_us +
+      static_cast<uint32_t>(telemetry_.speed_read_end_us - telemetry_.speed_read_start_us) / 2;
+  if (!ok) {
     recordSpeedReadFailure();
     return false;
   }
   telemetry_.speed_rpm = static_cast<float>(speed_raw_x100) / 100.0f;
-  telemetry_.speed_sample_time_us = micros();
+  telemetry_.speed_raw_x100 = speed_raw_x100;
   telemetry_.speed_valid = true;
   return true;
 }

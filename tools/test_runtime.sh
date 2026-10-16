@@ -2,6 +2,8 @@
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
 node --check web/runtime.js
+node --check site/wheel-work.js
+node tools/test_wheel_work.js
 node --check web/pose_comparison.js
 node tools/test_pose_comparison.js
 node --check site/serial-monitor.js
@@ -58,6 +60,7 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o tools/test_control_wo
 /tmp/test_control_work /tmp/control-work-fixture.json
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-format -ffunction-sections -fdata-sections -Itools/host_v46o tools/test_runtime_logger.cpp src/psram_logger.cpp src/foot_observer.cpp src/foot_angle_estimator.cpp src/white_marker_tracker.cpp src/immutable_export.cpp src/control_work_profile.cpp src/control_latency.cpp -Wl,--gc-sections -o /tmp/test_logger
 /tmp/test_logger /tmp/runtime-fixture.rwlog
+node tools/test_wheel_work.js /tmp/runtime-fixture.rwlog
 node tools/test_runtime_download.js
 python3 tools/test_runtime_fixture.py
 

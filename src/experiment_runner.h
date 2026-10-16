@@ -110,6 +110,8 @@ public:
   const char* presetName() const { return "MEKF_ADOPTED_DYNAMIC_BETA_COMPARE_V46"; }
 
 private:
+  uint32_t last_logged_speed_sequence_ = 0;
+  uint32_t last_logged_command_sequence_ = 0;
   upright_reference::Record upright_reference_;
   upright_reference::Capture upright_reference_capture_;
   float energy_control_autonomous_pending_target_deg_ = NAN;

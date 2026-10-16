@@ -12,9 +12,13 @@ struct RollerTelemetry {
   int16_t actual_current_mA = 0;
   uint16_t battery_mV = 0;
 
-  // V46ak observation-only wheel-state telemetry. Never read by control logic.
+  // Wheel-state telemetry, also sampled during output for work observation.
+  // Existing pre-input prediction adaptation may use RPM; measured work is offline.
   float speed_rpm = NAN;
+  int32_t speed_raw_x100 = INT32_MIN;
   uint32_t speed_sample_time_us = 0;
+  uint32_t speed_read_start_us = 0;
+  uint32_t speed_read_end_us = 0;
   uint32_t speed_sequence = 0;
   uint32_t speed_read_failure_count = 0;
   bool speed_valid = false;
@@ -45,6 +49,7 @@ struct RollerTelemetry {
   uint32_t max_command_latency_us = 0;
   uint32_t command_sequence = 0;
   uint32_t applied_command_sequence = 0;
+  uint32_t applied_command_time_us = 0;
 };
 
 class Roller485Manager {
@@ -108,6 +113,7 @@ private:
 
   uint32_t last_read_due_us_ = 0;
   uint32_t last_fast_current_due_us_ = 0;
+  uint32_t last_speed_due_us_ = 0;
   int16_t command_mA_ = 0;
   int16_t current_audit_previous_mA_ = 0;
   uint32_t current_audit_previous_sample_us_ = 0;

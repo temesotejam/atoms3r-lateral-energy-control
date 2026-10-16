@@ -247,6 +247,21 @@ int main() {
   status.mekf_attitude.valid = false;
   encodeLogSample(row, status, roller, 1234, 0, 0, ceilings);
   assert(row.roll_mekf_abs_cdeg == LOG_NAN_I16);
+  roller.speed_rpm=-123.45f;roller.speed_raw_x100=-12345;roller.speed_read_start_us=0xfffffff0U;
+  roller.speed_sample_time_us=0;roller.speed_read_end_us=16;
+  roller.speed_sequence=42;roller.speed_valid=true;
+  roller.applied_current_mA=-300;roller.applied_command_sequence=7;
+  roller.applied_command_time_us=100;
+  status.physical_roll_rate_dps=60.0f;status.body_rate_sample_time_us=200;
+  encodeLogSample(row,status,roller,1234,0,0,ceilings);
+  assert(row.roller_speed_crpm==-12345 && row.roller_speed_valid==1);
+  assert(row.roller_speed_read_start_us==0xfffffff0U && row.roller_speed_read_end_us==16);
+  assert(row.roller_speed_sequence==42 && row.physical_roll_rate_cdps==6000);
+  assert(row.body_rate_sample_time_us==200 && row.roller_applied_current_mA==-300);
+  assert(row.roller_applied_command_sequence==7 && row.roller_applied_command_time_us==100);
+  roller.speed_rpm=NAN;roller.speed_valid=false;
+  encodeLogSample(row,status,roller,1234,0,0,ceilings);
+  assert(row.roller_speed_crpm==LOG_NAN_I32 && row.roller_speed_valid==0);
   std::cout << "Packed RWLOG rows equal frozen 0.47.12: " << checked
             << " cases, all retained fields; states/sync/wrap/nonfinite/saturation preserved PASS\n";
 }

@@ -4,6 +4,22 @@ let previewRunning = false, previewEvidence = null;
 let poseRunning = false, poseCancelled = false, poseSession = null, poseSaved = false;
 let latest = null, lastSeen = 0, refreshInFlight = false, commandInFlight = false;
 let transferRunning = false, cancelTransfer = false, completedFile = null, completedName = '', completedFoot = null;
+let wheelWorkReport = null;
+function calculateWheelWork() {
+  wheelWorkReport = null;
+  try {
+    if (!completedFile) throw Error('先にRWLOGを取得してください。');
+    wheelWorkReport = WheelWorkAnalyzer.fromBytes(completedFile, {
+      inertia:Number($('work-inertia').value), sign:Number($('work-sign').value)});
+    $('work-result').textContent = completedName + '\n' + WheelWorkAnalyzer.describe(wheelWorkReport);
+  } catch (error) { $('work-result').textContent = error.message; }
+}
+function saveWheelWorkCsv(kind) {
+  if (!wheelWorkReport) { $('work-result').textContent = '先に仕事を計算してください。'; return; }
+  const csv = WheelWorkAnalyzer.csv(wheelWorkReport[kind], wheelWorkReport);
+  saveBlob(new Blob(['\ufeff', csv], {type:'text/csv;charset=utf-8'}),
+    completedName.replace(/\.rwlog$/, `_wheel_work_${kind}.csv`));
+}
 let offlineMode = false, offlineUntil = 0;
 let offlineGeneration = 0;
 const offlineKey = 'freefoot-offline-run-until';
@@ -457,6 +473,7 @@ async function download() {
     completedFoot = expandFootTable(metadata.foot_frames ?? null); completedFile = file; completedName = m.filename;
     saveBlob(new Blob([file], {type: 'application/octet-stream'}), m.filename);
     $('transfer').textContent = `CRC検証完了 · ${m.bytes} bytes · 足角度 ${completedFoot?.length ?? 0}行`;
+    calculateWheelWork();
   } catch (error) {
     $('transfer').textContent = `${error.message}（保存済みの部分は保持しています）`;
   } finally { transferRunning = false; controls(); }
@@ -608,6 +625,9 @@ if ($('usb-diag')) $('usb-diag').onchange = async () => {
 $('clear').onclick = () => command('/clear');
 $('download').onclick = download;
 $('cancel').onclick = () => { cancelTransfer = true; };
+$('work-calculate').onclick = calculateWheelWork;
+$('work-pulses').onclick = () => saveWheelWorkCsv('pulses');
+$('work-intervals').onclick = () => saveWheelWorkCsv('intervals');
 $('csv').onclick = () => saveBlob(new Blob(['\ufeff', footCsv(completedFoot)], {type: 'text/csv;charset=utf-8'}), completedName.replace(/\.rwlog$/, '_foot.csv'));
 $('preview').onclick = capturePreview;
 $('preview-save').onclick = () => saveBlob(new Blob([JSON.stringify(previewEvidence, null, 2)], {type:'application/json'}), `freefoot-vision-diagnostics-${previewEvidence.sequence}.json`);

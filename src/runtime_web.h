@@ -48,6 +48,12 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <section class="card"><h2>測定ログ</h2><p>測定終了後にログを確定します。中断した場合は「取得・再開」で続きから取得できます。画面を再読み込みしても、端末に保存済みの部分を再利用します。</p>
 <button id="download" disabled>RWLOGを取得・再開</button><button id="cancel" disabled>取得を一時停止</button><button id="csv" disabled>足角度CSVを保存</button>
 <progress id="progress" value="0" max="1"></progress><div id="transfer" role="status">測定待ち</div><p class="muted">RWLOGにIMU・制御イベント・電流・LED同期・足角度をまとめて保存します。USB診断ログは書き込みページから保存できます。</p></section>
+<section class="card"><h2>ホイールが機体に与えた仕事</h2>
+<p>RWLOG取得後、入力中の回転速度と機体の角速度からブラウザで計算します。正なら加振、負なら制動です。慣性と軸の符号は暫定値です。速度の読み値の遅れは補正していません。</p>
+<p><label>慣性モーメント［kg·m²］ <input id="work-inertia" type="number" value="0.000028" min="0.000000001" step="any"></label>
+<label>生の正回転と機体の正方向 <select id="work-sign"><option value="-1" selected>逆向き（暫定）</option><option value="1">同じ向き</option></select></label></p>
+<button id="work-calculate">取得したRWLOGから再計算</button><button id="work-pulses">入力別CSVを保存</button><button id="work-intervals">全区間CSVを保存</button>
+<pre id="work-result" role="status">RWLOGを取得すると計算結果を表示します。</pre></section>
 <details class="card"><summary>診断情報</summary><label><input type="checkbox" id="usb-diag">USB診断を有効にする</label><p class="muted">起動ごとにOFFです。運転中の変更はUSB側から行えます。メモリ・スタックの調査は有効時の待機中だけ行い、診断JSONには測定時刻付きで保持します。未測定のメモリ値は0です。</p><p class="muted">MEKFのroll・pitch、姿勢確認用クォータニオン、有効性・更新時刻を保存します。方位には独立したジャイロ推定を使用します。</p><button id="diagnostics">診断JSONを保存</button><pre id="diagnostic-view">—</pre></details>
 <script>
 'use strict';
@@ -149,12 +155,227 @@ const PoseComparison = (() => {
 })();
 if (typeof module !== 'undefined') module.exports = PoseComparison;
 
+/* Offline reaction-couple work. The same implementation runs on the device's
+ * browser page, the public file reader, and in Node tests/CLI. No motor control. */
+(function(root) {
+  'use strict';
+  const PI = Math.PI, DEG = PI / 180, RPM = 2 * PI / 60;
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (const b of bytes) {
+      c ^= b;
+      for (let j = 0; j < 8; ++j) c = (c >>> 1) ^ ((c & 1) ? 0xedb88320 : 0);
+    }
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function parse(bytes) {
+    if (!(bytes instanceof Uint8Array) || bytes.length < 114) throw Error('RWLOGが短すぎます');
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (new TextDecoder().decode(bytes.subarray(0, 7)) !== 'RWLOG01' || v.getUint16(10, true) !== 110)
+      throw Error('RWLOGヘッダーが一致しません');
+    if (v.getUint16(8, true) !== 55 || v.getUint16(40, true) !== 151)
+      throw Error('入力中の回転速度を記録したRWLOG v55が必要です。旧ログからは計算できません。');
+    const count = v.getUint32(28, true), offset = v.getUint32(62, true);
+    const crcOffset = v.getUint32(74, true), metaLength = v.getUint32(24, true);
+    if (crcOffset + 4 !== bytes.length || offset !== 110 + metaLength ||
+        offset + count * 151 > crcOffset || offset + count * 151 !== v.getUint32(66, true))
+      throw Error('RWLOGの長さ・オフセットが不正です');
+    if (!(v.getUint32(58, true) & 1) || crc32(bytes.subarray(0, crcOffset)) !== v.getUint32(crcOffset, true))
+      throw Error('RWLOGのCRCが一致しません');
+    const metadata = JSON.parse(new TextDecoder().decode(bytes.subarray(110, offset)));
+    const origin = v.getUint32(16, true), rows = [];
+    const time = x => (x - origin) | 0; // signed modular difference; runs are <35 min
+    let previousTime = 0;
+    for (let i = 0; i < count; ++i) {
+      const p = offset + i * 151, u32 = j => v.getUint32(p + j, true);
+      const rate = v.getInt16(p + 135, true), speed = v.getInt32(p + 114, true);
+      const bodyTime = time(u32(137)), speedTime = time(u32(122));
+      // The legacy measurement-boundary marker has log_time_us=0. Its sensor
+      // clocks remain continuous; do not mistake that marker for a clock reset.
+      const rowTime = Math.max(previousTime, u32(0), bodyTime, speedTime);
+      previousTime = rowTime;
+      rows.push({t:rowTime, state:v.getUint8(p + 8), pulse_id:u32(9),
+        body_t:bodyTime, body_stamp_valid:u32(137) !== 0,
+        body_rate_dps:rate === -32768 ? NaN : rate / 100,
+        speed_t:speedTime, speed_start:time(u32(118)), speed_end:time(u32(126)),
+        speed_seq:u32(130), speed_valid:v.getUint8(p + 134) === 1,
+        speed_rpm:speed === -2147483648 ? NaN : speed / 100,
+        command_seq:u32(143), command_t:time(u32(147)),
+        applied_mA:v.getInt16(p + 141, true)});
+    }
+    return {rows, metadata};
+  }
+  function analyze(rows, metadata = {}, options = {}) {
+    const inertia = options.inertia ?? metadata.wheel_work_inertia_kg_m2 ?? 2.8e-5;
+    const sign = options.sign ?? metadata.wheel_speed_to_body_sign ?? -1;
+    if (!Number.isFinite(inertia) || inertia <= 0 || (sign !== 1 && sign !== -1))
+      throw Error('慣性モーメントは正の数、軸の符号は+1または−1にしてください');
+    const maxSpeedGap = 30000, maxBodyGap = 25000, maxReadTime = 3000;
+    const gyros = new Map(), wheels = [], commands = [], states = [];
+    let lastSpeed, lastCommand, lastState;
+    for (const r of rows) {
+      if (r.body_stamp_valid && Number.isFinite(r.body_rate_dps) &&
+          r.body_t <= r.t && r.t - r.body_t <= 10000)
+        gyros.set(r.body_t, r.body_rate_dps * DEG);
+      if (r.speed_seq !== lastSpeed && r.speed_seq !== 0) {
+        wheels.push({t:r.speed_valid ? r.speed_t : (r.speed_start + r.speed_end)/2,
+          rpm:r.speed_rpm, seq:r.speed_seq, valid:r.speed_valid,
+          duration:r.speed_end-r.speed_start});
+        lastSpeed = r.speed_seq;
+      }
+      if (r.command_seq !== lastCommand && r.command_seq !== 0) {
+        commands.push({t:r.command_t, seq:r.command_seq, current:r.applied_mA, pulse_id:r.pulse_id});
+        lastCommand = r.command_seq;
+      }
+      if (r.state !== lastState) { states.push({t:r.t, state:r.state}); lastState = r.state; }
+    }
+    const body = [...gyros].sort((a,b) => a[0]-b[0]);
+    commands.sort((a,b) => a.t-b.t);
+    function bodyAt(t) {
+      let lo=0, hi=body.length;
+      while (lo<hi) {const m=(lo+hi)>>>1; if (body[m][0]<t) lo=m+1; else hi=m;}
+      if (lo<body.length && body[lo][0]===t) return body[lo][1];
+      if (!lo || lo===body.length) return null; // no extrapolation
+      const a=body[lo-1], b=body[lo];
+      if (b[0]-a[0]>maxBodyGap) return null;
+      return a[1]+(b[1]-a[1])*(t-a[0])/(b[0]-a[0]);
+    }
+    const endTime = rows.length ? rows[rows.length-1].t : 0;
+    const pulses=[];
+    for (let i=0; i<commands.length; ++i) {
+      const c=commands[i];
+      if (!c.current) continue;
+      const next=commands[i+1];
+      pulses.push({index:pulses.length+1, pulse_id:c.pulse_id, command_sequence:c.seq,
+        start_us:c.t, end_us:next ? next.t : endTime, current_mA:c.current,
+        end_observed:!!next, observed_net_j:0, added_j:0, removed_j:0, covered_us:0,
+        boundary_interpolated:false});
+    }
+    const intervals=[], rejected={};
+    const total={observed_net_j:0, added_j:0, removed_j:0, covered_us:0, missing_us:0};
+    const coast={observed_net_j:0, added_j:0, removed_j:0, covered_us:0};
+    const active={observed_net_j:0, added_j:0, removed_j:0, covered_us:0};
+    function stateAt(t) {
+      let state=0;
+      for (const s of states) {if (s.t>t) break; state=s.state;}
+      return state;
+    }
+    function add(target,w,dt) {
+      target.observed_net_j+=w; target.added_j+=Math.max(0,w);
+      target.removed_j+=Math.max(0,-w); target.covered_us+=dt;
+    }
+    for (let i=1; i<wheels.length; ++i) {
+      const a=wheels[i-1], b=wheels[i], dt=b.t-a.t;
+      const oa=bodyAt(a.t), ob=bodyAt(b.t);
+      let reason='';
+      if (dt<=0) reason='nonmonotonic_speed_time';
+      else if (!a.valid || !b.valid || !Number.isFinite(a.rpm) || !Number.isFinite(b.rpm)) reason='speed_read_invalid';
+      else if (((b.seq-a.seq)>>>0)!==1) reason='speed_sequence_gap';
+      else if (dt>maxSpeedGap) reason='speed_time_gap';
+      else if (a.duration<0 || b.duration<0 || a.duration>maxReadTime || b.duration>maxReadTime) reason='speed_read_too_long';
+      else if (oa===null || ob===null) reason='body_rate_not_bracketed';
+      const cuts=[a.t,b.t];
+      for (const c of commands) if(c.t>a.t && c.t<b.t) cuts.push(c.t);
+      for (const s of states) if(s.t>a.t && s.t<b.t) cuts.push(s.t);
+      if (!reason && oa*ob<0) cuts.push(a.t+dt*(-oa)/(ob-oa));
+      cuts.sort((x,y)=>x-y);
+      const wa=sign*RPM*a.rpm+oa, wb=sign*RPM*b.rpm+ob;
+      if (reason) rejected[reason]=(rejected[reason]||0)+1;
+      for (let j=1; j<cuts.length; ++j) {
+        const l=cuts[j-1], r=cuts[j];
+        if (r<=l) continue;
+        const midpoint=(l+r)/2, measuring=stateAt(midpoint)===3;
+        const pulse=pulses.find(p=>midpoint>=p.start_us && midpoint<p.end_us);
+        const fraction=(r-l)/dt;
+        const omegaMean = reason ? null : oa+(ob-oa)*((midpoint-a.t)/dt);
+        const delta = reason ? null : (wb-wa)*fraction;
+        const w = reason ? null : -inertia*omegaMean*delta;
+        intervals.push({start_us:l,end_us:r,measurement:measuring,
+          pulse_index:pulse?.index ?? 0,command_current_mA:pulse?.current_mA ?? 0,
+          valid:!reason,reason,body_mean_rad_s:omegaMean,wheel_abs_delta_rad_s:delta,
+          body_torque_nm:reason ? null : -inertia*delta/((r-l)*1e-6),
+          work_j:w,boundary_interpolated:l!==a.t || r!==b.t});
+        if (measuring) {
+          if (reason) total.missing_us+=r-l;
+          else { add(total,w,r-l); add(pulse ? active : coast,w,r-l); }
+        }
+        if (pulse && !reason) {
+          add(pulse,w,r-l);
+          pulse.boundary_interpolated ||= l!==a.t || r!==b.t;
+        }
+      }
+    }
+    for (const p of pulses) {
+      const duration=p.end_us-p.start_us;
+      p.coverage=duration>0 ? Math.min(1,p.covered_us/duration) : 0;
+      p.complete=p.end_observed && p.coverage>=0.999999;
+      if (!p.covered_us) p.observed_net_j=p.added_j=p.removed_j=null;
+    }
+    // Include uncovered measurement edges, not only holes between wheel reads.
+    let measurementUs=0;
+    for (let i=0;i<states.length;++i)
+      if(states[i].state===3) measurementUs+=Math.max(0,(states[i+1]?.t ?? endTime)-states[i].t);
+    total.missing_us=Math.max(total.missing_us,measurementUs-total.covered_us,0);
+    total.coverage=measurementUs>0 ? Math.min(1,total.covered_us/measurementUs) : 0;
+    for (const result of [total,active,coast])
+      if (!result.covered_us) result.observed_net_j=result.added_j=result.removed_j=null;
+    return {revision:'reaction_couple_work_v1_20261016',inertia_kg_m2:inertia,
+      wheel_speed_to_body_sign:sign,provisional:true,readback_delay_compensated:false,
+      body_energy_definition:'reaction_couple_work_excluding_rotor_absolute_axial_spin',
+      measurement:total,active,coast,pulses,intervals,rejected,
+      speed_attempts:wheels.length,body_samples:body.length,
+      limits:{max_speed_gap_us:maxSpeedGap,max_body_bracket_gap_us:maxBodyGap,max_read_us:maxReadTime}};
+  }
+  function fromBytes(bytes,options={}) {
+    const {rows,metadata}=parse(bytes); return analyze(rows,metadata,options);
+  }
+  function csv(rows, report) {
+    if (!rows.length) return '';
+    if (report) rows=rows.map(r=>({inertia_kg_m2:report.inertia_kg_m2,
+      wheel_speed_to_body_sign:report.wheel_speed_to_body_sign,provisional:true,...r}));
+    const keys=Object.keys(rows[0]);
+    const cell=v=>v==null?'': '"'+String(v).replace(/"/g,'""')+'"';
+    return keys.map(cell).join(',')+'\r\n'+rows.map(r=>keys.map(k=>cell(r[k])).join(',')).join('\r\n');
+  }
+  function describe(r) {
+    const mj=x=>x==null?'算出不可':(x*1000).toFixed(4)+' mJ';
+    const lines=[`暫定の仕事：J=${r.inertia_kg_m2} kg·m²、軸の符号=${r.wheel_speed_to_body_sign}`,
+      `測定中の観測できた正味の仕事：${mj(r.measurement.observed_net_j)}`,
+      `加えた分 ${mj(r.measurement.added_j)} / 取り除いた分 ${mj(r.measurement.removed_j)}`,
+      `指令適用中 ${mj(r.active.observed_net_j)} / 入力を切った区間 ${mj(r.coast.observed_net_j)}`,
+      `測定区間の計算対象 ${(r.measurement.coverage*100).toFixed(1)}% / 欠測 ${(r.measurement.missing_us/1000).toFixed(1)} ms`,
+      '入力後の区間も軸受などの反作用を含む仕事です。次のピークに残るエネルギーとは異なります。',
+      '回転速度の読み値の遅れは未補正です。指令の境界は線形補間しています。',
+      '', '各入力（指令を書き込めた時刻から、次の指令を書き込めた時刻まで）：'];
+    for(const p of r.pulses) lines.push(`${p.index}. ${p.current_mA} mA / ${((p.end_us-p.start_us)/1000).toFixed(1)} ms：${mj(p.observed_net_j)} / 計算対象 ${(p.coverage*100).toFixed(1)}%${p.complete?'':'（区間の一部が未取得）'}`);
+    return lines.join('\n');
+  }
+  root.WheelWorkAnalyzer={parse,analyze,fromBytes,csv,describe};
+  if (typeof module!=='undefined') module.exports=root.WheelWorkAnalyzer;
+})(typeof globalThis!=='undefined' ? globalThis : this);
+
 'use strict';
 const $ = id => document.getElementById(id);
 let previewRunning = false, previewEvidence = null;
 let poseRunning = false, poseCancelled = false, poseSession = null, poseSaved = false;
 let latest = null, lastSeen = 0, refreshInFlight = false, commandInFlight = false;
 let transferRunning = false, cancelTransfer = false, completedFile = null, completedName = '', completedFoot = null;
+let wheelWorkReport = null;
+function calculateWheelWork() {
+  wheelWorkReport = null;
+  try {
+    if (!completedFile) throw Error('先にRWLOGを取得してください。');
+    wheelWorkReport = WheelWorkAnalyzer.fromBytes(completedFile, {
+      inertia:Number($('work-inertia').value), sign:Number($('work-sign').value)});
+    $('work-result').textContent = completedName + '\n' + WheelWorkAnalyzer.describe(wheelWorkReport);
+  } catch (error) { $('work-result').textContent = error.message; }
+}
+function saveWheelWorkCsv(kind) {
+  if (!wheelWorkReport) { $('work-result').textContent = '先に仕事を計算してください。'; return; }
+  const csv = WheelWorkAnalyzer.csv(wheelWorkReport[kind], wheelWorkReport);
+  saveBlob(new Blob(['\ufeff', csv], {type:'text/csv;charset=utf-8'}),
+    completedName.replace(/\.rwlog$/, `_wheel_work_${kind}.csv`));
+}
 let offlineMode = false, offlineUntil = 0;
 let offlineGeneration = 0;
 const offlineKey = 'freefoot-offline-run-until';
@@ -608,6 +829,7 @@ async function download() {
     completedFoot = expandFootTable(metadata.foot_frames ?? null); completedFile = file; completedName = m.filename;
     saveBlob(new Blob([file], {type: 'application/octet-stream'}), m.filename);
     $('transfer').textContent = `CRC検証完了 · ${m.bytes} bytes · 足角度 ${completedFoot?.length ?? 0}行`;
+    calculateWheelWork();
   } catch (error) {
     $('transfer').textContent = `${error.message}（保存済みの部分は保持しています）`;
   } finally { transferRunning = false; controls(); }
@@ -759,6 +981,9 @@ if ($('usb-diag')) $('usb-diag').onchange = async () => {
 $('clear').onclick = () => command('/clear');
 $('download').onclick = download;
 $('cancel').onclick = () => { cancelTransfer = true; };
+$('work-calculate').onclick = calculateWheelWork;
+$('work-pulses').onclick = () => saveWheelWorkCsv('pulses');
+$('work-intervals').onclick = () => saveWheelWorkCsv('intervals');
 $('csv').onclick = () => saveBlob(new Blob(['\ufeff', footCsv(completedFoot)], {type: 'text/csv;charset=utf-8'}), completedName.replace(/\.rwlog$/, '_foot.csv'));
 $('preview').onclick = capturePreview;
 $('preview-save').onclick = () => saveBlob(new Blob([JSON.stringify(previewEvidence, null, 2)], {type:'application/json'}), `freefoot-vision-diagnostics-${previewEvidence.sequence}.json`);
