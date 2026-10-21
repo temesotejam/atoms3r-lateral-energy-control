@@ -33,8 +33,11 @@ vm.runInContext(code,context);
   await vm.runInContext('refresh()',context);
   assert.strictEqual(element('connection').textContent,'接続中');
   assert.strictEqual(element('start').disabled,false);
+  assert.strictEqual(element('probe-batch').disabled,false);
   assert(!code.includes('steering-status'));
   const html=fs.readFileSync('web/index.html','utf8');
+  assert.match(html,/id="probe-batch"/);
+  assert.doesNotMatch(html,/id="probe-(0|15|30)"/);
   assert.match(html,/ZEROクロスで必要な入力時間を計算/);
   assert.doesNotMatch(html,/±0.2|応答確認|ジャイロ方位/);
   assert.strictEqual(element('right').textContent,'8.00°'); // Tilting does not invalidate a locked zero.

@@ -11,6 +11,12 @@
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
 <p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
+<div id="negative-probe-packages">
+  <h2>固定脚・負側の仕事を調べる一括実験</h2>
+  <p class="muted">脚の前後移動を固定して測ります。目標8°・300 mA・30秒を自動設定し、負側の0・10・15・20・25 msを5条件ずつ順序を変えて試します。正側の制御は従来どおりです。毎回RWLOGを保存し、「ログを消去・次の測定へ」を押してから次の回を始めてください。</p>
+  <button id="probe-batch" type="button" disabled>負側5条件の一括実験を開始</button>
+</div>
+<details><summary>通常の左右揺動制御を測定する（15秒）</summary>
 <p><label for="target">目標とする左右の最大角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
 <p class="muted" id="target-help">ZEROクロスの角速度から次の最大角度を予測し、選んだ目標に近づくよう電流の入力時間を0〜100 msで決めます。</p>
 <p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
@@ -25,20 +31,12 @@
 <p><label for="peak-adaptation">予測誤差の学習補正 </label><select id="peak-adaptation" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="0" selected>使用しない（式の比較）</option><option value="1">使用する</option></select></p>
 <p class="muted">まず学習補正なし、目標8°・300 mAで式を比較してください。次ピーク角、入力時間、実電流とホイール速度をRWLOGで確認します。</p>
 <p class="muted" id="run-adaptation" role="status">学習補正の設定は測定開始時に確定します。</p>
-<div id="negative-probe-packages">
-  <p><strong>固定脚・負側仕事応答の測定パッケージ</strong></p>
-  <p class="muted">3つとも目標8°、指令300 mA、正側は旧式換算、負側は指定した固定時間のRAW +300 mA、学習補正なし、15秒記録です。各ボタンを1回押すだけで条件を設定して測定します。測定ごとにRWLOGを保存し、ログを消去してから次を開始してください。</p>
-  <button id="probe-0" type="button" disabled>基準：負側0 msを測定</button>
-  <button id="probe-15" type="button" disabled>試験：負側15 msを測定</button>
-  <button id="probe-30" type="button" disabled>試験：負側30 msを測定</button>
-  <p class="muted">一括測定は目標8°、指令300 mA、正側は従来の制御です。負側で0・10・15・20・25 msを順序を変えながら約30秒記録します。機体と脚を固定し、各回のログを保存してから次を開始してください。入力前の状態も記録し、仕事の計算はPCで行います。</p>
-  <button id="probe-batch" type="button" disabled>負側5条件の一括測定を開始</button>
-</div>
 <input id="input-percent" type="hidden" value="0">
 <p class="muted" id="run-percent" role="status">通常入力はZEROクロスで行います。</p>
-<p class="muted">yaw関連機能は停止中です。</p>
-<button id="start" disabled>15秒測定を開始</button><button id="reconnect" style="display:none">終了・Web復帰を確認</button><button id="clear" disabled>ログを消去・次の測定へ</button>
-<div id="message" role="status"></div><p class="muted">開始・終了のLED同期はそれぞれ5秒。始動キックの後、MEKFの左右角と角速度でZEROクロスを検出します。必要なエネルギーから入力時間を求めます。</p></section>
+<button id="start" disabled>通常制御の15秒測定を開始</button>
+</details>
+<p><button id="reconnect" style="display:none">終了・Web復帰を確認</button><button id="clear" disabled>ログを消去・次の測定へ</button></p>
+<div id="message" role="status"></div><p class="muted">開始・終了のLED同期はそれぞれ5秒です。始動キックの後、MEKFの左右角と角速度でZEROクロスを検出します。</p></section>
 <p class="muted">運転中もWi-Fiを維持し、Web更新を休止して本体で制御・観測・記録します。前後90°以上の傾斜で停止します。横倒しは姿勢STOPの対象にしません。姿勢を戻しても再始動しません。Wi-Fi接続と画面を保ったままお待ちください。終了後にWeb表示が復帰したらログを保存してください。Web復帰だけではログは消えません。本体の電源断・再起動では未取得のログが失われます。</p>
 <section class="card"><h2>左右足角度 · 胴体に対する相対角</h2><div class="grid"><div><div class="label">右足 · 上段マーカー A</div><div class="value" id="right">—</div></div><div><div class="label">左足 · 下段マーカー B</div><div class="value" id="left">—</div></div><div><div class="label">カメラ実測 / 目標</div><div class="value" style="font-size:1.5rem" id="fps">— / 15 fps</div></div></div>
 <canvas id="markers" width="640" height="120" aria-label="マーカー検出位置。上段が右足、下段が左足。"></canvas>

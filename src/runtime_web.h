@@ -13,6 +13,12 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
 <p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
+<div id="negative-probe-packages">
+  <h2>固定脚・負側の仕事を調べる一括実験</h2>
+  <p class="muted">脚の前後移動を固定して測ります。目標8°・300 mA・30秒を自動設定し、負側の0・10・15・20・25 msを5条件ずつ順序を変えて試します。正側の制御は従来どおりです。毎回RWLOGを保存し、「ログを消去・次の測定へ」を押してから次の回を始めてください。</p>
+  <button id="probe-batch" type="button" disabled>負側5条件の一括実験を開始</button>
+</div>
+<details><summary>通常の左右揺動制御を測定する（15秒）</summary>
 <p><label for="target">目標とする左右の最大角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
 <p class="muted" id="target-help">ZEROクロスの角速度から次の最大角度を予測し、選んだ目標に近づくよう電流の入力時間を0〜100 msで決めます。</p>
 <p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
@@ -27,20 +33,12 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p><label for="peak-adaptation">予測誤差の学習補正 </label><select id="peak-adaptation" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="0" selected>使用しない（式の比較）</option><option value="1">使用する</option></select></p>
 <p class="muted">まず学習補正なし、目標8°・300 mAで式を比較してください。次ピーク角、入力時間、実電流とホイール速度をRWLOGで確認します。</p>
 <p class="muted" id="run-adaptation" role="status">学習補正の設定は測定開始時に確定します。</p>
-<div id="negative-probe-packages">
-  <p><strong>固定脚・負側仕事応答の測定パッケージ</strong></p>
-  <p class="muted">3つとも目標8°、指令300 mA、正側は旧式換算、負側は指定した固定時間のRAW +300 mA、学習補正なし、15秒記録です。各ボタンを1回押すだけで条件を設定して測定します。測定ごとにRWLOGを保存し、ログを消去してから次を開始してください。</p>
-  <button id="probe-0" type="button" disabled>基準：負側0 msを測定</button>
-  <button id="probe-15" type="button" disabled>試験：負側15 msを測定</button>
-  <button id="probe-30" type="button" disabled>試験：負側30 msを測定</button>
-  <p class="muted">一括測定は目標8°、指令300 mA、正側は従来の制御です。負側で0・10・15・20・25 msを順序を変えながら約30秒記録します。機体と脚を固定し、各回のログを保存してから次を開始してください。入力前の状態も記録し、仕事の計算はPCで行います。</p>
-  <button id="probe-batch" type="button" disabled>負側5条件の一括測定を開始</button>
-</div>
 <input id="input-percent" type="hidden" value="0">
 <p class="muted" id="run-percent" role="status">通常入力はZEROクロスで行います。</p>
-<p class="muted">yaw関連機能は停止中です。</p>
-<button id="start" disabled>15秒測定を開始</button><button id="reconnect" style="display:none">終了・Web復帰を確認</button><button id="clear" disabled>ログを消去・次の測定へ</button>
-<div id="message" role="status"></div><p class="muted">開始・終了のLED同期はそれぞれ5秒。始動キックの後、MEKFの左右角と角速度でZEROクロスを検出します。必要なエネルギーから入力時間を求めます。</p></section>
+<button id="start" disabled>通常制御の15秒測定を開始</button>
+</details>
+<p><button id="reconnect" style="display:none">終了・Web復帰を確認</button><button id="clear" disabled>ログを消去・次の測定へ</button></p>
+<div id="message" role="status"></div><p class="muted">開始・終了のLED同期はそれぞれ5秒です。始動キックの後、MEKFの左右角と角速度でZEROクロスを検出します。</p></section>
 <p class="muted">運転中もWi-Fiを維持し、Web更新を休止して本体で制御・観測・記録します。前後90°以上の傾斜で停止します。横倒しは姿勢STOPの対象にしません。姿勢を戻しても再始動しません。Wi-Fi接続と画面を保ったままお待ちください。終了後にWeb表示が復帰したらログを保存してください。Web復帰だけではログは消えません。本体の電源断・再起動では未取得のログが失われます。</p>
 <section class="card"><h2>左右足角度 · 胴体に対する相対角</h2><div class="grid"><div><div class="label">右足 · 上段マーカー A</div><div class="value" id="right">—</div></div><div><div class="label">左足 · 下段マーカー B</div><div class="value" id="left">—</div></div><div><div class="label">カメラ実測 / 目標</div><div class="value" style="font-size:1.5rem" id="fps">— / 15 fps</div></div></div>
 <canvas id="markers" width="640" height="120" aria-label="マーカー検出位置。上段が右足、下段が左足。"></canvas>
@@ -485,7 +483,6 @@ let angleInitialized = false, angleBootId = null, requestedInputPercent = null;
 let currentInitialized = false, currentBootId = null, requestedInputCurrentMa = null;
 let brakeInitialized = false, brakeBootId = null, requestedBrakeMaxMs = null;
 const brakeChoices = [0, 20, 50];
-const probeChoices = [0, 15, 30];
 const negativeWidthChoices = [0, 15, 20, 25, 30, 50];
 let adaptationInitialized = false, adaptationBootId = null, requestedAdaptation = null;
 let modelInitialized = false, modelBootId = null, requestedEnergyModel = null;
@@ -517,7 +514,6 @@ function controls() {
   const busy = commandInFlight || previewRunning || poseRunning || !!latest?.command?.pending;
   const building = latest?.export_phase === 'building';
   $('start').disabled = !fresh || busy || transferRunning || !latest.ready || !latest.upright_reference?.valid || latest.running || latest.export_phase !== 'empty';
-  for (const width of probeChoices) $('probe-' + width).disabled = $('start').disabled;
   $('probe-batch').disabled = $('start').disabled;
   $('upright-reference-capture').disabled = !fresh || busy || transferRunning || building ||
     !latest.controller_fresh || !latest.imu_ok || latest.running || latest.pulse_active || latest.motor_mA !== 0 ||
@@ -567,14 +563,11 @@ function renderOffline() {
     : `開始要求：ZEROクロスで${requestedInputCurrentMa} mA、入力時間はエネルギーから計算`;
   $('run-brake').textContent = requestedBrakeMaxMs === null
     ? '負側ブレーキ上限はWeb復帰後に確認します。'
-    : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：負側0・10・15・20・25 msの一括測定'
-    : requestedEnergyModel === 'bridge_probe'
-      ? `開始要求：負側固定入力 ${requestedBrakeMaxMs} ms`
+    : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：負側5条件を順序を変えて測定'
       : `開始要求：負側ブレーキ上限 ${requestedBrakeMaxMs} ms`;
   $('run-model').textContent = requestedEnergyModel === 'bridge'
     ? '開始要求：旧到達角予測をエネルギーに換算（逆入力なし）'
-    : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：固定脚・負側5条件の一括試験'
-    : requestedEnergyModel === 'bridge_probe' ? '開始要求：固定脚・負側仕事応答試験'
+    : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：固定脚・負側5条件の一括実験'
     : requestedEnergyModel === 'quadratic' ? '開始要求：二次エネルギー式' : '予測式はWeb復帰後に確認します。';
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
   $('run-adaptation').textContent = requestedAdaptation === null
@@ -667,13 +660,11 @@ function render(s) {
     ? `今回の目標角度：${format(s.target_deg, 0)}°`
     : '目標角度は測定開始時に確定します。';
   $('run-brake').textContent = s.running || terminal
-    ? s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを順に切替'
-      : s.energy_model === 'bridge_probe' ? `今回の負側固定入力：${s.brake_max_ms} ms`
+    ? s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを5条件ずつ順序を変更'
       : s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';
   $('run-model').textContent = s.running || terminal
-    ? s.energy_model === 'bridge_probe_batch' ? '今回の方式：正側は旧式換算、負側は5条件の一括試験'
-      : s.energy_model === 'bridge_probe' ? '今回の方式：正側は旧式換算、負側は固定入力試験'
+    ? s.energy_model === 'bridge_probe_batch' ? '今回の方式：正側は従来制御、負側は5条件の一括実験'
       : s.energy_model === 'bridge' ? '今回の予測式：旧到達角予測をエネルギーに換算' : '今回の予測式：二次エネルギー式'
     : '予測式は測定開始時に確定します。';
   $('right').textContent = f.right_valid && (!stale || terminal) ? format(f.right_deg) + '°' : '—';
@@ -755,34 +746,31 @@ async function poll() {
   catch (error) { $('connection').textContent = '画面更新のエラー（自動再試行）'; }
   finally { setTimeout(poll, 800); }
 }
-async function startOfflineRun(probeMs = null) {
+async function startOfflineRun(isBatchPackage = false) {
   if (commandInFlight || offlineMode) return;
-  const isBatchPackage = probeMs === 'batch';
-  const isProbePackage = probeMs !== null;
-  if (isProbePackage && !isBatchPackage && !probeChoices.includes(probeMs)) throw Error('invalid probe package');
-  const target = isProbePackage ? 8 : Number($('target').value);
+  const target = isBatchPackage ? 8 : Number($('target').value);
   if (!targetChoices.includes(target)) {
     $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
   }
-  const angleText = isProbePackage ? '0' : $('input-percent').value.trim();
+  const angleText = isBatchPackage ? '0' : $('input-percent').value.trim();
   const inputPercent = Number(angleText);
   if (!angleText || !validInputPercent(inputPercent)) {
     $('message').textContent = 'ZEROクロス設定を確認してください。'; return;
   }
   const currentText = $('input-current').value.trim();
-  const inputCurrentMa = isProbePackage ? 300 : Number(currentText);
-  if ((!isProbePackage && !currentText) || !validInputCurrent(inputCurrentMa)) {
+  const inputCurrentMa = isBatchPackage ? 300 : Number(currentText);
+  if ((!isBatchPackage && !currentText) || !validInputCurrent(inputCurrentMa)) {
     $('message').textContent = '指令電流を100〜1200 mAの範囲で10 mA刻みで設定してください。'; return;
   }
-  const energyModel = isBatchPackage ? 'bridge_probe_batch' : isProbePackage ? 'bridge_probe' : $('energy-model').value;
-  if (!['bridge', 'bridge_probe', 'bridge_probe_batch', 'quadratic'].includes(energyModel)) {
+  const energyModel = isBatchPackage ? 'bridge_probe_batch' : $('energy-model').value;
+  if (!['bridge', 'bridge_probe_batch', 'quadratic'].includes(energyModel)) {
     $('message').textContent = '予測式を選択してください。'; return;
   }
-  const brakeMaxMs = isBatchPackage ? 25 : isProbePackage ? probeMs : energyModel === 'bridge' ? 0 : Number($('brake-max').value);
-  if (!(isBatchPackage ? [25] : isProbePackage ? probeChoices : brakeChoices).includes(brakeMaxMs)) {
+  const brakeMaxMs = isBatchPackage ? 25 : energyModel === 'bridge' ? 0 : Number($('brake-max').value);
+  if (!(isBatchPackage ? [25] : brakeChoices).includes(brakeMaxMs)) {
     $('message').textContent = '負側ブレーキ上限を0・20・50 msから選択してください。'; return;
   }
-  const adaptationValue = isProbePackage ? '0' : $('peak-adaptation').value;
+  const adaptationValue = isBatchPackage ? '0' : $('peak-adaptation').value;
   if (!['0', '1'].includes(adaptationValue)) {
     $('message').textContent = '予測誤差の学習補正の設定を確認してください。'; return;
   }
@@ -792,10 +780,11 @@ async function startOfflineRun(probeMs = null) {
   requestedInputCurrentMa = inputCurrentMa;
   requestedBrakeMaxMs = brakeMaxMs;
   requestedEnergyModel = energyModel;
-  commandInFlight = true; setOffline(isBatchPackage ? 50000 : 30000); $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
+  const runLabel = isBatchPackage ? '負側5条件の一括実験' : '左右揺動エネルギー制御';
+  commandInFlight = true; setOffline(isBatchPackage ? 50000 : 30000); $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}&energy_model=${energyModel}`, {method:'POST', kind:'text'});
-    $('message').textContent = `左右揺動エネルギー制御（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
+    $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
   } catch (error) {
     if (/^\d{3}:/.test(error.message)) { clearOffline(); await refresh(); }
     $('message').textContent = `開始結果の確認: ${error.message}。Web復帰後に本体の結果を確認します。`;
@@ -1081,8 +1070,7 @@ async function capturePose(baseline) {
   } finally { poseRunning = false; controls(); }
 }
 $('start').onclick = () => startOfflineRun();
-for (const width of probeChoices) $('probe-' + width).onclick = () => startOfflineRun(width);
-$('probe-batch').onclick = () => startOfflineRun('batch');
+$('probe-batch').onclick = () => startOfflineRun(true);
 $('energy-model').onchange = controls;
 $('upright-reference-capture').onclick = () => command('/upright-reference/capture');
 if ($('stop')) $('stop').onclick = () => { poseCancelled = true; return command('/stop'); };

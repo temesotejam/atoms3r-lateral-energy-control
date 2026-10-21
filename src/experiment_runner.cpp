@@ -1321,7 +1321,8 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
                      energy_control_autonomous_input_peak_percent_,
                       energy_control_autonomous_brake_max_ms_, peak_adaptation_enabled_,
                       energy_bridge_enabled_, negative_probe_mode_,
-                      energy_control_autonomous_mode_ ? upright_reference_ : upright_reference::Record{});
+                      energy_control_autonomous_mode_ ? upright_reference_ : upright_reference::Record{},
+                      negative_probe_batch_seed_);
   last_log_us_ = 0;
   status_.state = ExperimentState::START_SYNC;
   status_.sync_event_id = 1;
@@ -2419,6 +2420,9 @@ void ExperimentRunner::updateEnergyControlV0Pulse(uint32_t now_ms) {
 }
 void ExperimentRunner::resetEnergyControlAutonomous() {
   negative_probe_batch_crossing_index_ = 0;
+  negative_probe_batch_seed_ = negativeProbeBatchMode()
+      ? (static_cast<uint32_t>(micros()) ^
+         (0x9e3779b9U * (static_cast<uint32_t>(status_.run_id) + 1U))) : 0;
   solver_shadow_event_ = PsramLogger::SolverShadowEvent{};
   solver_shadow_pending_ = false;
   timing_probe_event_ = PsramLogger::TimingProbeEvent{};
@@ -3038,7 +3042,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   if (negativeProbeBatchMode() && event.physical_next_peak_side < 0) {
     event.negative_probe_batch_index = negative_probe_batch_crossing_index_;
     event.negative_probe_batch_planned_width_ms =
-        negative_probe_batch::width(negative_probe_batch_crossing_index_);
+        negative_probe_batch::width(negative_probe_batch_seed_, negative_probe_batch_crossing_index_);
     ++negative_probe_batch_crossing_index_;
   }
   event.side_mismatch_diagnostic =

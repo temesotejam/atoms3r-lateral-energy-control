@@ -198,7 +198,8 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
                              bool energy_control_autonomous_mode, float input_peak_percent,
                              uint16_t brake_max_ms, bool peak_adaptation_enabled,
                              bool energy_bridge_enabled, bool negative_probe_mode,
-                             const upright_reference::Record& upright_reference) {
+                             const upright_reference::Record& upright_reference,
+                             uint32_t negative_probe_batch_seed) {
   if (!ready_ || downloading_) return;
   sealed_ = false;
   sample_count_ = 0;
@@ -223,6 +224,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
   peak_adaptation_enabled_ = peak_adaptation_enabled;
   energy_bridge_enabled_ = energy_bridge_enabled;
   negative_probe_mode_ = negative_probe_mode;
+  negative_probe_batch_seed_ = negative_probe_batch_seed;
   run_upright_reference_ = upright_reference;
   measurement_start_abs_deg_ = NAN;
   identification_event_count_ = 0;
@@ -562,10 +564,12 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       (negative_probe_mode_ ? autonomous_brake_max_ms_ : 0)) + ",";
   json += "\"negative_probe_batch\":" + String(negative_probe_batch_mode ? "true" : "false") + ",";
   if (negative_probe_batch_mode) {
+    json += "\"negative_probe_batch_seed\":" + String(negative_probe_batch_seed_) + ",";
+    json += "\"negative_probe_batch_algorithm\":\"seeded_fisher_yates_five_event_blocks_v1\",";
     json += "\"negative_probe_batch_schedule_ms\":[";
-    for (uint16_t i = 0; i < negative_probe_batch::kScheduleLength; ++i) {
+    for (uint16_t i = 0; i < negative_probe_batch::kSchedulePreviewLength; ++i) {
       if (i) json += ",";
-      json += String(negative_probe_batch::kWidthsMs[i]);
+      json += String(negative_probe_batch::width(negative_probe_batch_seed_, i));
     }
     json += "],";
   }

@@ -520,7 +520,8 @@ class PsramLogger {
                  bool peak_adaptation_enabled = true,
                  bool energy_bridge_enabled = true,
                  bool negative_probe_mode = false,
-                 const upright_reference::Record& upright_reference = upright_reference::Record{});
+                 const upright_reference::Record& upright_reference = upright_reference::Record{},
+                 uint32_t negative_probe_batch_seed = 0);
   void recordMeasurementStartAngle(float absolute_deg) {
     if (!sealed_ && energy_control_autonomous_mode_ && !isfinite(measurement_start_abs_deg_))
       measurement_start_abs_deg_ = absolute_deg;
@@ -683,6 +684,7 @@ private:
   bool peak_adaptation_enabled_ = true;
   bool energy_bridge_enabled_ = true;
   bool negative_probe_mode_ = false;
+  uint32_t negative_probe_batch_seed_ = 0;
   upright_reference::Record run_upright_reference_;
   float measurement_start_abs_deg_ = NAN;
   uint32_t autonomous_timing_compensation_us_ = 0;  // Immutable metadata for the saved run.

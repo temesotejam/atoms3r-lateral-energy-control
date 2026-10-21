@@ -124,16 +124,9 @@ vm.runInContext(source,context);
   vm.runInContext('clearOffline()',context);
   element('target').value='12';element('input-current').value='1200';
   element('peak-adaptation').value='1';
-  for (const width of [0,15,30]) {
-    calls=[];await vm.runInContext(`startOfflineRun(${width})`,context);
-    assert.deepEqual(calls,[`/start-energy-control-autonomous?target_deg=8&input_peak_percent=0&input_current_mA=300&brake_max_ms=${width}&peak_adaptation=0&energy_model=bridge_probe`]);
-    assert.match(element('run-brake').textContent,new RegExp(`負側固定入力 ${width} ms`));
-    vm.runInContext('clearOffline()',context);
-  }
-  await assert.rejects(vm.runInContext('startOfflineRun(20)',context),/invalid probe package/);
-  calls=[];await vm.runInContext("startOfflineRun('batch')",context);
+  calls=[];await vm.runInContext('startOfflineRun(true)',context);
   assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=8&input_peak_percent=0&input_current_mA=300&brake_max_ms=25&peak_adaptation=0&energy_model=bridge_probe_batch']);
-  assert.match(element('run-brake').textContent,/0・10・15・20・25 ms/);
+  assert.match(element('run-brake').textContent,/負側5条件を順序を変えて測定/);
   assert.match(element('guide').textContent,/測定30秒/);
   console.log('HTTP pause browser: no run polling, stale pre-START response, lost/rejected START, HTTP retry, FINISHED/ESTOP download and restored countdown PASS');
   console.log('Target UI: 8/10/12 request values, invalid selection, polling preservation, run lock, applied result and reboot PASS');
