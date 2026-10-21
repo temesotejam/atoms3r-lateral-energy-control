@@ -104,7 +104,9 @@
       rows.push({model_revision:model.revision,firmware_revision:metadata.firmware_revision,
         event_index:e.event_index,batch_index:e.negative_probe_batch_index,
         zero_cross_time_ms:e.zero_cross_time_ms,assigned_width_ms:width,
-        executed_width_ms:e.pulse_width_ms,rate_dps:state.rate_dps,
+        executed_width_ms:e.pulse_width_ms,event_valid:e.valid,
+        rate_skipped:e.negative_probe_batch_rate_skipped,
+        output_executed:e.output_executed,rate_dps:state.rate_dps,
         wheel_rpm:state.wheel_rpm,previous_peak_deg:state.previous_peak_deg,
         battery_mV:state.battery_mV,target_deg:target,
         ...(prediction||{}),predicted_best_width_ms:best?.ms??null,
@@ -116,10 +118,17 @@
         within_training_support:reasons.length===0,exclusions:reasons.join(' / ')});
     }
     const scored=rows.filter(r=>r.within_training_support && r.error_deg!==null);
+    const diagnostic=rows.filter(r=>r.zero_cross_time_ms>=10000 && r.event_valid &&
+      !r.rate_skipped && r.assigned_width_ms===r.executed_width_ms &&
+      (r.assigned_width_ms===0 || r.output_executed) && r.error_deg!==null);
+    const outside=diagnostic.filter(r=>!r.within_training_support);
+    const score=group=>({n:group.length,
+      rmse_deg:group.length?Math.sqrt(group.reduce((s,r)=>s+r.error_deg**2,0)/group.length):null,
+      mean_error_deg:group.length?group.reduce((s,r)=>s+r.error_deg,0)/group.length:null});
     const rmse=scored.length ? Math.sqrt(scored.reduce((s,r)=>s+r.error_deg**2,0)/scored.length) : null;
     const mae=scored.length ? scored.reduce((s,r)=>s+Math.abs(r.error_deg),0)/scored.length : null;
     return {model,rows,summary:{events:rows.length,scored:scored.length,rmse_deg:rmse,mae_deg:mae,
-      training_held_out_run_rmse_deg:.154}};
+      outside_support:score(outside),training_held_out_run_rmse_deg:.154}};
   }
   function describe(report) {
     const {summary,rows}=report;
@@ -128,9 +137,10 @@
     return [`固定した式：${model.revision}`,
       `条件付きで評価したイベント：${summary.scored}/${summary.events}`,
       `新しいログの次ピーク誤差：RMSE ${line(summary.rmse_deg,'°')} / 平均絶対誤差 ${line(summary.mae_deg,'°')}`,
+      `学習範囲外の参考値：${summary.outside_support.n}件 / RMSE ${line(summary.outside_support.rmse_deg,'°')} / 予測−実測の平均 ${line(summary.outside_support.mean_error_deg,'°')}`,
       '参考：元の5回を1回ずつ除いて検証したRMSEは0.154°',
       voltage.length ? `このログの記録電圧：${(Math.min(...voltage)/1000).toFixed(2)}〜${(Math.max(...voltage)/1000).toFixed(2)} V` : '電圧記録なし',
-      '学習範囲外もCSVには予測値と理由を残しますが、上記RMSEには入れません。',
+      '学習範囲外は元の検証精度として扱いません。CSVには予測値と範囲外の理由を残します。',
       '停止後の仕事は予測値です。実測ピークを予測計算に使っていません。',
       'このページの予測結果はホイールへの指令に使用しません。'].join('\n');
   }

@@ -27,6 +27,8 @@ assert.notEqual(P.analyze(changedPeak).rows[0].error_deg,row.error_deg);
 const lowVoltage={...metadata,energy_control_autonomous_zero_cross_events:table([{...event,vbat_mV:6100}])};
 assert.notEqual(P.analyze(lowVoltage).rows[0].predicted_peak_deg,row.predicted_peak_deg);
 assert.equal(P.analyze(lowVoltage).summary.scored,0);
+assert.equal(P.analyze(lowVoltage).summary.outside_support.n,1);
+assert(Number.isFinite(P.analyze(lowVoltage).summary.outside_support.rmse_deg));
 assert.match(P.analyze(lowVoltage).rows[0].exclusions,/battery_mV/);
 assert.throws(()=>P.analyze({...metadata,energy_control_autonomous_normal_current_mA:400}),/300 mA/);
 assert.throws(()=>P.analyze({...metadata,metadata_event_detail_truncated:true}),/途中/);
