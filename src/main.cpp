@@ -233,7 +233,7 @@ void setup() {
   RuntimeDiag::boot(RuntimeDiag::Stage::Logger); RuntimeDiag::result(logger.begin());
   // The export metadata buffer must have a contiguous block before camera
   // frame buffers and network allocations fragment the remaining PSRAM.
-  RuntimeDiag::boot(RuntimeDiag::Stage::Export); RuntimeDiag::result(log_export.begin(logger));
+  const bool export_memory_ready = log_export.reserveMetadata();
   RuntimeDiag::boot(RuntimeDiag::Stage::Imu); RuntimeDiag::result(imu.begin());
   // Camera SCCB borrows I2C0 only during boot, before Roller485 owns this port.
   RuntimeDiag::boot(RuntimeDiag::Stage::Camera); RuntimeDiag::result(camera_probe.begin());
@@ -246,6 +246,8 @@ void setup() {
   RuntimeDiag::boot(RuntimeDiag::Stage::Control);
   RuntimeDiag::result(run_control.begin(controlStep, captureRunState, nullptr));
   RuntimeDiag::boot(RuntimeDiag::Stage::Feet); RuntimeDiag::result(feet.begin(camera_probe, run_control));
+  RuntimeDiag::boot(RuntimeDiag::Stage::Export);
+  RuntimeDiag::result(export_memory_ready && log_export.begin(logger));
   RuntimeDiag::boot(RuntimeDiag::Stage::Web);
   web.begin(server, run_control, feet, log_export);
   RuntimeDiag::boot(RuntimeDiag::Stage::Ready);

@@ -2,10 +2,13 @@
 #include "runtime_diagnostics.h"
 #include <esp_system.h>
 
+bool ImmutableExport::reserveMetadata() {
+  // Reserve before the camera and Wi-Fi allocate scattered PSRAM blocks.
+  return metadata_.reserve(PsramLogger::kMetadataJsonReserveBytes);
+}
 bool ImmutableExport::begin(PsramLogger& logger) {
   logger_ = &logger; boot_nonce_ = esp_random();
-  // Reserve before the camera and Wi-Fi allocate scattered PSRAM blocks.
-  if (!metadata_.reserve(PsramLogger::kMetadataJsonReserveBytes)) return false;
+  if (!reserveMetadata()) return false;
   return xTaskCreatePinnedToCore(entry, "log_export", 12288, this, 1, &task_, 0) == pdPASS;
 }
 ImmutableExport::Status ImmutableExport::status() const {

@@ -13,6 +13,7 @@ class ImmutableExport {
     uint32_t bytes = 0, hashed_bytes = 0, crc = 0;
     char token[24] = {}, filename[80] = {}, error[80] = {};
   };
+  bool reserveMetadata();
   bool begin(PsramLogger& logger);
   bool ready() const { return task_ != nullptr; }
   bool prepare();
