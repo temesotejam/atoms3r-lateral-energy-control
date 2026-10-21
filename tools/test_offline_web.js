@@ -20,11 +20,11 @@ const context=vm.createContext({document:{getElementById:element},Date:{now:()=>
       if(!failStart)status.input_peak_percent=angle;
       const current=Number(params.get('input_current_mA'));assert.ok(current>=100&&current<=1200&&current%10===0);
       if(!failStart)status.input_current_mA=current;
-      const brake=Number(params.get('brake_max_ms'));assert.ok([0,15,20,30,50].includes(brake));
+      const brake=Number(params.get('brake_max_ms'));assert.ok([0,15,20,25,30,50].includes(brake));
       if(!failStart)status.brake_max_ms=brake;
       const adaptation=params.get('peak_adaptation');assert.ok(['0','1'].includes(adaptation));
       if(!failStart)status.peak_adaptation_enabled=adaptation==='1';
-      const model=params.get('energy_model');assert.ok(['bridge','bridge_probe','quadratic'].includes(model));
+      const model=params.get('energy_model');assert.ok(['bridge','bridge_probe','bridge_probe_batch','quadratic'].includes(model));
       if(!failStart)status.energy_model=model;
       if(!failStart)status.target_deg=target;
       if(loseReply)throw Error('reply lost after acceptance');
@@ -131,6 +131,10 @@ vm.runInContext(source,context);
     vm.runInContext('clearOffline()',context);
   }
   await assert.rejects(vm.runInContext('startOfflineRun(20)',context),/invalid probe package/);
+  calls=[];await vm.runInContext("startOfflineRun('batch')",context);
+  assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=8&input_peak_percent=0&input_current_mA=300&brake_max_ms=25&peak_adaptation=0&energy_model=bridge_probe_batch']);
+  assert.match(element('run-brake').textContent,/0・10・15・20・25 ms/);
+  assert.match(element('guide').textContent,/測定30秒/);
   console.log('HTTP pause browser: no run polling, stale pre-START response, lost/rejected START, HTTP retry, FINISHED/ESTOP download and restored countdown PASS');
   console.log('Target UI: 8/10/12 request values, invalid selection, polling preservation, run lock, applied result and reboot PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -13,6 +13,7 @@
 #include "upright_pose_guide.h"
 #include "upright_reference_store.h"
 #include "direct_q_solver.h"
+#include "negative_probe_batch.h"
 
 namespace {
 struct V46MekfRunReinitAccumulator {
@@ -1072,7 +1073,8 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   if ((negative_probe_mode_ && (!energy_bridge_enabled_ ||
        energy_control_autonomous_target_peak_deg_ != 8.0f ||
        energy_control_autonomous_input_current_mA_ != 300 || peak_adaptation_enabled_ ||
-       !autonomous_brake_limit::probe(energy_control_autonomous_brake_max_ms_))) ||
+       !(autonomous_brake_limit::probe(energy_control_autonomous_brake_max_ms_) ||
+         autonomous_brake_limit::batch(energy_control_autonomous_brake_max_ms_)))) ||
       (!negative_probe_mode_ && energy_bridge_enabled_ && energy_control_autonomous_brake_max_ms_ != 0)) {
     status_.last_error = "negative_probe_settings_invalid"; return false;
   }
@@ -1124,11 +1126,12 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   status_.pulse_direction = 0;
   status_.motor_cmd_mA = 0;
   status_.measure_elapsed_ms = 0;
-  status_.remaining_ms = Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS;
+  status_.remaining_ms = negativeProbeBatchMode() ? negative_probe_batch::kDurationMs :
+      Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS;
   status_.trial_index = 1;
   status_.trial_count = 1;
   status_.trial_elapsed_ms = 0;
-  status_.trial_duration_ms = Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS;
+  status_.trial_duration_ms = measurementTotalDurationMs();
   status_.current_mA_setting = 0;
   status_.pulse_width_ms_setting = 0;
   status_.input_interval_ms = 0;
@@ -1412,7 +1415,7 @@ void ExperimentRunner::beginMeasurementRun() {
     status_.trial_index = 1;
     status_.trial_count = 1;
     status_.trial_elapsed_ms = 0;
-    status_.trial_duration_ms = energy_control_autonomous_mode_ ? Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS :
+    status_.trial_duration_ms = energy_control_autonomous_mode_ ? measurementTotalDurationMs() :
         (energy_control_v0_mode_ ? Config::ENERGY_CONTROL_V0_DURATION_MS :
         (q_ident_mode_ ? Config::Q_IDENT_DURATION_MS : Config::PASSIVE_CAPTURE_DURATION_MS));
     status_.current_mA_setting = 0;
@@ -2415,6 +2418,7 @@ void ExperimentRunner::updateEnergyControlV0Pulse(uint32_t now_ms) {
   }
 }
 void ExperimentRunner::resetEnergyControlAutonomous() {
+  negative_probe_batch_crossing_index_ = 0;
   solver_shadow_event_ = PsramLogger::SolverShadowEvent{};
   solver_shadow_pending_ = false;
   timing_probe_event_ = PsramLogger::TimingProbeEvent{};
@@ -3031,6 +3035,12 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.detector_crossing_alpha = crossing_alpha;
   event.interpolated_crossing_time_ms = interpolated_time_ms;
   event.physical_next_peak_side = rate_dps >= 0.0f ? 1 : -1;
+  if (negativeProbeBatchMode() && event.physical_next_peak_side < 0) {
+    event.negative_probe_batch_index = negative_probe_batch_crossing_index_;
+    event.negative_probe_batch_planned_width_ms =
+        negative_probe_batch::width(negative_probe_batch_crossing_index_);
+    ++negative_probe_batch_crossing_index_;
+  }
   event.side_mismatch_diagnostic =
       event.physical_next_peak_side != -energy_control_autonomous_last_peak_side_;
   // Historical Q1 support is on the unscaled raw-Y axis; compare in the
@@ -3151,8 +3161,11 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // prediction from the historical positive-Q angle fit.
   const bool fixed_negative_probe = negative_probe_mode_ && event.physical_next_peak_side < 0;
   const uint16_t selected_width_ms = fixed_negative_probe
-      ? (event.rate_support_diagnostic ? energy_control_autonomous_brake_max_ms_ : 0)
+      ? (event.rate_support_diagnostic ? (negativeProbeBatchMode()
+          ? event.negative_probe_batch_planned_width_ms : energy_control_autonomous_brake_max_ms_) : 0)
       : decision.ms;
+  event.negative_probe_batch_rate_skipped = negativeProbeBatchMode() && fixed_negative_probe &&
+      !event.rate_support_diagnostic && event.negative_probe_batch_planned_width_ms != 0;
   const float selected_q_mA_s = fixed_negative_probe
       ? (selected_width_ms ? -lateral_energy::charge(lateral_current_table_, selected_width_ms,
             event.i0_estimated_mA, goal_current_mA) : 0.0f)
@@ -5980,7 +5993,8 @@ void ExperimentRunner::setSyncLed(bool on) {
 }
 
 uint32_t ExperimentRunner::measurementTotalDurationMs() const {
-  if (energy_control_autonomous_mode_) return Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS;
+  if (energy_control_autonomous_mode_) return negativeProbeBatchMode() ?
+      negative_probe_batch::kDurationMs : Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS;
   if (energy_control_v0_mode_) return Config::ENERGY_CONTROL_V0_DURATION_MS;
   if (q_ident_mode_) return Config::Q_IDENT_DURATION_MS;
   if (passive_capture_mode_) return Config::PASSIVE_CAPTURE_DURATION_MS;

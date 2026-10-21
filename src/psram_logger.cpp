@@ -1,6 +1,7 @@
 #include "compact_json_table.h"
 #include "gyro_steering.h"
 #include "psram_logger.h"
+#include "negative_probe_batch.h"
 #include "imu_manager.h"
 extern ImuManager imu;
 #include "run_control_worker.h"
@@ -512,7 +513,10 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"min_half_cycle_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS) + ",";
   json += "\"min_zero_to_peak_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_ZERO_TO_PEAK_MS) + ",";
   json += "\"events_accepted_during_pulse\":false,";
-  json += "\"autonomous_duration_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS) + ",";
+  const bool negative_probe_batch_mode = negative_probe_mode_ &&
+      autonomous_brake_limit::batch(autonomous_brake_max_ms_);
+  json += "\"autonomous_duration_ms\":" + String(negative_probe_batch_mode ?
+      negative_probe_batch::kDurationMs : Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS) + ",";
   json += "\"energy_control_autonomous_free_model\":\"" + String(energy_bridge_enabled_
       ? "U(max(0,a_side+b_side*(rate_dps-65)));historical_angle_predictor"
       : "max(0,c_omega2*omega^2+c_offset);empirical_effective_energy") + "\",";
@@ -557,9 +561,21 @@ PsramString PsramLogger::buildMetadataJson() const {
   json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : lateral_energy::kBrakeMaxMs) + ",";
   json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
   json += "\"fixed_negative_work_probe\":" + String(negative_probe_mode_ ? "true" : "false") + ",";
-  json += "\"fixed_negative_work_probe_width_ms\":" + String(negative_probe_mode_ ? autonomous_brake_max_ms_ : 0) + ",";
+  json += "\"fixed_negative_work_probe_width_ms\":" + String(negative_probe_batch_mode ? 0 :
+      (negative_probe_mode_ ? autonomous_brake_max_ms_ : 0)) + ",";
+  json += "\"negative_probe_batch\":" + String(negative_probe_batch_mode ? "true" : "false") + ",";
+  if (negative_probe_batch_mode) {
+    json += "\"negative_probe_batch_schedule_ms\":[";
+    for (uint16_t i = 0; i < negative_probe_batch::kScheduleLength; ++i) {
+      if (i) json += ",";
+      json += String(negative_probe_batch::kWidthsMs[i]);
+    }
+    json += "],";
+  }
   json += "\"autonomous_uses_q_ident_limits\":false,";
-  json += "\"energy_control_autonomous_q_policy\":\"" + String(negative_probe_mode_
+  json += "\"energy_control_autonomous_q_policy\":\"" + String(negative_probe_batch_mode
+      ? "positive_side_bridge;negative_side_balanced_fixed_raw_positive_batch;no_negative_peak_learning"
+      : negative_probe_mode_
       ? "positive_side_bridge;negative_side_fixed_raw_positive_probe;no_negative_peak_learning"
       : energy_bridge_enabled_
       ? "positive_Q_from_inverse_potential_and_historical_angle_gain;current_rise_binary_search;negative_request_coasts;reverse_Q_not_identified"
@@ -1524,6 +1540,11 @@ PsramString PsramLogger::buildMetadataJson() const {
     appendAutonomousNullable("work_q2_coefficient", e.work_q2_coefficient, 8);
     detail += ",\"energy_model_extrapolated\":" + String(e.energy_model_extrapolated ? "true" : "false");
     detail += ",\"fixed_negative_probe\":" + String(e.fixed_negative_probe ? "true" : "false");
+    if (e.negative_probe_batch_index != UINT16_MAX) {
+      detail += ",\"negative_probe_batch_index\":" + String(e.negative_probe_batch_index);
+      detail += ",\"negative_probe_batch_planned_width_ms\":" + String(e.negative_probe_batch_planned_width_ms);
+      detail += ",\"negative_probe_batch_rate_skipped\":" + String(e.negative_probe_batch_rate_skipped ? "true" : "false");
+    }
     appendAutonomousNullable("q1_gain_deg_per_mA_s", e.q1_gain_deg_per_mA_s, 5);
     appendAutonomousNullable("q_ff_energy_mA_s", e.q_ff_energy_mA_s, 5);
     appendAutonomousNullable("q_angle_diagnostic_mA_s", e.q_angle_diagnostic_mA_s, 5);

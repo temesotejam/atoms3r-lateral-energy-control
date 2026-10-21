@@ -178,12 +178,16 @@ void WebUi::command(RunControlWorker::Command cmd) {
     const bool peak_adaptation_enabled = server_->arg("peak_adaptation") == "1";
     if (!server_->hasArg("energy_model") ||
         (server_->arg("energy_model") != "bridge" && server_->arg("energy_model") != "quadratic" &&
-         server_->arg("energy_model") != "bridge_probe")) {
+         server_->arg("energy_model") != "bridge_probe" &&
+         server_->arg("energy_model") != "bridge_probe_batch")) {
       server_->send(400, "text/plain", "energy_model_invalid_reload_page"); return;
     }
-    const bool negative_probe_mode = server_->arg("energy_model") == "bridge_probe";
+    const bool negative_probe_batch_mode = server_->arg("energy_model") == "bridge_probe_batch";
+    const bool negative_probe_mode = server_->arg("energy_model") == "bridge_probe" ||
+        negative_probe_batch_mode;
     const bool energy_bridge_enabled = server_->arg("energy_model") != "quadratic";
-    if ((negative_probe_mode && (!autonomous_brake_limit::probe(brake_max_ms) ||
+    if ((negative_probe_mode && (!(negative_probe_batch_mode ?
+           autonomous_brake_limit::batch(brake_max_ms) : autonomous_brake_limit::probe(brake_max_ms)) ||
          target_deg != 8.0f || input_current_mA != 300 || peak_adaptation_enabled)) ||
         (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms))) {
@@ -234,7 +238,8 @@ void WebUi::status() {
   json += ",\"input_current_mA\":" + String(s.input_current_mA);
   json += ",\"brake_max_ms\":" + String(s.brake_max_ms);
   json += ",\"peak_adaptation_enabled\":" + String(s.peak_adaptation_enabled ? "true" : "false");
-  json += ",\"energy_model\":\"" + String(s.negative_probe_mode ? "bridge_probe" :
+  json += ",\"energy_model\":\"" + String(s.negative_probe_mode ?
+      (autonomous_brake_limit::batch(s.brake_max_ms) ? "bridge_probe_batch" : "bridge_probe") :
       (s.energy_bridge_enabled ? "bridge" : "quadratic")) + "\"";
   json += ",\"upright_reference\":{\"valid\":" + String(upright_reference::valid(s.upright_reference) ? "true" : "false");
   json += ",\"abs_pitch_deg\":" + num(upright_reference::valid(s.upright_reference) ? s.upright_reference.pitch_deg : NAN);

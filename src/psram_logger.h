@@ -372,6 +372,9 @@ class PsramLogger {
     float work_omega_q_coefficient=NAN, work_q2_coefficient=NAN;
     bool energy_model_extrapolated=false;
     bool fixed_negative_probe=false;
+    uint16_t negative_probe_batch_index = UINT16_MAX;
+    uint16_t negative_probe_batch_planned_width_ms = 0;
+    bool negative_probe_batch_rate_skipped = false;
     float q1_gain_deg_per_mA_s = NAN;
     float q_ff_energy_mA_s = NAN;
     float q_angle_diagnostic_mA_s = NAN;

@@ -117,7 +117,8 @@ class RunControlWorker {
         !autonomous_input_percent::valid(input_peak_percent) ||
         !autonomous_input_current::valid(input_current_mA) ||
         !autonomous_brake_limit::valid(brake_max_ms) ||
-        (negative_probe_mode && (!energy_bridge_enabled || !autonomous_brake_limit::probe(brake_max_ms) ||
+        (negative_probe_mode && (!energy_bridge_enabled ||
+          !(autonomous_brake_limit::probe(brake_max_ms) || autonomous_brake_limit::batch(brake_max_ms)) ||
           target_deg != 8.0f || input_current_mA != 300 || peak_adaptation_enabled)) ||
         (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms)))) return false;
