@@ -840,9 +840,9 @@ static constexpr uint32_t BETA_SWEEP_TOTAL_DURATION_MS =
     (BETA_SWEEP_TRIAL_COUNT - 1) * BETA_SWEEP_INTER_TRIAL_REST_MS;
 
 // 30 s at the fastest 2 ms log cadence + 10 s of 20 ms sync rows
-// require < 4 MiB. Five MiB retains margin for event-triggered rows and leaves
-// room for a worst-case completed export; old 6 MiB allocation crowded it out.
-static constexpr size_t LOG_BUFFER_BYTES = 5UL * 1024UL * 1024UL;
+// require < 4 MiB. Four MiB retains margin for event-triggered rows while
+// leaving PSRAM available for the export buffer reserved at boot.
+static constexpr size_t LOG_BUFFER_BYTES = 4UL * 1024UL * 1024UL;
 static constexpr uint8_t BUFFER_WARNING_PERCENT = 90;
 
 }  // namespace Config

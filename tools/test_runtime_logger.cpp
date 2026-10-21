@@ -124,6 +124,7 @@ int main(int argc,char** argv){
   logger.seal();assert(logger.rwlogDownloadable());
   assert(!logger.addSample(row));logger.addTimingProbeEvent({});assert(logger.timing_probe_event_count_==256);
   ImmutableExport exportFile;assert(exportFile.begin(logger));assert(exportFile.prepare());
+  const char* const reserved_metadata = exportFile.metadata_.c_str();
   assert(exportFile.prepare());assert(!exportFile.reset());
   exportFile.build();const auto status=exportFile.status();
   std::cerr<<"metadata bytes="<<exportFile.metadata_.length()<<" phase="<<int(status.phase)<<" error="<<status.error<<"\n";
@@ -136,6 +137,10 @@ int main(int argc,char** argv){
   }
   out.close();assert(!exportFile.chunk("wrong_token",0,4,bytes));
   assert(exportFile.reset());assert(!exportFile.chunk(status.token,0,4,bytes));
+  assert(exportFile.metadata_.c_str()==reserved_metadata);
+  assert(exportFile.prepare());exportFile.build();
+  assert(exportFile.status().phase==ImmutableExport::Phase::Ready);
+  assert(exportFile.metadata_.c_str()==reserved_metadata);
   std::cout<<"maximum autonomous events + 768 foot frames: metadata="<<exportFile.header_.metadata_json_size
       <<" bytes, event PSRAM="<<PsramLogger::eventStorageBytes()<<", logger object="<<sizeof(logger)<<" bytes PASS\n";
 }

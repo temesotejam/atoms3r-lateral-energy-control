@@ -4,6 +4,8 @@
 
 bool ImmutableExport::begin(PsramLogger& logger) {
   logger_ = &logger; boot_nonce_ = esp_random();
+  // Reserve before the camera and Wi-Fi allocate scattered PSRAM blocks.
+  if (!metadata_.reserve(PsramLogger::kMetadataJsonReserveBytes)) return false;
   return xTaskCreatePinnedToCore(entry, "log_export", 12288, this, 1, &task_, 0) == pdPASS;
 }
 ImmutableExport::Status ImmutableExport::status() const {
@@ -20,7 +22,7 @@ bool ImmutableExport::prepare() {
 }
 bool ImmutableExport::reset() {
   if (status().phase == Phase::Building) return false;
-  metadata_ = PsramString{};
+  metadata_.clear();
   portENTER_CRITICAL(&mux_); status_ = Status{}; portEXIT_CRITICAL(&mux_); return true;
 }
 void ImmutableExport::loop() {
@@ -32,9 +34,7 @@ void ImmutableExport::loop() {
 }
 void ImmutableExport::build() {
   RuntimeDiag::phase(RuntimeDiag::Lane::Export, RuntimeDiag::Phase::ExportMetadata);
-  metadata_ = PsramString{};
-  metadata_ = logger_->buildMetadataJson();
-  if (!metadata_.ok()) {
+  if (!logger_->buildMetadataJson(metadata_)) {
     portENTER_CRITICAL(&mux_);
     snprintf(status_.error, sizeof(status_.error), "%s", "metadata_psram_capacity_or_allocation_failed");
     status_.phase = Phase::Error;

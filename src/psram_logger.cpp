@@ -426,16 +426,13 @@ size_t PsramLogger::psramFree() const {
   return ESP.getFreePsram();
 }
 
-PsramString PsramLogger::buildMetadataJson() const {
+bool PsramLogger::buildMetadataJson(PsramString& json) const {
 
   // Stopped-only compact export. Maximum-capacity serializer regression must
   // fit the hard budget; fixed PSRAM reservation never grows into internal RAM.
-  static constexpr size_t kMetadataJsonReserveBytes = 768U * 1024U;
   static constexpr size_t kMetadataJsonHardBudgetBytes = 640U * 1024U;
-  PsramString json;
-  if (!json.reserve(kMetadataJsonReserveBytes)) {
-    return json;
-  }
+  json.clear();
+  if (!json.ok()) return false;
   json += "{";
   json += "\"format\":\"" + String(energy_control_autonomous_mode_ ? "rwlog_energy_control_autonomous" :
       (energy_control_v0_mode_ ? "rwlog_energy_control_v0" :
@@ -1642,7 +1639,7 @@ PsramString PsramLogger::buildMetadataJson() const {
   }
   json += final_size_key + String(final_size) + "}";
   if (json.length() > kMetadataJsonHardBudgetBytes) json.fail();
-  return json;
+  return json.ok();
 }
 RwLogFileHeader PsramLogger::buildHeader(uint32_t metadata_size) const {
   RwLogFileHeader header{};

@@ -635,7 +635,8 @@ class PsramLogger {
   void seal() { sealed_ = true; last_measurement_done_ = true; }
   bool sealed() const { return sealed_; }
   const uint8_t* sampleBytes() const { return reinterpret_cast<const uint8_t*>(samples_); }
-  PsramString buildMetadataJson() const;
+  static constexpr size_t kMetadataJsonReserveBytes = 768U * 1024U;
+  bool buildMetadataJson(PsramString& json) const;
   RwLogFileHeader buildHeader(uint32_t metadata_size) const;
   static size_t eventStorageBytes() { return sizeof(EventStorage); }
 

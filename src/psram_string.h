@@ -20,6 +20,10 @@ class PsramString {
     if (!data_) { failed_ = true; return false; }
     capacity_ = capacity; data_[0] = 0; return true;
   }
+  void clear() {
+    length_ = 0; failed_ = false;
+    if (data_) data_[0] = 0;
+  }
   PsramString& operator+=(const char* s) { append(s, strlen(s)); return *this; }
   PsramString& operator+=(const String& s) { append(s.c_str(), s.length()); return *this; }
   void append(const char* s, size_t n) {
