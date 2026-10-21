@@ -1117,6 +1117,9 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   stopMotor();
   status_.run_id++;
   if (status_.run_id == 0) status_.run_id = 1;
+  negative_probe_batch_seed_ = negativeProbeBatchMode()
+      ? (static_cast<uint32_t>(micros()) ^
+         (0x9e3779b9U * static_cast<uint32_t>(status_.run_id))) : 0;
   last_log_us_ = 0;
   last_pulse_end_ms_ = 0;
   predicted_signed_current_end_mA_ = 0.0f;
@@ -2420,9 +2423,6 @@ void ExperimentRunner::updateEnergyControlV0Pulse(uint32_t now_ms) {
 }
 void ExperimentRunner::resetEnergyControlAutonomous() {
   negative_probe_batch_crossing_index_ = 0;
-  negative_probe_batch_seed_ = negativeProbeBatchMode()
-      ? (static_cast<uint32_t>(micros()) ^
-         (0x9e3779b9U * (static_cast<uint32_t>(status_.run_id) + 1U))) : 0;
   solver_shadow_event_ = PsramLogger::SolverShadowEvent{};
   solver_shadow_pending_ = false;
   timing_probe_event_ = PsramLogger::TimingProbeEvent{};
