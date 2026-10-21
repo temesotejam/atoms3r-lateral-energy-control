@@ -6,6 +6,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_negative_probe_batch.c
 node --check web/runtime.js
 node --check site/wheel-work.js
 node tools/test_wheel_work.js
+node --check site/one-peak-energy.js
+node tools/test_one_peak_energy.js
 node tools/test_position_work.js
 python3 tools/test_position_observation.py
 node --check web/pose_comparison.js

@@ -10,21 +10,33 @@
 <label>生の正回転と機体の正方向 <select id="sign"><option value="-1">逆向き（暫定）</option><option value="1">同じ向き</option></select></label></p>
 <button id="calculate">計算する</button><button id="pulses" disabled>入力別CSVを保存</button><button id="intervals" disabled>全区間CSVを保存</button><button id="kinematics" disabled>位置由来の速度CSVを保存</button><button id="json" disabled>結果JSONを保存</button>
 <pre id="result" role="status">ファイルを選んでください。</pre>
+<h2>一つ先の負側ピークを予測して照合</h2>
+<p>固定脚・負側5条件の一括実験専用です。前の5回から決めた式を固定し、ZEROクロス時点に記録済みの角速度・ホイール回転数・直前ピーク・電池電圧と割当時間だけで予測します。次のピークは答え合わせにのみ使用します。学習範囲外の予測にはCSVで理由を付けます。上の慣性・符号の入力欄を変えても、この固定した予測式の係数は変わりません。この計算は実機の制御を変更しません。</p>
+<button id="one-peak-csv" disabled>予測と実測のCSVを保存</button>
+<pre id="one-peak-result" role="status">一括実験のRWLOGを選んで「計算する」を押してください。</pre>
 <p>正の仕事は機体への加振、負の仕事は制動を表します。欠測区間をゼロとして補いません。入力の境界では前後の回転速度から線形補間します。</p>
 <p><a href="index.html">書き込みページに戻る</a></p>
-<script src="wheel-work.js"></script><script>
+<script src="wheel-work.js"></script><script src="one-peak-energy.js"></script><script>
 'use strict';
-const get=id=>document.getElementById(id); let report=null, name='wheel_work';
+const get=id=>document.getElementById(id); let report=null, predictionReport=null, name='wheel_work';
 function save(contents,suffix,type){const url=URL.createObjectURL(new Blob([contents],{type})),a=document.createElement('a');a.href=url;a.download=name+suffix;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);}
 get('calculate').onclick=async()=>{
-  report=null;for(const id of ['pulses','intervals','kinematics','json'])get(id).disabled=true;
+  report=null;predictionReport=null;for(const id of ['pulses','intervals','kinematics','json','one-peak-csv'])get(id).disabled=true;
+  get('one-peak-result').textContent='RWLOGを確認中です。';
   try{const f=get('file').files[0];if(!f)throw Error('RWLOGを選んでください。');
     name=f.name.replace(/\.rwlog$/i,'');
-    report=WheelWorkAnalyzer.fromBytes(new Uint8Array(await f.arrayBuffer()),{inertia:Number(get('inertia').value),sign:Number(get('sign').value)});
+    const parsed=WheelWorkAnalyzer.parse(new Uint8Array(await f.arrayBuffer()));
+    report=WheelWorkAnalyzer.analyze(parsed.rows,parsed.metadata,{inertia:Number(get('inertia').value),sign:Number(get('sign').value)});
     get('result').textContent=f.name+'\n'+WheelWorkAnalyzer.describe(report);
     for(const id of ['pulses','intervals','kinematics','json'])get(id).disabled=false;
-  }catch(e){get('result').textContent=e.message;}
+    try {
+      predictionReport=OnePeakEnergy.analyze(parsed.metadata);
+      get('one-peak-result').textContent=OnePeakEnergy.describe(predictionReport);
+      get('one-peak-csv').disabled=false;
+    } catch(e) {get('one-peak-result').textContent=e.message;}
+  }catch(e){get('result').textContent=e.message;get('one-peak-result').textContent='RWLOGを確認できなかったため、予測は行っていません。';}
 };
 for(const id of ['pulses','intervals','kinematics'])get(id).onclick=()=>{if(report)save('\ufeff'+WheelWorkAnalyzer.csv(report[id],report),'_wheel_work_'+id+'.csv','text/csv;charset=utf-8');};
 get('json').onclick=()=>{if(report)save(JSON.stringify(report,null,2),'_wheel_work.json','application/json');};
+get('one-peak-csv').onclick=()=>{if(predictionReport)save('\ufeff'+WheelWorkAnalyzer.csv(predictionReport.rows),'_one_peak_prediction.csv','text/csv;charset=utf-8');};
 </script></html>
