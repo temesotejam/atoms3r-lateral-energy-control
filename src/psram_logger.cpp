@@ -1537,10 +1537,16 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     appendAutonomousNullable("work_q2_coefficient", e.work_q2_coefficient, 8);
     detail += ",\"energy_model_extrapolated\":" + String(e.energy_model_extrapolated ? "true" : "false");
     detail += ",\"fixed_negative_probe\":" + String(e.fixed_negative_probe ? "true" : "false");
-    if (e.negative_probe_batch_index != UINT16_MAX) {
+    const bool batch_condition = e.negative_probe_batch_index != UINT16_MAX;
+    if (batch_condition) {
       detail += ",\"negative_probe_batch_index\":" + String(e.negative_probe_batch_index);
       detail += ",\"negative_probe_batch_planned_width_ms\":" + String(e.negative_probe_batch_planned_width_ms);
       detail += ",\"negative_probe_batch_rate_skipped\":" + String(e.negative_probe_batch_rate_skipped ? "true" : "false");
+    } else {
+      // CompactJsonTable requires identical fields for every ZERO-cross row.
+      detail += ",\"negative_probe_batch_index\":null";
+      detail += ",\"negative_probe_batch_planned_width_ms\":null";
+      detail += ",\"negative_probe_batch_rate_skipped\":null";
     }
     appendAutonomousNullable("q1_gain_deg_per_mA_s", e.q1_gain_deg_per_mA_s, 5);
     appendAutonomousNullable("q_ff_energy_mA_s", e.q_ff_energy_mA_s, 5);

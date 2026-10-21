@@ -101,6 +101,11 @@ int main(int argc,char** argv){
     z.pre_input_measured_current_mA=17;z.pre_input_wheel_speed_rpm=123.5;
     z.unclamped_energy_request_j=.00040325f;z.q_unclamped_mA_s=9.01853f;z.unclamped_inverse_valid=true;
     z.maximum_input_work_j=.00003841f;z.predicted_current_goal_mA=153.f;z.predicted_current_rise_tau_s=.070f;
+    if (i % 2) {
+      z.negative_probe_batch_index=i;
+      z.negative_probe_batch_planned_width_ms=20;
+      z.negative_probe_batch_rate_skipped=i%4==1;
+    }
     logger.addEnergyControlAutonomousZeroCrossEvent(z);
     logger.addTimingProbeEvent({});
   }

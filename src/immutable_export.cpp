@@ -39,7 +39,8 @@ void ImmutableExport::build() {
   RuntimeDiag::phase(RuntimeDiag::Lane::Export, RuntimeDiag::Phase::ExportMetadata);
   if (!logger_->buildMetadataJson(metadata_)) {
     portENTER_CRITICAL(&mux_);
-    snprintf(status_.error, sizeof(status_.error), "%s", "metadata_psram_capacity_or_allocation_failed");
+    snprintf(status_.error, sizeof(status_.error), "metadata_build_failed_at_%lu_bytes",
+        static_cast<unsigned long>(metadata_.length()));
     status_.phase = Phase::Error;
     portEXIT_CRITICAL(&mux_); return;
   }

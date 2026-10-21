@@ -70,7 +70,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.13-export-reserved'
+assert metadata['firmware_revision']=='1.0.14-batch-export-schema'
 assert metadata['energy_model']=='angle_energy_bridge'
 assert metadata['energy_control_autonomous_revision']=='lateral_energy_angle_bridge_v8_20261015'
 assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==0
@@ -133,6 +133,15 @@ assert metadata['terminal_state']['last_error']=='imu_acquisition_overflow_backl
 assert metadata['control_work_profile']['pulse_on']['log_row']['mean_us']==777
 assert len(metadata['energy_control_autonomous_peak_events']) == 256
 assert len(metadata['energy_control_autonomous_zero_cross_events']) == 256
+batch_rows=metadata['energy_control_autonomous_zero_cross_events']
+assert batch_rows[0]['negative_probe_batch_index'] is None
+assert batch_rows[0]['negative_probe_batch_planned_width_ms'] is None
+assert batch_rows[0]['negative_probe_batch_rate_skipped'] is None
+assert batch_rows[1]['negative_probe_batch_index'] == 1
+assert batch_rows[1]['negative_probe_batch_planned_width_ms'] == 20
+assert batch_rows[1]['negative_probe_batch_rate_skipped'] is True
+assert batch_rows[2]['negative_probe_batch_index'] is None
+assert batch_rows[3]['negative_probe_batch_rate_skipped'] is False
 assert 'target_energy_j' in metadata['energy_control_autonomous_peak_events'][0]
 assert 'model_residual_j' in metadata['energy_control_autonomous_peak_events'][0]
 assert 'kinetic_energy_j' in metadata['energy_control_autonomous_zero_cross_events'][0]
