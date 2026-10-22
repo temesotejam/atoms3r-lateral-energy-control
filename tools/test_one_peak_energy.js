@@ -12,12 +12,14 @@ const event={event_index:31,negative_probe_batch_index:13,zero_cross_time_ms:109
 const peak={physical_peak_side:-1,peak_time_ms:11300,peak_amplitude_deg:10.5};
 const metadata={negative_probe_batch:true,energy_control_autonomous_normal_current_mA:300,
   energy_control_autonomous_target_peak_deg:8,firmware_revision:'fixture',
+  upright_reference_abs_pitch_deg:1.932539,
   energy_control_autonomous_zero_cross_events:table([event]),
   energy_control_autonomous_peak_events:table([peak])};
 const result=P.analyze(metadata),row=result.rows[0];
 assert.equal(result.summary.scored,1);
-close(row.predicted_peak_deg,10.612872809219013);
-close(row.predicted_energy_mj,1.1654577232281802);
+assert.equal(P.model.training_events,304);
+close(row.predicted_peak_deg,10.282807170383641);
+close(row.predicted_energy_mj,1.1042532603239432);
 close(P.potentialMj(8),.7334225990577391,1e-9);
 assert.equal(row.target_reachable_with_tested_widths,false);
 assert.equal(row.predicted_best_width_ms,25);
@@ -30,10 +32,13 @@ assert.equal(P.analyze(lowVoltage).summary.scored,0);
 assert.equal(P.analyze(lowVoltage).summary.outside_support.n,1);
 assert(Number.isFinite(P.analyze(lowVoltage).summary.outside_support.rmse_deg));
 assert.match(P.analyze(lowVoltage).rows[0].exclusions,/battery_mV/);
+const oldReference={...metadata,upright_reference_abs_pitch_deg:1.772013};
+assert.equal(P.analyze(oldReference).summary.scored,0);
+assert.match(P.analyze(oldReference).rows[0].exclusions,/直立基準/);
 assert.throws(()=>P.analyze({...metadata,energy_control_autonomous_normal_current_mA:400}),/300 mA/);
 assert.throws(()=>P.analyze({...metadata,metadata_event_detail_truncated:true}),/途中/);
 const html=fs.readFileSync(require('node:path').join(__dirname,'../site/wheel-work.html'),'utf8');
 const scriptStart=html.lastIndexOf('<script>'),scriptEnd=html.indexOf('</script>',scriptStart);
 assert(scriptStart>=0 && scriptEnd>scriptStart);
 new vm.Script(html.slice(scriptStart+8,scriptEnd));
-console.log('One-peak frozen prediction, future-peak isolation, voltage support and compact events PASS');
+console.log('One-peak 14-run prediction, future-peak isolation, reference and voltage support PASS');

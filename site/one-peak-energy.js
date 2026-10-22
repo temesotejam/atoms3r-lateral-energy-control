@@ -1,21 +1,23 @@
-/* Frozen, observation-only one-peak model fitted to five fixed-leg runs on
+/* Observation-only one-peak model refitted to 14 fixed-leg runs on
  * 2026-10-21. Inputs are exclusively values logged at the ZERO crossing and
  * the already assigned pulse width. The observed peak is used only to score
  * the prediction after the run. Nothing here writes a motor command. */
 (function(root) {
   'use strict';
   const model = Object.freeze({
-    revision:'negative_one_peak_energy_20261021_five_runs_v1',
-    training_events:108,
+    revision:'negative_one_peak_energy_20261021_fourteen_runs_v2',
+    training_events:304,
     input_current_mA:300,
     widths_ms:[0,10,15,20,25],
-    support:{rate_dps:[68.23,75.19],wheel_rpm:[11.7,334.1],
-      previous_peak_deg:[7.45,8.57],battery_mV:[6210,7250]},
-    on:[-0.11168847328721321,-0.21894710774527726,-0.004473548592617212,0.003467831747993976],
-    off:[0.2245901705919965,0.006977239459598269,0.02521072407172474,
-      -0.14403423957789274,0.1048094704645489],
-    arrival:[1.4067623971788847,0.09862539880738302,-0.01113881719565523,
-      -0.03614211042653867,0.09898996918248693,0.44199385608958813]
+    reference_abs_pitch_deg:1.932539,
+    reference_tolerance_deg:0.05,
+    support:{rate_dps:[57.2522,76.2778],wheel_rpm:[4.28,550.04],
+      previous_peak_deg:[5.0288,8.52741],battery_mV:[7220,8000]},
+    on:[-0.11374238610590627,-0.2137163629606094,-0.0121297577897634,0.002750431639219765],
+    off:[0.22670010497624232,0.007915741915865374,0.01891249166239664,
+      -0.12244123666267166,0.07027683583380318],
+    arrival:[1.396542982188298,0.0986473699053286,-0.024852205530032204,
+      -0.04795626985252528,0.004742852774672139,0.42290164040184]
   });
   function potentialMj(deg) {
     const a=Math.abs(deg)*Math.PI/180, r=.15, x=.005, h=.12, m=.1997, g=9.80665;
@@ -86,6 +88,9 @@
       if(!model.widths_ms.includes(width)) reasons.push('入力時間が学習条件外');
       if(e.pulse_width_ms!==width || (width>0 && !e.output_executed)) reasons.push('指令が計画通り実行されていない');
       if(!e.pre_input_wheel_speed_valid) reasons.push('入力前ホイール速度が無効');
+      if(!Number.isFinite(metadata.upright_reference_abs_pitch_deg) ||
+         Math.abs(metadata.upright_reference_abs_pitch_deg-model.reference_abs_pitch_deg)>
+           model.reference_tolerance_deg) reasons.push('直立基準が学習条件外');
       for(const [key,limits] of Object.entries(model.support))
         if(!Number.isFinite(state[key])||state[key]<limits[0]||state[key]>limits[1])
           reasons.push(key+'が学習範囲外');
@@ -128,7 +133,7 @@
     const rmse=scored.length ? Math.sqrt(scored.reduce((s,r)=>s+r.error_deg**2,0)/scored.length) : null;
     const mae=scored.length ? scored.reduce((s,r)=>s+Math.abs(r.error_deg),0)/scored.length : null;
     return {model,rows,summary:{events:rows.length,scored:scored.length,rmse_deg:rmse,mae_deg:mae,
-      outside_support:score(outside),training_held_out_run_rmse_deg:.154}};
+      outside_support:score(outside),training_held_out_run_rmse_deg:.289}};
   }
   function describe(report) {
     const {summary,rows}=report;
@@ -138,9 +143,9 @@
       `条件付きで評価したイベント：${summary.scored}/${summary.events}`,
       `新しいログの次ピーク誤差：RMSE ${line(summary.rmse_deg,'°')} / 平均絶対誤差 ${line(summary.mae_deg,'°')}`,
       `学習範囲外の参考値：${summary.outside_support.n}件 / RMSE ${line(summary.outside_support.rmse_deg,'°')} / 予測−実測の平均 ${line(summary.outside_support.mean_error_deg,'°')}`,
-      '参考：元の5回を1回ずつ除いて検証したRMSEは0.154°',
+      '参考：学習に使った14回を1回ずつ除いて検証したRMSEは0.289°',
       voltage.length ? `このログの記録電圧：${(Math.min(...voltage)/1000).toFixed(2)}〜${(Math.max(...voltage)/1000).toFixed(2)} V` : '電圧記録なし',
-      '学習範囲外は元の検証精度として扱いません。CSVには予測値と範囲外の理由を残します。',
+      '直立基準や学習範囲が異なる予測は検証精度として扱いません。CSVには予測値と理由を残します。',
       '停止後の仕事は予測値です。実測ピークを予測計算に使っていません。',
       'このページの予測結果はホイールへの指令に使用しません。'].join('\n');
   }
