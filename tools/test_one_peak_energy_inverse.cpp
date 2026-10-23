@@ -19,6 +19,13 @@ int main() {
   assert(extended.valid && extended.width_ms == 26 && extended.extrapolated);
   const auto protected_choice = choose(state, 0.7334225991f, 0.f, 5, true);
   assert(protected_choice.width_ms == 0);
+  // target - measured is negative when the observed swing exceeds target.
+  assert(nextAdaptiveExtraMs(0, true, 10.4f, -2.4f, 25) == 1);
+  assert(nextAdaptiveExtraMs(1, true, 10.4f, -2.4f, 26) == 2);
+  assert(nextAdaptiveExtraMs(5, true, 10.4f, -2.4f, 30) == 5);
+  assert(nextAdaptiveExtraMs(2, true, 7.0f, 1.0f, 27) == 1);
+  assert(nextAdaptiveExtraMs(2, false, 10.4f, -2.4f, 27) == 0);
+  assert(nextAdaptiveExtraMs(2, true, 4.9f, -2.4f, 27) == 0);
   State recaptured_reference = state;
   recaptured_reference.reference_abs_pitch_deg = 1.55f;
   assert(choose(recaptured_reference, 0.7334225991f, 0.f).valid);

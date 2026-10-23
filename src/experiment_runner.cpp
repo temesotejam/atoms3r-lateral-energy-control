@@ -2798,13 +2798,9 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
     const bool opposite_healthy = energy_control_autonomous_last_peak_valid_ &&
         energy_control_autonomous_last_peak_side_ > 0 &&
         energy_control_autonomous_last_peak_amplitude_deg_ >= one_peak_energy_inverse::kLowOppositePeakDeg;
-    if (!opposite_healthy || event.peak_amplitude_deg < 5.f) inverse_negative_extra_ms_ = 0;
-    else if (event.peak_error_deg > one_peak_energy_inverse::kPeakDeadbandDeg &&
-             inverse_negative_pending_width_ms_ >= 25 && inverse_negative_extra_ms_ < 5)
-      ++inverse_negative_extra_ms_;
-    else if (event.peak_error_deg < -one_peak_energy_inverse::kPeakDeadbandDeg &&
-             inverse_negative_extra_ms_ > 0)
-      --inverse_negative_extra_ms_;
+    inverse_negative_extra_ms_ = one_peak_energy_inverse::nextAdaptiveExtraMs(
+        inverse_negative_extra_ms_, opposite_healthy, event.peak_amplitude_deg,
+        event.peak_error_deg, inverse_negative_pending_width_ms_);
   }
   event.antiwindup_upper_hold = event.pending_command_matched &&
       energy_control_autonomous_pending_saturated_upper_ && event.energy_error_j > 0;

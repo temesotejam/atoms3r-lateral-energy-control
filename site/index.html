@@ -17,8 +17,8 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
-      <h2>1.0.18：固定脚・負側のエネルギー制御</h2>
-      <p>実機のWeb画面で「新しい制御で15秒測定を開始」を押します。目標8°・300 mAに固定し、測定した0・10・15・20・25 msから負側の入力時間を選びます。目標に届かない場合は、実測ピークを確認して最大30 msまで1 msずつ調整します。直立基準は実際の直立姿勢で保存してください。MEKFの絶対角を学習時の値に合わせる必要はありません。電圧・ホイール速度などが測定範囲外なら負側入力を見送ります。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/NEGATIVE_ONE_PEAK_ENERGY_INVERSE.md">式と適用条件</a></p>
+      <h2>1.0.19：固定脚・負側のエネルギー制御</h2>
+      <p>実機のWeb画面で「新しい制御で15秒測定を開始」を押します。目標8°・300 mAに固定し、測定した0・10・15・20・25 msから負側の入力時間を選びます。負側の揺れが目標より大きい場合は、実測ピークを確認して最大30 msまで減速入力を1 msずつ延ばします。1.0.19では、この延長判定の符号を修正しました。直立基準は実際の直立姿勢で保存してください。MEKFの絶対角を学習時の値に合わせる必要はありません。電圧・ホイール速度などが測定範囲外なら負側入力を見送ります。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/NEGATIVE_ONE_PEAK_ENERGY_INVERSE.md">式と適用条件</a></p>
     </section>
     <section class="panel important">
       <h2>1.0.16：固定脚・負側5条件の順序を変える一括実験</h2>

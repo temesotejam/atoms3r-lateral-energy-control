@@ -11,6 +11,19 @@ constexpr uint16_t kMaximumAdaptiveMs = 30;
 constexpr float kLowOppositePeakDeg = 7.f;
 constexpr float kPeakDeadbandDeg = .5f;
 
+// peak_error_deg is target minus measured peak. A negative error means the
+// negative-side swing is too large, so more braking is needed next cycle.
+inline uint8_t nextAdaptiveExtraMs(uint8_t current_extra_ms, bool opposite_healthy,
+                                   float measured_peak_deg, float peak_error_deg,
+                                   uint16_t applied_width_ms) {
+  if (!opposite_healthy || measured_peak_deg < 5.f) return 0;
+  if (peak_error_deg < -kPeakDeadbandDeg && applied_width_ms >= 25 && current_extra_ms < 5)
+    return current_extra_ms + 1;
+  if (peak_error_deg > kPeakDeadbandDeg && current_extra_ms > 0)
+    return current_extra_ms - 1;
+  return current_extra_ms;
+}
+
 struct State {
   State() = default;
   State(float rate, float wheel, float previous, float battery, float reference)

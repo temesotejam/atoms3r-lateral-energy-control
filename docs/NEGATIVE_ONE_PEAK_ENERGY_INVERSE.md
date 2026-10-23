@@ -32,6 +32,10 @@ negative pulse to extend by 1 ms, at most 30 ms. A preceding positive peak
 below 7° or a negative peak below 5° resets the extension. The 25–30 ms
 prediction uses the 20–25 ms slope and is flagged as extrapolated. The first
 closed-loop run must be reviewed before treating this range as validated.
+Firmware 1.0.19 corrects the feedback sign: `peak_error_deg` is target minus
+measured peak, so a negative value below -0.5° triggers an extra millisecond
+of braking. The first 1.0.18 run exposed that the earlier condition was
+reversed and could not extend a 25 ms brake when the peak was too large.
 
 The log stores the predicted next-peak energy, measured peak energy, residual,
 input width, extrapolation flag, wheel speed, and voltage. A missing supported
