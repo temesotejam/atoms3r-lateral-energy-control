@@ -167,4 +167,42 @@ int main(int argc,char** argv){
   assert(extended_metadata.find("seeded_fisher_yates_three_event_blocks_v1") != std::string::npos);
   assert(extended_metadata.find("\"autonomous_duration_ms\":30000") != std::string::npos);
   std::cout << "extended negative batch metadata/export PASS\n";
+
+  // A real work-control run mixes fallback/start-up rows and supported work
+  // rows. Exercise both schema orders, transitions in both directions, and
+  // the full event capacity through the actual immutable RWLOG exporter.
+  for (bool work_first : {false, true}) {
+    PsramLogger work;
+    assert(work.begin());
+    work.startRun(3, 323456, 300, 100, 1000, false, 0, 800, 0, false,
+        NAN, false, 0, false, true, 0.0f, 40, false, true, false, reference);
+    assert(work.addSample(row));
+    for (unsigned i = 0; i < 256; ++i) {
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent z{};
+      z.event_index = i;
+      z.event_kind = i == 0 ? 1 : 0;
+      z.physical_next_peak_side = i % 2 ? -1 : 1;
+      z.energy_model_extrapolated = (i % 3 == 0) != work_first;
+      work.addEnergyControlAutonomousZeroCrossEvent(z);
+    }
+    work.markMeasurementDone(); work.seal();
+    ImmutableExport work_export;
+    assert(work_export.begin(work));
+    assert(work_export.prepare()); work_export.build();
+    const auto result = work_export.status();
+    std::cerr << "mixed work/fallback export: first=" << work_first
+        << " bytes=" << work_export.metadata_.length()
+        << " error=" << result.error << "\n";
+    assert(result.phase == ImmutableExport::Phase::Ready);
+    const std::string metadata = work_export.metadata_.c_str();
+    assert(metadata.find("\"energy_control_autonomous_zero_cross_event_rendered_count\":256") != std::string::npos);
+    const std::string path = std::string(argv[1]) + (work_first ? ".work-first.rwlog" : ".fallback-first.rwlog");
+    std::ofstream work_out(path, std::ios::binary);
+    for (uint32_t offset = 0; offset < result.bytes;) {
+      const auto n = std::min<uint32_t>(sizeof(bytes), result.bytes - offset);
+      assert(work_export.chunk(result.token, offset, n, bytes));
+      work_out.write(reinterpret_cast<char*>(bytes), n); offset += n;
+    }
+  }
+  std::cout << "mixed work/fallback metadata/export PASS\n";
 }

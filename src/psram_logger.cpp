@@ -1587,6 +1587,10 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
         energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
     if (work_event)
       detail += ",\"arrival_energy_model_revision\":\"" + String(wheel_work_energy_control::kRevision) + "\"";
+    else
+      // The compact table stores one shared field list for every row. Startup
+      // and fallback events must keep the work-model column, with a null value.
+      detail += ",\"arrival_energy_model_revision\":null";
     appendAutonomousNullable("passive_energy_j", e.passive_energy_j, 8);
     appendAutonomousNullable("target_peak_deg", e.target_peak_deg, 5);
     appendAutonomousNullable("target_energy_j", e.target_energy_j, 8);

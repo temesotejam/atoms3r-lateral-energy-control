@@ -70,7 +70,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.23-wheel-work-control'
+assert metadata['firmware_revision']=='1.0.24-work-log-export-fix'
 assert metadata['energy_model']=='angle_energy_bridge'
 assert metadata['energy_control_autonomous_revision']=='lateral_energy_angle_bridge_v8_20261015'
 assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==0
@@ -245,3 +245,29 @@ assert metadata['wheel_work_velocity_source']=='position_local_quadratic_5_point
 assert metadata['wheel_work_inertia_kg_m2'] == .000028
 assert metadata['wheel_speed_to_body_sign'] == -1
 assert "magnetometer" not in metadata
+
+# Validate complete mixed-mode RWLOGs, including CRC and null/value alignment.
+# The startup/fallback and supported-work rows must share exactly one schema.
+for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first.rwlog')):
+    work_data = Path(str(source) + suffix).read_bytes()
+    work_header = converter.parse_header(work_data)
+    work_metadata = converter.expand_tables(json.loads(
+        work_data[110:110 + work_header['metadata_json_size']],
+        parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
+    assert work_metadata['energy_model'] == 'wheel_work_one_peak_control'
+    assert work_metadata['metadata_json_final_bytes'] == work_header['metadata_json_size']
+    assert not work_metadata['metadata_event_detail_truncated']
+    work_rows = work_metadata['energy_control_autonomous_zero_cross_events']
+    assert len(work_rows) == 256
+    assert work_metadata['energy_control_autonomous_zero_cross_event_rendered_count'] == 256
+    for index, event in enumerate(work_rows):
+        extrapolated = (index % 3 == 0) != work_first
+        assert event['event_index'] == index + 1
+        assert event['energy_model_extrapolated'] == extrapolated
+        if extrapolated:
+            assert event['arrival_energy_model_revision'] is None
+        else:
+            assert event['arrival_energy_model_revision'] == work_metadata['wheel_work_model_revision']
+    with tempfile.TemporaryDirectory() as tmp:
+        converter.convert(Path(str(source) + suffix), Path(tmp) / 'csv')
+print('full mixed work/fallback RWLOGs: CRC, schema, model/null alignment and conversion PASS')

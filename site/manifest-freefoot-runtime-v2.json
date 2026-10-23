@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.23-wheel-work-control",
+  "version": "1.0.24-work-log-export-fix",
   "builds": [
     {
       "chipFamily": "ESP32-S3",
