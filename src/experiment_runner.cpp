@@ -21,6 +21,27 @@
 #include "wheel_work_energy_control.h"
 
 namespace {
+// Called only for an accepted ZERO cross. Keep diagnostic field assembly out
+// of the periodic IRAM motion path and within the existing 24 KiB code gate.
+__attribute__((noinline)) lateral_energy::Decision workDecision(
+    const wheel_work_energy_control::Choice& choice, int8_t side,
+    float passive_j, float target_j,
+    const lateral_energy::CurrentTable& current_table,
+    float initial_current_ma, float goal_current_ma) {
+  lateral_energy::Decision d;
+  d.valid=true;d.ms=choice.width_ms;d.evaluations=choice.evaluations;
+  d.command_sign=side>0 ? 1 : -1;
+  d.free_j=passive_j;d.target_j=target_j;
+  d.predicted_j=choice.energy_mj*.001f;
+  d.deficit_j=d.target_j-d.free_j;d.commanded_deficit_j=d.deficit_j;
+  d.corrected_target_j=d.target_j;d.energy_error_j=d.target_j-d.predicted_j;
+  d.selected_q_mAs=side>0 ? choice.q_mas :
+      -lateral_energy::charge(current_table,d.ms,initial_current_ma,goal_current_ma);
+  d.requested_q_mAs=d.selected_q_mAs;
+  d.lower=choice.target_below_reachable;
+  d.upper=choice.target_above_reachable;
+  return d;
+}
 struct V46MekfRunReinitAccumulator {
   bool active = false;
   bool done = false;
@@ -3028,6 +3049,52 @@ uint16_t ExperimentRunner::selectFixedNegativeProbeWidth(
   return energy_control_autonomous_brake_max_ms_;
 }
 
+wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
+    const PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
+    float fast_v, bool* state_supported, int16_t* selected_current_ma,
+    const lateral_energy::CurrentTable** selected_current_table) const {
+  wheel_work_energy_control::Choice choice;
+  const int8_t side=event.physical_next_peak_side;
+  const float target_mj=event.target_energy_j*1000.f;
+  const wheel_work_energy_control::State state{
+      event.zero_cross_abs_rate_dps,event.pre_input_wheel_speed_rpm,
+      static_cast<float>(event.vbat_mV),
+      peak_error_adaptation::speedUsable(event.pre_input_wheel_speed_rpm,
+          event.pre_input_wheel_speed_valid,event.pre_input_wheel_speed_age_us)};
+  const bool supported=wheel_work_energy_control::supported(state,side);
+  if (state_supported) *state_supported=supported;
+  if (!supported ||
+      !std::isfinite(target_mj) || target_mj<=0.f) return choice;
+  const float initial_current_ma=static_cast<float>(side)*event.i0_estimated_mA;
+  if (side>0) {
+    const int16_t currents[] = {300,350,400};
+    const lateral_energy::CurrentTable* tables[] = {
+        &lateral_current_table_,&positive_current_probe_tables_[0],
+        &positive_current_probe_tables_[1]};
+    for (uint8_t i=0;i<3;++i) {
+      const float goal=predictCurrentGoalMa(currents[i],fast_v);
+      for (uint16_t width=40;width<=100;++width) {
+        const float q=lateral_energy::charge(*tables[i],width,initial_current_ma,goal);
+        wheel_work_energy_control::consider(choice,currents[i],width,q,
+            wheel_work_energy_control::positive(state,q),target_mj);
+      }
+    }
+  } else if (!(energy_control_autonomous_last_peak_valid_ &&
+      energy_control_autonomous_last_peak_side_>0 &&
+      energy_control_autonomous_last_peak_amplitude_deg_<7.f)) {
+    for (uint16_t width : {30,35,40})
+      wheel_work_energy_control::consider(choice,300,width,NAN,
+          wheel_work_energy_control::negative(state,width),target_mj);
+  }
+  wheel_work_energy_control::finish(choice,target_mj);
+  if (choice.valid && side>0 && selected_current_ma && selected_current_table) {
+    *selected_current_ma=choice.current_ma;
+    *selected_current_table=choice.current_ma==350 ? &positive_current_probe_tables_[0] :
+        choice.current_ma==400 ? &positive_current_probe_tables_[1] : &lateral_current_table_;
+  }
+  return choice;
+}
+
 void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_ms, float rate_dps,
                                                                   float detector_before_deg,
                                                                   float detector_after_deg,
@@ -3189,48 +3256,9 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // reported as saturated, never extrapolated to a longer brake pulse.
   const bool work_mode = wheelWorkMode();
   wheel_work_energy_control::Choice work_choice;
-  if (work_mode) {
-    const wheel_work_energy_control::State work_state{
-        event.zero_cross_abs_rate_dps,event.pre_input_wheel_speed_rpm,
-        static_cast<float>(event.vbat_mV),
-        peak_error_adaptation::speedUsable(event.pre_input_wheel_speed_rpm,
-            event.pre_input_wheel_speed_valid,event.pre_input_wheel_speed_age_us)};
-    event.rate_support_diagnostic=wheel_work_energy_control::supported(
-        work_state,event.physical_next_peak_side);
-    if (event.rate_support_diagnostic) {
-      if (event.physical_next_peak_side > 0) {
-        const int16_t currents[] = {300,350,400};
-        const lateral_energy::CurrentTable* tables[] = {
-            &lateral_current_table_,&positive_current_probe_tables_[0],
-            &positive_current_probe_tables_[1]};
-        for (uint8_t i=0;i<3;++i) {
-          const float goal=predictCurrentGoalMa(currents[i],fast_v);
-          const float initial=static_cast<float>(event.physical_next_peak_side)*event.i0_estimated_mA;
-          for (uint16_t width=40;width<=100;++width) {
-            const float q=lateral_energy::charge(*tables[i],width,initial,goal);
-            const auto p=wheel_work_energy_control::positive(work_state,q);
-            wheel_work_energy_control::consider(work_choice,currents[i],width,q,p,
-                event.target_energy_j*1000.f);
-          }
-        }
-        if (work_choice.valid) {
-          selected_current_mA=work_choice.current_ma;
-          selected_current_table=selected_current_mA==350 ? &positive_current_probe_tables_[0] :
-              selected_current_mA==400 ? &positive_current_probe_tables_[1] : &lateral_current_table_;
-        }
-      } else {
-        const bool protect_positive=energy_control_autonomous_last_peak_valid_ &&
-            energy_control_autonomous_last_peak_side_>0 &&
-            energy_control_autonomous_last_peak_amplitude_deg_<7.f;
-        if (!protect_positive)
-          for (uint16_t width : {30,35,40})
-            wheel_work_energy_control::consider(work_choice,300,width,NAN,
-                wheel_work_energy_control::negative(work_state,width),
-                event.target_energy_j*1000.f);
-      }
-      wheel_work_energy_control::finish(work_choice,event.target_energy_j*1000.f);
-    }
-  }
+  if (work_mode)
+    work_choice=chooseWheelWork(event,fast_v,&event.rate_support_diagnostic,
+        &selected_current_mA,&selected_current_table);
 
   const float goal_current_mA = predictCurrentGoalMa(selected_current_mA,fast_v);
   const float aligned_initial_mA = static_cast<float>(event.physical_next_peak_side)*event.i0_estimated_mA;
@@ -3267,22 +3295,10 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   one_peak_energy_inverse::Choice inverse_choice;
   audit.solver_started=1; audit.solver_start_us=micros();
   auto decide_selected=[&](float bias) RW_SPEED_CODE {
-    if (work_mode && work_choice.valid) {
-      lateral_energy::Decision d;
-      d.valid=true;d.ms=work_choice.width_ms;d.evaluations=work_choice.evaluations;
-      d.command_sign=event.physical_next_peak_side>0 ? 1 : -1;
-      d.free_j=event.passive_energy_j;d.target_j=event.target_energy_j;
-      d.predicted_j=work_choice.energy_mj*.001f;
-      d.deficit_j=d.target_j-d.free_j;d.commanded_deficit_j=d.deficit_j;
-      d.corrected_target_j=d.target_j;d.energy_error_j=d.target_j-d.predicted_j;
-      d.selected_q_mAs=event.physical_next_peak_side>0 ? work_choice.q_mas :
-          -lateral_energy::charge(*selected_current_table,d.ms,
-              event.i0_estimated_mA,goal_current_mA);
-      d.requested_q_mAs=d.selected_q_mAs;
-      d.lower=work_choice.target_below_reachable;
-      d.upper=work_choice.target_above_reachable;
-      return d;
-    }
+    if (work_mode && work_choice.valid)
+      return workDecision(work_choice,event.physical_next_peak_side,
+          event.passive_energy_j,event.target_energy_j,*selected_current_table,
+          event.i0_estimated_mA,goal_current_mA);
     if (work_mode && event.physical_next_peak_side<0) return lateral_energy::Decision{};
     if (inverse_negative) {
       lateral_energy::Decision d;

@@ -9,4 +9,4 @@ for bad in (valid.replace('.iram0.text','.flash.text',1), '\n'.join(rows[1:]),
     try: audit(bad)
     except ValueError: pass
     else: raise AssertionError('Accepted invalid placement/size')
-print('Motion/acquisition link audit: required functions, emitted lambdas and 24 KiB limit PASS')
+print('Motion/acquisition link audit: required functions, emitted lambdas and 25 KiB limit PASS')

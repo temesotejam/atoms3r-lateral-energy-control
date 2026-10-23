@@ -10,6 +10,7 @@
 #include "autonomous_input_current.h"
 #include "autonomous_brake_limit.h"
 #include "lateral_energy_control.h"
+#include "wheel_work_energy_control.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
 #include "control_math_cache.h"
@@ -340,6 +341,12 @@ private:
                                                  float crossing_alpha,
                                                  float interpolated_time_ms);
   void RW_SPEED_CODE updateEnergyControlAutonomousPulse(uint32_t now_ms);
+  // Candidate search runs only at an accepted ZERO crossing. Keep its fitted
+  // regression and 183-candidate scan out of the periodic IRAM motion path.
+  wheel_work_energy_control::Choice __attribute__((noinline)) chooseWheelWork(
+      const PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
+      float fast_v, bool* state_supported, int16_t* selected_current_ma,
+      const lateral_energy::CurrentTable** selected_current_table) const;
   void __attribute__((noinline)) selectPositiveCurrentBatch(
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       int16_t& selected_current_mA,
