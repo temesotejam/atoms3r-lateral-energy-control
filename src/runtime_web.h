@@ -2,10 +2,11 @@
 #include <Arduino.h>
 static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AtomS3R Free-foot</title>
 <style>
-:root{font-family:system-ui,sans-serif;color:#1d293d;background:#eef2f5;font-size:16px}*{box-sizing:border-box}body{max-width:950px;margin:auto;padding:20px}h1{font-size:1.65rem;margin-bottom:4px}h2{font-size:1.08rem}p{line-height:1.6}.muted{color:#546477;font-size:.88rem}.card{background:white;border-radius:14px;padding:20px;margin:16px 0;border:1px solid #d9e1e8}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.value{font-size:2rem;font-variant-numeric:tabular-nums;margin:4px 0}.label{font-size:.85rem;color:#546477}button{padding:13px 18px;border:0;border-radius:8px;background:#174b8e;color:white;font:inherit;cursor:pointer;margin:4px 4px 4px 0}button:disabled{opacity:.4;cursor:default}#stop{background:#b62032}#clear,#cancel{background:#58677a}code,pre{font-family:ui-monospace,monospace}pre{white-space:pre-wrap;font-size:.78rem;overflow-wrap:anywhere}#connection{font-weight:600}progress{width:100%;height:24px}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px 4px;border-bottom:1px solid #e1e6eb}canvas{width:100%;height:120px;background:#f3f6fa;border-radius:8px}#message{min-height:26px;color:#9c2636}a{color:#174b8e}
+:root{font-family:system-ui,sans-serif;color:#1d293d;background:#eef2f5;font-size:16px}*{box-sizing:border-box}body{max-width:950px;margin:auto;padding:20px}h1{font-size:1.65rem;margin-bottom:4px}h2{font-size:1.08rem}p{line-height:1.6}.muted{color:#546477;font-size:.88rem}.card{background:white;border-radius:14px;padding:20px;margin:16px 0;border:1px solid #d9e1e8}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.value{font-size:2rem;font-variant-numeric:tabular-nums;margin:4px 0}.label{font-size:.85rem;color:#546477}#state{font-size:1.35rem;overflow-wrap:anywhere}button{padding:13px 18px;border:0;border-radius:8px;background:#174b8e;color:white;font:inherit;cursor:pointer;margin:4px 4px 4px 0}button:disabled{opacity:.4;cursor:default}#stop{background:#b62032}#clear,#cancel{background:#58677a}code,pre{font-family:ui-monospace,monospace}pre{white-space:pre-wrap;font-size:.78rem;overflow-wrap:anywhere}#connection{font-weight:600}progress{width:100%;height:24px}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px 4px;border-bottom:1px solid #e1e6eb}canvas{width:100%;height:120px;background:#f3f6fa;border-radius:8px}#message{min-height:26px;color:#9c2636}a{color:#174b8e}
 </style>
 <h1>AtomS3R Free-foot</h1><div class="muted">左右揺動のエネルギー制御 · MEKF姿勢推定 · ZEROクロスで必要な入力時間を計算</div>
 <p id="connection">接続を確認中…</p>
+<p class="muted" id="firmware-revision">本体プログラムの版を確認中…</p>
 <section class="card"><div class="grid"><div><div class="label">状態</div><div class="value" id="state">—</div></div><div><div class="label">残り時間</div><div class="value" id="remaining">—</div></div><div><div class="label">胴体の左右揺動 · MEKF</div><div class="value" id="pitch">—</div></div><div><div class="label">指令 / 実測電流</div><div class="value" style="font-size:1.5rem" id="current">—</div></div></div>
 <p id="guide">起動後は静止させてください。LEDが点灯したら左右のpitchを基準に合わせ、機体を静止させます。足のマーカー認識は測定開始に不要です。</p>
 <h2>制御に使う直立基準</h2>
@@ -13,12 +14,16 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
 <p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
-<div id="negative-probe-packages">
-  <h2>固定脚・負側の仕事を調べる一括実験</h2>
-  <p class="muted">脚の前後移動を固定して測ります。目標8°・300 mA・30秒を自動設定し、負側の0・10・15・20・25 msを5条件ずつ順序を変えて試します。正側の制御は従来どおりです。毎回RWLOGを保存し、「ログを消去・次の測定へ」を押してから次の回を始めてください。</p>
-  <button id="probe-batch" type="button" disabled>負側5条件の一括実験を開始</button>
+<div id="negative-energy-control">
+  <h2>固定脚・新しいエネルギー制御（15秒）</h2>
+  <p class="muted">脚の前後移動を固定し、目標8°・300 mAで測ります。正側は従来制御、負側は次の最大角度に必要なエネルギーから入力時間を選びます。今の姿勢で直立基準を保存済みなら、そのMEKF絶対角を学習時の数値に合わせる必要はありません。</p>
+  <button id="inverse-start" type="button" disabled>新しい制御で15秒測定を開始</button>
 </div>
-<details><summary>通常の左右揺動制御を測定する（15秒）</summary>
+<details id="negative-probe-packages"><summary>負側5条件の一括実験を行う（30秒）</summary>
+  <p class="muted">入力時間0・10・15・20・25 msを5条件ずつ順序を変えて試す測定です。正側の制御は従来どおりです。毎回RWLOGを保存し、「ログを消去・次の測定へ」を押してから次の回を始めてください。</p>
+  <button id="probe-batch" type="button" disabled>負側5条件の一括実験を開始</button>
+</details>
+<details><summary>従来制御や比較用の方式を測定する（15秒）</summary>
 <p><label for="target">目標とする左右の最大角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
 <p class="muted" id="target-help">ZEROクロスの角速度から次の最大角度を予測し、選んだ目標に近づくよう電流の入力時間を0〜100 msで決めます。</p>
 <p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
@@ -515,6 +520,7 @@ function controls() {
   const busy = commandInFlight || previewRunning || poseRunning || !!latest?.command?.pending;
   const building = latest?.export_phase === 'building';
   $('start').disabled = !fresh || busy || transferRunning || !latest.ready || !latest.upright_reference?.valid || latest.running || latest.export_phase !== 'empty';
+  $('inverse-start').disabled = $('start').disabled;
   $('probe-batch').disabled = $('start').disabled;
   $('upright-reference-capture').disabled = !fresh || busy || transferRunning || building ||
     !latest.controller_fresh || !latest.imu_ok || latest.running || latest.pulse_active || latest.motor_mA !== 0 ||
@@ -566,10 +572,12 @@ function renderOffline() {
   $('run-brake').textContent = requestedBrakeMaxMs === null
     ? '負側ブレーキ上限はWeb復帰後に確認します。'
     : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：負側5条件を順序を変えて測定'
+      : requestedEnergyModel === 'bridge_inverse' ? '開始要求：次ピークのエネルギーから負側入力を選択'
       : `開始要求：負側ブレーキ上限 ${requestedBrakeMaxMs} ms`;
   $('run-model').textContent = requestedEnergyModel === 'bridge'
     ? '開始要求：旧到達角予測をエネルギーに換算（逆入力なし）'
     : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：固定脚・負側5条件の一括実験'
+    : requestedEnergyModel === 'bridge_inverse' ? '開始要求：次ピークの位置エネルギーから負側入力を選択'
     : requestedEnergyModel === 'quadratic' ? '開始要求：二次エネルギー式' : '予測式はWeb復帰後に確認します。';
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
   $('run-adaptation').textContent = requestedAdaptation === null
@@ -617,6 +625,7 @@ function footIssues(f, stale, terminal) {
 }
 function render(s) {
   $('connection').textContent = s.controller_fresh ? '接続中' : '接続中 · 制御状態の更新が停止';
+  $('firmware-revision').textContent = `本体プログラム：${s.revision || '不明'}`;
   $('state').textContent = s.state; $('remaining').textContent = format(s.remaining_ms / 1000, 1) + ' s';
   $('pitch').textContent = format(s.pitch_deg) + '°';
   $('current').textContent = `${s.motor_mA} / ${s.actual_mA} mA`;
@@ -750,9 +759,9 @@ async function poll() {
   catch (error) { $('connection').textContent = '画面更新のエラー（自動再試行）'; }
   finally { setTimeout(poll, 800); }
 }
-async function startOfflineRun(isBatchPackage = false) {
+async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
   if (commandInFlight || offlineMode) return;
-  const inversePackage = !isBatchPackage && $('energy-model').value === 'bridge_inverse';
+  const inversePackage = !isBatchPackage && (forcedModel || $('energy-model').value) === 'bridge_inverse';
   const target = isBatchPackage || inversePackage ? 8 : Number($('target').value);
   if (!targetChoices.includes(target)) {
     $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
@@ -767,7 +776,7 @@ async function startOfflineRun(isBatchPackage = false) {
   if ((!isBatchPackage && !inversePackage && !currentText) || !validInputCurrent(inputCurrentMa)) {
     $('message').textContent = '指令電流を100〜1200 mAの範囲で10 mA刻みで設定してください。'; return;
   }
-  const energyModel = isBatchPackage ? 'bridge_probe_batch' : $('energy-model').value;
+  const energyModel = isBatchPackage ? 'bridge_probe_batch' : (forcedModel || $('energy-model').value);
   if (!['bridge', 'bridge_inverse', 'bridge_probe_batch', 'quadratic'].includes(energyModel)) {
     $('message').textContent = '予測式を選択してください。'; return;
   }
@@ -785,7 +794,8 @@ async function startOfflineRun(isBatchPackage = false) {
   requestedInputCurrentMa = inputCurrentMa;
   requestedBrakeMaxMs = brakeMaxMs;
   requestedEnergyModel = energyModel;
-  const runLabel = isBatchPackage ? '負側5条件の一括実験' : '左右揺動エネルギー制御';
+  const runLabel = isBatchPackage ? '負側5条件の一括実験' :
+    inversePackage ? '固定脚・負側のエネルギー制御' : '左右揺動エネルギー制御';
   commandInFlight = true; setOffline(isBatchPackage ? 50000 : 30000); $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}&energy_model=${energyModel}`, {method:'POST', kind:'text'});
@@ -1075,6 +1085,7 @@ async function capturePose(baseline) {
   } finally { poseRunning = false; controls(); }
 }
 $('start').onclick = () => startOfflineRun();
+$('inverse-start').onclick = () => startOfflineRun(false, 'bridge_inverse');
 $('probe-batch').onclick = () => startOfflineRun(true);
 $('energy-model').onchange = () => {
   if ($('energy-model').value === 'bridge_inverse') {

@@ -5,11 +5,9 @@
 // Fixed-leg, negative-side, 300 mA model. Energies are mJ here because the
 // regression was fitted in mJ; callers convert to J for the existing log.
 namespace one_peak_energy_inverse {
-constexpr char kRevision[] = "negative_one_peak_energy_20261021_fourteen_runs_v2";
+constexpr char kRevision[] = "negative_one_peak_energy_20261021_fourteen_runs_v3_relative_reference";
 constexpr uint16_t kWidthsMs[] = {0, 10, 15, 20, 25};
 constexpr uint16_t kMaximumAdaptiveMs = 30;
-constexpr float kReferenceAbsPitchDeg = 1.932539f;
-constexpr float kReferenceToleranceDeg = .05f;
 constexpr float kLowOppositePeakDeg = 7.f;
 constexpr float kPeakDeadbandDeg = .5f;
 
@@ -41,8 +39,9 @@ inline bool supported(const State& s) {
       std::isfinite(s.wheel_rpm) && s.wheel_rpm >= 4.28f && s.wheel_rpm <= 550.04f &&
       std::isfinite(s.previous_peak_deg) && s.previous_peak_deg >= 5.0288f && s.previous_peak_deg <= 8.52741f &&
       std::isfinite(s.battery_mv) && s.battery_mv >= 7220.f && s.battery_mv <= 8000.f &&
-      std::isfinite(s.reference_abs_pitch_deg) &&
-      std::fabs(s.reference_abs_pitch_deg-kReferenceAbsPitchDeg) <= kReferenceToleranceDeg;
+      // Prediction uses angles relative to the saved upright pose. The MEKF
+      // absolute pitch at that pose is not an input to the fitted equation.
+      std::isfinite(s.reference_abs_pitch_deg);
 }
 
 inline Prediction predict(const State& s, uint16_t width_ms, float residual_mj = 0.f) {

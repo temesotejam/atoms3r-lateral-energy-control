@@ -2,7 +2,10 @@
 
 This experimental mode is selectable as `bridge_inverse` on the device page.
 It is limited to fixed fore-aft legs, an 8° target, a 300 mA current command,
-and the saved upright reference used for the 14-run fit (1.932539° ±0.05°).
+and a saved upright reference. The 14-run fit used an absolute MEKF pitch of
+1.932539° at that pose, but the controller uses angles relative to the saved
+reference. Re-saving the same physical upright pose may yield a different
+absolute MEKF pitch, so the absolute value is not a model input or gate.
 The positive half-cycle retains the previous bridge controller.
 
 At the negative-side zero crossing, the controller reads body rate, the latest

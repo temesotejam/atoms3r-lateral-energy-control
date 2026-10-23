@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.17-negative-energy-inverse",
+  "version": "1.0.18-relative-energy-inverse",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

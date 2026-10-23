@@ -469,7 +469,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       energy_bridge_enabled_ ? "angle_energy_bridge" : "quadratic_energy_inverse") + "\",";
   if (inverse_mode) {
     json += "\"negative_one_peak_model_revision\":\"" + String(one_peak_energy_inverse::kRevision) + "\",";
-    json += "\"negative_one_peak_model_scope\":\"fixed_leg;target_8deg;command_300mA;reference_1.932539deg;fit_0_10_15_20_25ms;voltage_7.22_to_8.00V\",";
+    json += "\"negative_one_peak_model_scope\":\"fixed_leg;target_8deg;command_300mA;fit_reference_abs_1.932539deg;runtime_uses_saved_reference_relative_angles;fit_0_10_15_20_25ms;voltage_7.22_to_8.00V\",";
     json += "\"negative_one_peak_input_policy\":\"choose_width_by_target_minus_predicted_peak_energy;within_run_three_peak_raw_fit_residual_mean;25_to_30ms_one_ms_completed_peak_feedback;stop_extension_when_previous_positive_peak_below_7deg;skip_outside_support_or_stale_speed\",";
   }
   json += "\"energy_control_autonomous_policy\":\"" + String(inverse_mode
@@ -545,7 +545,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);saved_operator_upright_reference;no_delay_projection;no_output_scaling\",";
   json += "\"energy_control_autonomous_rate_coordinate\":\"(gy_dps-mekf_bias_y_dps)*mekf_gyro_y_scale;live_MEKF_bias;historical_Q1_rate_support_rescaled\",";
   json += "\"energy_control_autonomous_model_coordinate_status\":\"" + String(inverse_mode
-      ? "negative_side_fit_saved_upright_reference_1.932539deg;positive_side_historical_bridge_coordinate_validation_pending"
+      ? "negative_side_fit_relative_to_saved_upright;fit_reference_abs_1.932539deg_not_runtime_predictor;positive_side_historical_bridge_coordinate_validation_pending"
       : energy_bridge_enabled_
       ? "04731_measurement_start_relative_fit_reused_with_saved_upright_reference;coordinate_shift_and_hardware_validation_pending"
       : "fixed_foot_3run_MEKF_refit;new_closed_loop_hardware_validation_pending") + "\",";

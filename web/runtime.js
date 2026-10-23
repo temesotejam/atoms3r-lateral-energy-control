@@ -60,6 +60,7 @@ function controls() {
   const busy = commandInFlight || previewRunning || poseRunning || !!latest?.command?.pending;
   const building = latest?.export_phase === 'building';
   $('start').disabled = !fresh || busy || transferRunning || !latest.ready || !latest.upright_reference?.valid || latest.running || latest.export_phase !== 'empty';
+  $('inverse-start').disabled = $('start').disabled;
   $('probe-batch').disabled = $('start').disabled;
   $('upright-reference-capture').disabled = !fresh || busy || transferRunning || building ||
     !latest.controller_fresh || !latest.imu_ok || latest.running || latest.pulse_active || latest.motor_mA !== 0 ||
@@ -111,10 +112,12 @@ function renderOffline() {
   $('run-brake').textContent = requestedBrakeMaxMs === null
     ? '負側ブレーキ上限はWeb復帰後に確認します。'
     : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：負側5条件を順序を変えて測定'
+      : requestedEnergyModel === 'bridge_inverse' ? '開始要求：次ピークのエネルギーから負側入力を選択'
       : `開始要求：負側ブレーキ上限 ${requestedBrakeMaxMs} ms`;
   $('run-model').textContent = requestedEnergyModel === 'bridge'
     ? '開始要求：旧到達角予測をエネルギーに換算（逆入力なし）'
     : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：固定脚・負側5条件の一括実験'
+    : requestedEnergyModel === 'bridge_inverse' ? '開始要求：次ピークの位置エネルギーから負側入力を選択'
     : requestedEnergyModel === 'quadratic' ? '開始要求：二次エネルギー式' : '予測式はWeb復帰後に確認します。';
   $('remaining').textContent = remaining ? `${remaining} s（Web復帰目安）` : '復帰待ち';
   $('run-adaptation').textContent = requestedAdaptation === null
@@ -162,6 +165,7 @@ function footIssues(f, stale, terminal) {
 }
 function render(s) {
   $('connection').textContent = s.controller_fresh ? '接続中' : '接続中 · 制御状態の更新が停止';
+  $('firmware-revision').textContent = `本体プログラム：${s.revision || '不明'}`;
   $('state').textContent = s.state; $('remaining').textContent = format(s.remaining_ms / 1000, 1) + ' s';
   $('pitch').textContent = format(s.pitch_deg) + '°';
   $('current').textContent = `${s.motor_mA} / ${s.actual_mA} mA`;
@@ -295,9 +299,9 @@ async function poll() {
   catch (error) { $('connection').textContent = '画面更新のエラー（自動再試行）'; }
   finally { setTimeout(poll, 800); }
 }
-async function startOfflineRun(isBatchPackage = false) {
+async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
   if (commandInFlight || offlineMode) return;
-  const inversePackage = !isBatchPackage && $('energy-model').value === 'bridge_inverse';
+  const inversePackage = !isBatchPackage && (forcedModel || $('energy-model').value) === 'bridge_inverse';
   const target = isBatchPackage || inversePackage ? 8 : Number($('target').value);
   if (!targetChoices.includes(target)) {
     $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
@@ -312,7 +316,7 @@ async function startOfflineRun(isBatchPackage = false) {
   if ((!isBatchPackage && !inversePackage && !currentText) || !validInputCurrent(inputCurrentMa)) {
     $('message').textContent = '指令電流を100〜1200 mAの範囲で10 mA刻みで設定してください。'; return;
   }
-  const energyModel = isBatchPackage ? 'bridge_probe_batch' : $('energy-model').value;
+  const energyModel = isBatchPackage ? 'bridge_probe_batch' : (forcedModel || $('energy-model').value);
   if (!['bridge', 'bridge_inverse', 'bridge_probe_batch', 'quadratic'].includes(energyModel)) {
     $('message').textContent = '予測式を選択してください。'; return;
   }
@@ -330,7 +334,8 @@ async function startOfflineRun(isBatchPackage = false) {
   requestedInputCurrentMa = inputCurrentMa;
   requestedBrakeMaxMs = brakeMaxMs;
   requestedEnergyModel = energyModel;
-  const runLabel = isBatchPackage ? '負側5条件の一括実験' : '左右揺動エネルギー制御';
+  const runLabel = isBatchPackage ? '負側5条件の一括実験' :
+    inversePackage ? '固定脚・負側のエネルギー制御' : '左右揺動エネルギー制御';
   commandInFlight = true; setOffline(isBatchPackage ? 50000 : 30000); $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}&energy_model=${energyModel}`, {method:'POST', kind:'text'});
@@ -620,6 +625,7 @@ async function capturePose(baseline) {
   } finally { poseRunning = false; controls(); }
 }
 $('start').onclick = () => startOfflineRun();
+$('inverse-start').onclick = () => startOfflineRun(false, 'bridge_inverse');
 $('probe-batch').onclick = () => startOfflineRun(true);
 $('energy-model').onchange = () => {
   if ($('energy-model').value === 'bridge_inverse') {

@@ -19,9 +19,11 @@ int main() {
   assert(extended.valid && extended.width_ms == 26 && extended.extrapolated);
   const auto protected_choice = choose(state, 0.7334225991f, 0.f, 5, true);
   assert(protected_choice.width_ms == 0);
-  State wrong_reference = state;
-  wrong_reference.reference_abs_pitch_deg = 1.772013f;
-  assert(!choose(wrong_reference, 0.7334225991f, 0.f).valid);
+  State recaptured_reference = state;
+  recaptured_reference.reference_abs_pitch_deg = 1.55f;
+  assert(choose(recaptured_reference, 0.7334225991f, 0.f).valid);
+  recaptured_reference.reference_abs_pitch_deg = NAN;
+  assert(!choose(recaptured_reference, 0.7334225991f, 0.f).valid);
   State low_voltage = state;
   low_voltage.battery_mv = 6100.f;
   assert(!choose(low_voltage, 0.7334225991f, 0.f).valid);
