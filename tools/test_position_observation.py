@@ -27,7 +27,7 @@ def legacy_decision(source):
 # The experiment chooses a table pointer only for randomized positive-current
 # trials. All other modes keep the original 300 mA table and decision math.
 assert 'const lateral_energy::CurrentTable* selected_current_table = &lateral_current_table_;' in runner_after
-assert 'selectPositiveCurrentBatch(event, selected_current_mA, selected_current_table);' in runner_after
+assert 'if (positiveCurrentBatchMode())\n    selectPositiveCurrentBatch(event, selected_current_mA, selected_current_table);' in runner_after
 assert 'if (!positiveCurrentBatchMode() || event.physical_next_peak_side <= 0) return;' in runner_after
 assert legacy_decision(runner_before)==legacy_decision(runner_after).replace('*selected_current_table','lateral_current_table_'), \
     'legacy bridge/quadratic decision changed during inverse-mode addition'

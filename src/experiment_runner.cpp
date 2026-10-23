@@ -3009,6 +3009,22 @@ void ExperimentRunner::selectPositiveCurrentBatch(
   else if (selected_current_mA == 400) selected_current_table = &positive_current_probe_tables_[1];
 }
 
+uint16_t ExperimentRunner::selectFixedNegativeProbeWidth(
+    PsramLogger::EnergyControlAutonomousZeroCrossEvent& event) const {
+  const bool protected_batch = negativeProbeExtendedMode() || positiveCurrentBatchMode();
+  const bool safe = !protected_batch ||
+      (energy_control_autonomous_last_peak_side_ > 0 &&
+       event.previous_peak_amplitude_deg >= 7.0f &&
+       event.vbat_mV >= 7000 && event.vbat_mV <= 8500);
+  event.negative_probe_batch_rate_skipped = anyNegativeProbeBatchMode() &&
+      (!event.rate_support_diagnostic || !safe) &&
+      event.negative_probe_batch_planned_width_ms != 0;
+  if (!event.rate_support_diagnostic || !safe) return 0;
+  if (positiveCurrentBatchMode()) return positive_current_batch::kNegativeWidthMs;
+  if (anyNegativeProbeBatchMode()) return event.negative_probe_batch_planned_width_ms;
+  return energy_control_autonomous_brake_max_ms_;
+}
+
 void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_ms, float rate_dps,
                                                                   float detector_before_deg,
                                                                   float detector_after_deg,
@@ -3100,7 +3116,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   }
   int16_t selected_current_mA = energy_control_autonomous_input_current_mA_;
   const lateral_energy::CurrentTable* selected_current_table = &lateral_current_table_;
-  selectPositiveCurrentBatch(event, selected_current_mA, selected_current_table);
+  if (positiveCurrentBatchMode())
+    selectPositiveCurrentBatch(event, selected_current_mA, selected_current_table);
   event.side_mismatch_diagnostic =
       event.physical_next_peak_side != -energy_control_autonomous_last_peak_side_;
   // Historical Q1 support is on the unscaled raw-Y axis; compare in the
@@ -3274,18 +3291,9 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // Preserve the positive swing before testing a stronger negative pulse.
   // The extended package records the planned condition even when this gate
   // skips the output, so skipped crossings cannot masquerade as observations.
-  const bool extended_probe_safe = !(negativeProbeExtendedMode() || positiveCurrentBatchMode()) ||
-      (energy_control_autonomous_last_peak_side_ > 0 &&
-       event.previous_peak_amplitude_deg >= 7.0f &&
-       event.vbat_mV >= 7000 && event.vbat_mV <= 8500);
   const uint16_t selected_width_ms = fixed_negative_probe
-      ? (event.rate_support_diagnostic && extended_probe_safe ? (positiveCurrentBatchMode()
-          ? positive_current_batch::kNegativeWidthMs : anyNegativeProbeBatchMode()
-          ? event.negative_probe_batch_planned_width_ms : energy_control_autonomous_brake_max_ms_) : 0)
+      ? selectFixedNegativeProbeWidth(event)
       : decision.ms;
-  event.negative_probe_batch_rate_skipped = anyNegativeProbeBatchMode() && fixed_negative_probe &&
-      (!event.rate_support_diagnostic || !extended_probe_safe) &&
-      event.negative_probe_batch_planned_width_ms != 0;
   const float selected_q_mA_s = fixed_negative_probe
       ? (selected_width_ms ? -lateral_energy::charge(*selected_current_table, selected_width_ms,
             event.i0_estimated_mA, goal_current_mA) : 0.0f)
