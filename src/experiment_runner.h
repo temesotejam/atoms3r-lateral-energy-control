@@ -336,6 +336,10 @@ private:
                                                  float crossing_alpha,
                                                  float interpolated_time_ms);
   void RW_SPEED_CODE updateEnergyControlAutonomousPulse(uint32_t now_ms);
+  void __attribute__((noinline)) selectPositiveCurrentBatch(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
+      int16_t& selected_current_mA,
+      const lateral_energy::CurrentTable*& selected_current_table);
   void runEnergyControlAutonomousSolverShadow();
   bool RW_SPEED_CODE beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32_t t_test_ms,
       int8_t direction, uint16_t pulse_width_ms, int16_t command_current_mA);

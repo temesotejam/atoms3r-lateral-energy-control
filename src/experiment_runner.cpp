@@ -2995,6 +2995,20 @@ void ExperimentRunner::updateEnergyControlAutonomousPeakTracker(uint32_t now_ms,
       energy_control_autonomous_candidate_peak_amplitude_deg_, detector_peak_angle_deg);
   if (!accepted) resetEnergyControlAutonomousPeakTracker(true);
 }
+void ExperimentRunner::selectPositiveCurrentBatch(
+    PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
+    int16_t& selected_current_mA,
+    const lateral_energy::CurrentTable*& selected_current_table) {
+  if (!positiveCurrentBatchMode() || event.physical_next_peak_side <= 0) return;
+  event.positive_current_batch_index = positive_current_batch_crossing_index_;
+  event.positive_current_batch_planned_mA = positive_current_batch::current(
+      negative_probe_batch_seed_, positive_current_batch_crossing_index_);
+  ++positive_current_batch_crossing_index_;
+  selected_current_mA = event.positive_current_batch_planned_mA;
+  if (selected_current_mA == 350) selected_current_table = &positive_current_probe_tables_[0];
+  else if (selected_current_mA == 400) selected_current_table = &positive_current_probe_tables_[1];
+}
+
 void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_ms, float rate_dps,
                                                                   float detector_before_deg,
                                                                   float detector_after_deg,
@@ -3086,15 +3100,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   }
   int16_t selected_current_mA = energy_control_autonomous_input_current_mA_;
   const lateral_energy::CurrentTable* selected_current_table = &lateral_current_table_;
-  if (positiveCurrentBatchMode() && event.physical_next_peak_side > 0) {
-    event.positive_current_batch_index = positive_current_batch_crossing_index_;
-    event.positive_current_batch_planned_mA = positive_current_batch::current(
-        negative_probe_batch_seed_, positive_current_batch_crossing_index_);
-    ++positive_current_batch_crossing_index_;
-    selected_current_mA = event.positive_current_batch_planned_mA;
-    if (selected_current_mA == 350) selected_current_table = &positive_current_probe_tables_[0];
-    else if (selected_current_mA == 400) selected_current_table = &positive_current_probe_tables_[1];
-  }
+  selectPositiveCurrentBatch(event, selected_current_mA, selected_current_table);
   event.side_mismatch_diagnostic =
       event.physical_next_peak_side != -energy_control_autonomous_last_peak_side_;
   // Historical Q1 support is on the unscaled raw-Y axis; compare in the
