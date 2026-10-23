@@ -476,10 +476,11 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       energy_bridge_enabled_ ? "angle_energy_bridge" : "quadratic_energy_inverse") + "\",";
   if (work_mode) {
     json += "\"wheel_work_model_revision\":\"" + String(wheel_work_energy_control::kRevision) + "\",";
-    json += "\"wheel_work_model_scope\":\"fixed_leg;target_8deg;positive_300_350_400mA_Q_8.79588_to_15.33208mAs;negative_extended_300mA_30_35_40ms_or_broad_19runs_300mA_0_10_15_20_25ms;positive_outside_support_uses_bridge;negative_outside_both_supports_coasts\",";
-    json += "\"wheel_work_broad_negative_support\":\"19runs_412events;rate_57.2522_to_76.2778dps;wheel_4.28_to_550.04rpm;battery_6210_to_8000mV;previous_peak_5.0288_to_8.56178deg;marginal_ranges_not_full_joint_coverage;opposite_peak_below_7deg_skips_braking\",";
-    json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"negative_extended_30_35_40ms\",\"3\":\"negative_broad_0_to_25ms\"},";
-    json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;no_extrapolation_beyond_measured_commands\",";
+    json += "\"wheel_work_model_scope\":\"fixed_leg;target_8deg;positive_300_350_400mA_Q_8.79588_to_15.33208mAs;negative_pooled_31runs_670events_300mA_0_or_10_to_40ms;positive_outside_support_uses_bridge;negative_outside_support_coasts\",";
+    json += "\"wheel_work_broad_negative_support\":\"rate_57.2522_to_76.2778dps;wheel_4.28_to_575.79rpm;battery_6210_to_8000mV;previous_peak_5.0288_to_8.56178deg;marginal_ranges_not_full_joint_coverage;opposite_peak_below_7deg_skips_braking\",";
+    json += "\"wheel_work_negative_feedback\":\"last_3_matched_healthy_negative_peaks;raw_model_energy_residual_mean_after_2_samples;clamp_0.12mJ;cap_25_30_35_40ms_advances_after_2_completed_cap_inputs_with_excess_above_0.03mJ_and_previous_positive_at_least_7.5deg;weak_positive_caps_25ms;undershoot_reduces_cap;reset_each_run\",";
+    json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"legacy_negative_extended\",\"3\":\"legacy_negative_broad\",\"4\":\"negative_pooled_0_or_10_to_40ms\"},";
+    json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;cross_condition_strong_pulses_flagged;no_duration_beyond_40ms\",";
   }
   if (inverse_mode) {
     json += "\"negative_one_peak_model_revision\":\"" + String(one_peak_energy_inverse::kRevision) + "\",";
@@ -487,7 +488,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     json += "\"negative_one_peak_input_policy\":\"choose_width_by_target_minus_predicted_peak_energy;within_run_three_peak_raw_fit_residual_mean;25_to_30ms_one_ms_completed_peak_feedback;stop_extension_when_previous_positive_peak_below_7deg;skip_outside_support_or_stale_speed\",";
   }
   json += "\"energy_control_autonomous_policy\":\"" + String(work_mode
-      ? "MEKF_zero_cross;positive_choose_measured_300_350_400mA_and_Q;negative_extended_30_35_40ms_else_broad_0_10_15_20_25ms;choose_by_target_arrival_energy;outside_both_supports_coast"
+      ? "MEKF_zero_cross;positive_choose_measured_300_350_400mA_and_Q;negative_pooled_energy_inverse_with_completed_peak_energy_residual_and_staged_cap;outside_support_coast"
       : inverse_mode
       ? "MEKF_peak_and_zero_cross;positive_side_historical_bridge;negative_side_one_peak_work_response;bounded_0_to_30ms_brake"
       : energy_bridge_enabled_
@@ -1586,7 +1587,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     const bool work_event = e.work_control_branch != 0;
     const bool inverse_event = energy_bridge_enabled_ && !negative_probe_mode_ &&
         autonomous_brake_max_ms_ == 25 && e.physical_next_peak_side < 0;
-    detail += ",\"free_model_revision\":\"" + String(e.work_control_branch==3 ? wheel_work_energy_control::kRevision :
+    detail += ",\"free_model_revision\":\"" + String(e.work_control_branch==4 ? wheel_work_energy_control::kRevision :
         inverse_event ? one_peak_energy_inverse::kRevision :
         energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
     if (work_event)
@@ -1596,6 +1597,9 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       // and fallback events must keep the work-model column, with a null value.
       detail += ",\"arrival_energy_model_revision\":null";
     detail += ",\"work_control_branch\":" + String(e.work_control_branch);
+    detail += ",\"work_prediction_cross_condition\":" + String(e.work_prediction_cross_condition ? "true" : "false");
+    detail += ",\"work_brake_cap_ms\":" + String(e.work_brake_cap_ms);
+    detail += ",\"work_bias_samples\":" + String(e.work_bias_samples);
     appendAutonomousNullable("predicted_wheel_work_j", e.predicted_wheel_work_j, 8);
     appendAutonomousNullable("predicted_input_work_j", e.predicted_input_work_j, 8);
     appendAutonomousNullable("predicted_post_input_work_j", e.predicted_post_input_work_j, 8);

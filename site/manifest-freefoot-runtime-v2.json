@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.25-broad-negative-energy",
+  "version": "1.0.26-pooled-negative-work",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

@@ -2464,6 +2464,10 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   inverse_negative_extra_ms_ = 0;
   inverse_negative_pending_width_ms_ = 0;
   inverse_negative_pending_bias_j_ = 0.f;
+  work_negative_feedback_ = wheel_work_energy_control::NegativeFeedback{};
+  work_negative_pending_ = false;
+  work_negative_pending_width_ms_ = 0;
+  work_negative_pending_bias_j_ = 0.f;
   negative_probe_batch_crossing_index_ = 0;
   positive_current_batch_crossing_index_ = 0;
   solver_shadow_event_ = PsramLogger::SolverShadowEvent{};
@@ -2813,6 +2817,7 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       std::isfinite(energy_control_autonomous_pending_model_energy_j_)) {
     event.model_residual_j = event.measured_energy_j - energy_control_autonomous_pending_model_energy_j_;
     event.model_residual_observed = true;
+    observeWheelWorkPeak(event);
     if (peak_adaptation_enabled_) peak_error_model_.observe(energy_control_autonomous_pending_zero_ms_, physical_side,
         energy_control_autonomous_pending_mode_, energy_control_autonomous_pending_wheel_rpm_,
         energy_control_autonomous_pending_wheel_valid_,
@@ -2842,7 +2847,7 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       energy_control_autonomous_pending_saturated_lower_ && event.energy_error_j < 0;
   float* integral = physical_side > 0 ? &energy_control_autonomous_integral_plus_j_ :
       &energy_control_autonomous_integral_minus_j_;
-  if (!((negative_probe_mode_ || energyInverseMode()) && physical_side < 0)) *integral = energy_bridge_enabled_
+  if (!((negative_probe_mode_ || energyInverseMode() || wheelWorkMode()) && physical_side < 0)) *integral = energy_bridge_enabled_
       ? lateral_energy::updateBridgeIntegral(*integral,event.energy_error_j,event.target_energy_j,
             physical_side,energy_control_autonomous_pending_saturated_upper_,
             energy_control_autonomous_pending_saturated_lower_,event.pending_command_matched)
@@ -2852,6 +2857,7 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
   energy_control_autonomous_pending_peak_ = false;
   energy_control_autonomous_pending_probe_ = false;
   energy_control_autonomous_pending_model_energy_j_ = NAN;
+  work_negative_pending_ = false;
   energy_control_autonomous_last_peak_valid_ = true;
   energy_control_autonomous_last_peak_amplitude_deg_ = amplitude_deg;
   energy_control_autonomous_last_peak_side_ = physical_side;
@@ -3050,6 +3056,36 @@ uint16_t ExperimentRunner::selectFixedNegativeProbeWidth(
   return energy_control_autonomous_brake_max_ms_;
 }
 
+void ExperimentRunner::observeWheelWorkPeak(
+    const PsramLogger::EnergyControlAutonomousPeakEvent& event) {
+  if (!wheelWorkMode() || !work_negative_pending_ || event.physical_peak_side>=0) return;
+  // Compare to the raw fit, not its already corrected prediction.
+  work_negative_feedback_.observe(event.measured_energy_j*1000.f,
+      (energy_control_autonomous_pending_model_energy_j_-work_negative_pending_bias_j_)*1000.f,
+      event.target_energy_j*1000.f,energy_control_autonomous_last_peak_amplitude_deg_,
+      work_negative_pending_width_ms_);
+}
+
+void ExperimentRunner::captureWheelWorkDecision(
+    PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
+    const wheel_work_energy_control::Choice& choice) const {
+  event.energy_model_extrapolated=!choice.valid;
+  event.work_control_branch=choice.branch;
+  event.predicted_wheel_work_j=choice.work_mj*.001f;
+  event.predicted_input_work_j=choice.on_mj*.001f;
+  event.predicted_post_input_work_j=choice.after_mj*.001f;
+  event.predicted_work_change_j=choice.change_mj*.001f;
+  event.work_prediction_cross_condition=choice.cross_condition;
+  if (event.physical_next_peak_side<0) {
+    event.work_brake_cap_ms=work_negative_feedback_.capMs(event.previous_peak_amplitude_deg);
+    event.work_bias_samples=work_negative_feedback_.count();
+  }
+  if (choice.valid && std::isfinite(choice.free_mj)) {
+    event.passive_energy_j=choice.free_mj*.001f;
+    event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
+  }
+}
+
 wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
     const PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
     float fast_v, bool* state_supported, int16_t* selected_current_ma,
@@ -3084,9 +3120,11 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
   } else if (!(energy_control_autonomous_last_peak_valid_ &&
       energy_control_autonomous_last_peak_side_>0 &&
       energy_control_autonomous_last_peak_amplitude_deg_<7.f)) {
-    for (uint16_t width : {0,10,15,20,25,30,35,40})
+    const uint16_t cap=work_negative_feedback_.capMs(state.previous_peak_deg);
+    const float bias_mj=work_negative_feedback_.biasMj();
+    for (uint16_t width=0;width<=cap;width=(width==0 ? 10 : width+1))
       wheel_work_energy_control::consider(choice,300,width,NAN,
-          wheel_work_energy_control::negative(state,width),target_mj);
+          wheel_work_energy_control::negative(state,width,bias_mj),target_mj);
   }
   wheel_work_energy_control::finish(choice,target_mj);
   if (choice.valid && side>0 && selected_current_ma && selected_current_table) {
@@ -3261,14 +3299,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   if (work_mode)
     work_choice=chooseWheelWork(event,fast_v,&event.rate_support_diagnostic,
         &selected_current_mA,&selected_current_table);
-  if (work_mode) {
-    event.energy_model_extrapolated=!work_choice.valid;
-    event.work_control_branch=work_choice.branch;
-    event.predicted_wheel_work_j=work_choice.work_mj*.001f;
-    event.predicted_input_work_j=work_choice.on_mj*.001f;
-    event.predicted_post_input_work_j=work_choice.after_mj*.001f;
-    event.predicted_work_change_j=work_choice.change_mj*.001f;
-  }
+  if (work_mode) captureWheelWorkDecision(event,work_choice);
 
   const float goal_current_mA = predictCurrentGoalMa(selected_current_mA,fast_v);
   const float aligned_initial_mA = static_cast<float>(event.physical_next_peak_side)*event.i0_estimated_mA;
@@ -3302,6 +3333,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     // Do not let a few noisy peaks overwhelm the fitted response.
     inverse_residual_j = fmaxf(-.00020f, fminf(.00020f, inverse_residual_j));
   }
+  if (work_mode && work_choice.valid)
+    prediction_bias_j=event.physical_next_peak_side<0 ? work_negative_feedback_.biasMj()*.001f : 0.f;
   one_peak_energy_inverse::Choice inverse_choice;
   audit.solver_started=1; audit.solver_start_us=micros();
   auto decide_selected=[&](float bias) RW_SPEED_CODE {
@@ -3356,7 +3389,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
             bias);
   };
   auto decision=decide_selected(prediction_bias_j);
-  if (!inverse_negative && decision.valid && prediction_bias_j != 0.f &&
+  if (!inverse_negative && !(work_mode && work_choice.valid) && decision.valid && prediction_bias_j != 0.f &&
       peak_error_adaptation::modeForSignedCharge(decision.selected_q_mAs) != requested_mode) {
     // At a mode boundary, retain the original controller decision rather
     // than applying a correction learned from a different pulse direction.
@@ -3368,10 +3401,6 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     event.passive_energy_j=decision.free_j;
     event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.free_j);
     event.rate_support_diagnostic=true;
-  }
-  if (work_mode && work_choice.valid && std::isfinite(work_choice.free_mj)) {
-    event.passive_energy_j=decision.free_j;
-    event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.free_j);
   }
   if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
     audit.stage=1;audit.solver_end_us=micros();
@@ -3429,13 +3458,13 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.work_omega_q_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_omega_q;
   event.work_q2_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_q2;
   event.energy_model_extrapolated=fixed_negative_probe || decision.extrapolated ||
-      (work_mode ? !work_choice.valid : selected_current_mA!=300);
+      (work_mode ? (!work_choice.valid || work_choice.cross_condition) : selected_current_mA!=300);
   event.q_command_mA_s=selected_q_mA_s;event.q_effective_pred_mA_s=selected_q_mA_s;
   event.predicted_energy_j=fixed_negative_probe ? NAN : decision.predicted_j;
   event.predicted_next_peak_amplitude_deg=fixed_negative_probe ? NAN :
       lateral_energy::angle(lateral_energy_geometry_,decision.predicted_j);
   event.predicted_observed_energy_j = fixed_negative_probe ? NAN :
-      fmaxf(0.f, decision.predicted_j + (inverse_negative ? 0.f : prediction_bias_j));
+      fmaxf(0.f, decision.predicted_j + ((inverse_negative || (work_mode && work_choice.valid)) ? 0.f : prediction_bias_j));
   event.predicted_observed_next_peak_deg = lateral_energy::angle(
       lateral_energy_geometry_, event.predicted_observed_energy_j);
   event.solver_required_width_ms=static_cast<float>(selected_width_ms);
@@ -3462,6 +3491,9 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   energy_control_autonomous_pending_target_deg_ = event.target_peak_deg;
   energy_control_autonomous_pending_q_command_mA_s_ = selected_q_mA_s;
   energy_control_autonomous_pending_model_energy_j_ = event.predicted_energy_j;
+  work_negative_pending_=work_mode && work_choice.valid && event.physical_next_peak_side<0;
+  work_negative_pending_width_ms_=work_negative_pending_ ? selected_width_ms : 0;
+  work_negative_pending_bias_j_=work_negative_pending_ ? prediction_bias_j : 0.f;
   energy_control_autonomous_pending_wheel_rpm_ = event.pre_input_wheel_speed_rpm;
   energy_control_autonomous_pending_wheel_age_us_ = event.pre_input_wheel_speed_age_us;
   energy_control_autonomous_pending_wheel_valid_ = event.pre_input_wheel_speed_valid;
@@ -3478,14 +3510,20 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     return;
   }
   if (status_.emergency_stop || status_.state != ExperimentState::RUNNING_BATCH_SWEEP) {
-    if (inverse_negative) energy_control_autonomous_pending_peak_ = false;
+    if (inverse_negative || work_negative_pending_) {
+      energy_control_autonomous_pending_peak_ = false;
+      work_negative_pending_ = false;
+    }
     event.reason = Config::ENERGY_CONTROL_AUTONOMOUS_REASON_ESTOP_OR_STATE;
     logger_->addEnergyControlAutonomousZeroCrossEvent(event);
     rearm_for_next_peak();
     return;
   }
   if (!roller_ || !roller_->ok()) {
-    if (inverse_negative) energy_control_autonomous_pending_peak_ = false;
+    if (inverse_negative || work_negative_pending_) {
+      energy_control_autonomous_pending_peak_ = false;
+      work_negative_pending_ = false;
+    }
     event.reason = Config::ENERGY_CONTROL_AUTONOMOUS_REASON_ROLLER_NOT_READY;
     logger_->addEnergyControlAutonomousZeroCrossEvent(event);
     rearm_for_next_peak();
@@ -3501,7 +3539,10 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   status_.current_audit_q_pred_mA_s = event.q_effective_pred_mA_s;
   if (!beginEnergyControlAutonomousPulse(now_ms, t_test_ms, event.q_command_direction,
                                          selected_width_ms, selected_current_mA)) {
-    if (inverse_negative) energy_control_autonomous_pending_peak_ = false;
+    if (inverse_negative || work_negative_pending_) {
+      energy_control_autonomous_pending_peak_ = false;
+      work_negative_pending_ = false;
+    }
     event.command_current_mA = 0;
     event.pulse_width_ms = 0;
     event.pulse_start_ms = 0;

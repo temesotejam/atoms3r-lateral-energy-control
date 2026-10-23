@@ -183,7 +183,11 @@ int main(int argc,char** argv){
       z.event_kind = i == 0 ? 1 : 0;
       z.physical_next_peak_side = i % 2 ? -1 : 1;
       z.energy_model_extrapolated = (i % 3 == 0) != work_first;
-      z.work_control_branch = z.energy_model_extrapolated ? 0 : (i % 2 ? 3 : 1);
+      z.work_control_branch = z.energy_model_extrapolated ? 0 : (i % 2 ? 4 : 1);
+      z.work_prediction_cross_condition = z.work_control_branch==4 && i%4==1;
+      z.energy_model_extrapolated = z.energy_model_extrapolated || z.work_prediction_cross_condition;
+      z.work_brake_cap_ms = z.work_control_branch==4 ? (z.work_prediction_cross_condition ? 30 : 25) : 0;
+      z.work_bias_samples = z.work_control_branch==4 ? 3 : 0;
       work.addEnergyControlAutonomousZeroCrossEvent(z);
     }
     work.markMeasurementDone(); work.seal();

@@ -374,6 +374,9 @@ class PsramLogger {
     uint8_t work_control_branch=0;
     float predicted_wheel_work_j=NAN, predicted_input_work_j=NAN;
     float predicted_post_input_work_j=NAN, predicted_work_change_j=NAN;
+    bool work_prediction_cross_condition=false;
+    uint16_t work_brake_cap_ms=0;
+    uint8_t work_bias_samples=0;
     bool fixed_negative_probe=false;
     uint16_t negative_probe_batch_index = UINT16_MAX;
     uint16_t negative_probe_batch_planned_width_ms = 0;

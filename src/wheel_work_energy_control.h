@@ -6,7 +6,7 @@
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_broad_negative_19runs_20261023";
+constexpr char kRevision[] = "wheel_work_pooled_negative_31runs_20261023";
 constexpr float kRadPerDeg = 0.017453292519943295f;
 constexpr float kPositiveMinQ = 8.79588f;
 constexpr float kPositiveMaxQ = 15.33208f;
@@ -27,7 +27,8 @@ struct Prediction {
   float work_mj = NAN;
   float energy_mj = NAN;
   float free_mj = NAN, on_mj = NAN, after_mj = NAN, change_mj = NAN;
-  uint8_t branch = 0;  // 1=positive, 2=extended negative, 3=broad negative.
+  uint8_t branch = 0;  // 1=positive, 4=pooled negative.
+  bool cross_condition = false;
 };
 struct Choice {
   bool valid = false;
@@ -43,6 +44,7 @@ struct Choice {
   uint16_t evaluations = 0;
   float free_mj = NAN, on_mj = NAN, after_mj = NAN, change_mj = NAN;
   uint8_t branch = 0;
+  bool cross_condition = false;
 };
 
 inline bool freshFinite(const State& s) {
@@ -56,12 +58,11 @@ inline bool extendedNegativeSupported(const State& s) {
       s.battery_mv >= 7280.f && s.battery_mv <= 7570.f;
 }
 
-// Joint refit of the 5 low-voltage and 14 later randomized 0/10/15/20/25-ms
-// runs (412 events). These are observed marginal state ranges, not proof that
-// every combination has independent data. Never extend the pulse past 25 ms.
+// Marginal ranges of the 31-run fit; not joint validation of every duration
+// at every state. A completed-peak gate limits new strong-pulse combinations.
 inline bool broadNegativeSupported(const State& s) {
   return freshFinite(s) && s.rate_dps >= 57.2522f && s.rate_dps <= 76.2778f &&
-      s.wheel_rpm >= 4.28f && s.wheel_rpm <= 550.04f &&
+      s.wheel_rpm >= 4.28f && s.wheel_rpm <= 575.79f &&
       s.battery_mv >= 6210.f && s.battery_mv <= 8000.f &&
       std::isfinite(s.previous_peak_deg) && s.previous_peak_deg >= 5.0288f &&
       s.previous_peak_deg <= 8.56178f;
@@ -72,7 +73,7 @@ inline bool supported(const State& s, int8_t side) {
   if (side > 0) return s.rate_dps >= 48.3821f && s.rate_dps <= 58.9332f &&
       s.wheel_rpm >= 213.22f && s.wheel_rpm <= 394.61f &&
       s.battery_mv >= 7280.f && s.battery_mv <= 7400.f;
-  return side < 0 && (extendedNegativeSupported(s) || broadNegativeSupported(s));
+  return side < 0 && broadNegativeSupported(s);
 }
 
 inline Prediction positive(const State& s, float q_mas) {
@@ -90,41 +91,69 @@ inline Prediction positive(const State& s, float q_mas) {
   return p;
 }
 
-inline Prediction negative(const State& s, uint16_t width_ms) {
+inline Prediction negative(const State& s, uint16_t width_ms, float residual_mj = 0.f) {
   Prediction p;
-  if (!extendedNegativeSupported(s)) {
-    if (!broadNegativeSupported(s) || (width_ms!=0 && width_ms!=10 && width_ms!=15 &&
-        width_ms!=20 && width_ms!=25)) return p;
-    const float rate=(s.rate_dps-72.5f)/3.f;
-    const float rpm=(s.wheel_rpm-80.f)/50.f;
-    const float previous=(s.previous_peak_deg-8.f)/.5f;
-    const float voltage=(s.battery_mv-7000.f)/1000.f;
-    const float t=static_cast<float>(width_ms)/25.f;
-    p.on_mj=-.11329463358f*t-.21521292582f*t*t
-        -.01046911708f*t*rate+.00317603809f*t*rpm;
-    const float after_zero=.22687838001f+.00773765566f*rate+.01946049744f*rpm;
-    p.after_mj=after_zero-.13005020970f*t+.08070477472f*t*t;
-    p.work_mj=p.on_mj+p.after_mj;
-    p.change_mj=p.work_mj-after_zero;
-    p.free_mj=1.39289948600f+.09102083655f*rate-.02417967090f*rpm
-        -.04131838521f*previous+.01920426738f*voltage;
-    p.energy_mj=p.free_mj+.42577061840f*p.change_mj;
-    p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
-    p.branch=3;
-    return p;
-  }
-  if (width_ms!=30 && width_ms!=35 && width_ms!=40) return p;
-  p.work_mj=-0.3599415447f - 0.1670413735f*(static_cast<float>(width_ms)-35.f)/10.f
-      + 0.0091344913f*(s.rate_dps-65.f)/20.f
-      + 0.1618294320f*s.wheel_rpm/500.f
-      + 0.0025971679f*(s.battery_mv-7400.f)/100.f;
+  if (!broadNegativeSupported(s) || (width_ms!=0 && width_ms<10) || width_ms>40 ||
+      !std::isfinite(residual_mj)) return p;
+  const float rate=(s.rate_dps-70.f)/10.f;
+  const float rpm=(s.wheel_rpm-200.f)/200.f;
+  const float voltage=(s.battery_mv-7300.f)/500.f;
+  const float previous=s.previous_peak_deg-8.f;
+  const float t=static_cast<float>(width_ms)/25.f;
+  p.on_mj=-.18120784069f*t-.11097956656f*t*t-.01345085917f*t*rate
+      +.02975585037f*t*rpm-.00233839312f*t*voltage;
+  const float after_zero=.26823832254f+.02991961987f*rate+.11699008097f*rpm
+      +.00348006791f*voltage;
+  p.after_mj=after_zero-.11239169672f*t+.04390893973f*t*t
+      +.00789280211f*t*rate-.06387355408f*t*rpm;
+  p.work_mj=p.on_mj+p.after_mj;
+  p.change_mj=p.work_mj-after_zero;
   const float omega=s.rate_dps*kRadPerDeg;
-  p.energy_mj=0.2486528426f + 0.5325578488f*omega*omega
-      + 0.2257086551f*p.work_mj;
+  p.free_mj=.29017591957f+.68047892000f*omega*omega-.01436825026f*rpm
+      +.00500262082f*previous+.01211327167f*voltage;
+  p.energy_mj=p.free_mj+.44113787836f*p.change_mj+residual_mj;
   p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
-  p.branch=2;
+  p.branch=4;
+  p.cross_condition=width_ms>25 && !extendedNegativeSupported(s);
   return p;
 }
+
+// Energy-valued feedback from completed, matched negative peaks. The input
+// duration still minimizes the energy error; this cap only controls how fast
+// a new strong-pulse operating combination may be attempted.
+class NegativeFeedback {
+ public:
+  uint16_t capMs(float previous_peak_deg) const {
+    return previous_peak_deg>=7.5f ? cap_ms_ : 25;
+  }
+  uint8_t count() const { return count_; }
+  __attribute__((noinline)) float biasMj() const {
+    if (count_<2) return 0.f;
+    float sum=0.f;
+    for (uint8_t i=0;i<count_;++i) sum+=residuals_[i];
+    return std::fmax(-.12f,std::fmin(.12f,sum/count_));
+  }
+  __attribute__((noinline)) void observe(float actual_mj, float raw_prediction_mj,
+      float target_mj, float previous_peak_deg, uint16_t applied_width_ms) {
+    if (!std::isfinite(actual_mj) || !std::isfinite(raw_prediction_mj) ||
+        !std::isfinite(target_mj) || !std::isfinite(previous_peak_deg) ||
+        applied_width_ms>40) return;
+    if (previous_peak_deg<7.5f) { cap_ms_=25; high_count_=0; return; }
+    residuals_[next_]=actual_mj-raw_prediction_mj;
+    next_=(next_+1)%3;
+    if (count_<3) ++count_;
+    const float excess=actual_mj-target_mj;
+    if (excess<-.03f) {
+      cap_ms_=cap_ms_>25 ? cap_ms_-5 : 25; high_count_=0;
+    } else if (excess>.03f && applied_width_ms>=cap_ms_ && cap_ms_<40) {
+      if (++high_count_>=2) { cap_ms_+=5; high_count_=0; }
+    } else high_count_=0;
+  }
+ private:
+  float residuals_[3] = {};
+  uint8_t count_=0, next_=0, high_count_=0;
+  uint16_t cap_ms_=25;
+};
 
 inline void consider(Choice& c, int16_t current_ma, uint16_t width_ms,
                      float q_mas, const Prediction& p, float target_mj) {
@@ -141,6 +170,7 @@ inline void consider(Choice& c, int16_t current_ma, uint16_t width_ms,
     c.work_mj=p.work_mj;c.energy_mj=p.energy_mj;
     c.free_mj=p.free_mj;c.on_mj=p.on_mj;c.after_mj=p.after_mj;
     c.change_mj=p.change_mj;c.branch=p.branch;
+    c.cross_condition=p.cross_condition;
   }
   c.valid=true;++c.evaluations;
 }

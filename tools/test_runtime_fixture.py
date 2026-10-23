@@ -70,7 +70,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.25-broad-negative-energy'
+assert metadata['firmware_revision']=='1.0.26-pooled-negative-work'
 assert metadata['energy_model']=='angle_energy_bridge'
 assert metadata['energy_control_autonomous_revision']=='lateral_energy_angle_bridge_v8_20261015'
 assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==0
@@ -261,13 +261,25 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
     assert len(work_rows) == 256
     assert work_metadata['energy_control_autonomous_zero_cross_event_rendered_count'] == 256
     for index, event in enumerate(work_rows):
-        extrapolated = (index % 3 == 0) != work_first
+        fallback = (index % 3 == 0) != work_first
+        cross_condition = not fallback and index % 4 == 1
         assert event['event_index'] == index + 1
-        assert event['energy_model_extrapolated'] == extrapolated
-        if extrapolated:
+        assert event['energy_model_extrapolated'] == (fallback or cross_condition)
+        assert event['work_prediction_cross_condition'] == cross_condition
+        if fallback:
             assert event['arrival_energy_model_revision'] is None
         else:
             assert event['arrival_energy_model_revision'] == work_metadata['wheel_work_model_revision']
+        if event['work_control_branch'] == 4:
+            assert event['work_bias_samples'] == 3
+            assert event['work_brake_cap_ms'] == (30 if cross_condition else 25)
     with tempfile.TemporaryDirectory() as tmp:
         converter.convert(Path(str(source) + suffix), Path(tmp) / 'csv')
+        with (Path(tmp) / 'csv' / 'energy_control_autonomous_zero_cross_events.csv').open() as stream:
+            exported = list(csv.DictReader(stream))
+        assert len(exported) == 256
+        for row, event in zip(exported, work_rows):
+            for key in ('work_control_branch', 'work_brake_cap_ms', 'work_bias_samples'):
+                assert row[key] == str(event[key])
+            assert row['work_prediction_cross_condition'] == str(event['work_prediction_cross_condition'])
 print('full mixed work/fallback RWLOGs: CRC, schema, model/null alignment and conversion PASS')

@@ -116,7 +116,7 @@ function renderOffline() {
       : `開始要求：ZEROクロスで${requestedInputCurrentMa} mA、入力時間はエネルギーから計算`;
   $('run-brake').textContent = requestedBrakeMaxMs === null
     ? '負側ブレーキ上限はWeb復帰後に確認します。'
-    : requestedEnergyModel === 'work_control' ? '開始要求：負側は条件に応じて0～25 msまたは30・35・40 msから選択'
+    : requestedEnergyModel === 'work_control' ? '開始要求：負側はエネルギー差から選択。上限は25 msから段階的に調整'
     : requestedEnergyModel === 'bridge_probe_positive_current' ? '開始要求：負側40 ms固定、正側300・350・400 mAを順序を変えて測定'
     : requestedEnergyModel === 'bridge_probe_extended' ? '開始要求：負側30・35・40 msを順序を変えて測定'
     : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：負側5条件を順序を変えて測定'
@@ -229,7 +229,7 @@ function render(s) {
     ? s.energy_model === 'bridge_probe_positive_current' ? '今回の負側入力：300 mA・40 msに固定'
       : s.energy_model === 'bridge_probe_extended' ? '今回の負側入力：30・35・40 msを3条件ずつ順序を変更'
       : s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを5条件ずつ順序を変更'
-      : s.energy_model === 'work_control' ? '今回の負側入力：測定範囲に応じて0～25 msまたは30・35・40 msから選択'
+      : s.energy_model === 'work_control' ? '今回の負側入力：エネルギー差から0または10～40 msを選択。上限は段階的に調整'
       : s.energy_model === 'bridge_inverse' ? '今回の負側入力：実測0〜25 ms、ピークを確認して最大30 ms'
       : s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';

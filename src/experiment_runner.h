@@ -11,6 +11,7 @@
 #include "autonomous_brake_limit.h"
 #include "lateral_energy_control.h"
 #include "wheel_work_energy_control.h"
+#include "wheel_work_energy_control.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
 #include "control_math_cache.h"
@@ -476,6 +477,15 @@ private:
   uint8_t inverse_negative_extra_ms_ = 0;
   uint16_t inverse_negative_pending_width_ms_ = 0;
   float inverse_negative_pending_bias_j_ = 0.f;
+  wheel_work_energy_control::NegativeFeedback work_negative_feedback_;
+  bool work_negative_pending_ = false;
+  uint16_t work_negative_pending_width_ms_ = 0;
+  float work_negative_pending_bias_j_ = 0.f;
+  void __attribute__((noinline)) captureWheelWorkDecision(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
+      const wheel_work_energy_control::Choice& choice) const;
+  void __attribute__((noinline)) observeWheelWorkPeak(
+      const PsramLogger::EnergyControlAutonomousPeakEvent& event);
   float energy_control_autonomous_target_peak_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   lateral_energy::Geometry lateral_energy_geometry_{
       Config::ENERGY_CONTROL_V0_MASS_KG,Config::ENERGY_CONTROL_V0_GRAVITY_M_S2,
