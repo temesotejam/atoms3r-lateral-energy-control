@@ -7,7 +7,11 @@ baseline='79de6323dbd08ec1ec8920d6df11446bbaf2d7d6'
 allowed={
     'src/config.h':[
         'static constexpr uint32_t WHEEL_POSITION_READ_PERIOD_US = 5000UL;\n',
-        'static constexpr uint16_t WHEEL_POSITION_READ_TIMEOUT_MS = 2;\n'],
+        'static constexpr uint16_t WHEEL_POSITION_READ_TIMEOUT_MS = 2;\n',
+        # Diagnostic-only reasons added by the authorized work-controller
+        # extension. Keep every pre-existing config constant frozen below.
+        'static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_WORK_OUTSIDE_SUPPORT = 15;\n',
+        'static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_WORK_PROTECT_OPPOSITE = 16;\n'],
 }
 unchanged=['src/lateral_energy_control.h','src/peak_error_adaptation.h',
            'src/previous_peak_control_correction.h','src/control_math_cache.h',
