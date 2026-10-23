@@ -24,7 +24,11 @@ runner_before=subprocess.check_output(['git','show',baseline+':src/experiment_ru
 runner_after=(root/'src/experiment_runner.cpp').read_text(encoding='utf-8')
 def legacy_decision(source):
     return source.split('  auto decide_selected=[&]',1)[1].split('    return energy_bridge_enabled_',1)[1].split('  };',1)[0]
-assert legacy_decision(runner_before)==legacy_decision(runner_after), \
+# The experiment chooses a table pointer only for randomized positive-current
+# trials. All other modes keep the original 300 mA table and decision math.
+assert 'const lateral_energy::CurrentTable* selected_current_table = &lateral_current_table_;' in runner_after
+assert 'if (positiveCurrentBatchMode() && event.physical_next_peak_side > 0)' in runner_after
+assert legacy_decision(runner_before)==legacy_decision(runner_after).replace('*selected_current_table','lateral_current_table_'), \
     'legacy bridge/quadratic decision changed during inverse-mode addition'
 assert '      observation.position_sequence != last_logged_position_sequence_ ||\n' in runner_after
 assert '  last_logged_position_sequence_ = roller_telemetry.position_sequence;\n' in runner_after
