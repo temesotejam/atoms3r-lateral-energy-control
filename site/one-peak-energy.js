@@ -98,11 +98,17 @@
       const prediction=finite ? predict(state,width) : null;
       const candidates=finite ? model.widths_ms.map(ms=>({ms,...predict(state,ms)})) : [];
       const validCandidates=candidates.filter(c=>c.predicted_peak_deg!==null);
-      const best=validCandidates.length ? validCandidates.reduce((a,b)=>a.predicted_peak_deg<=b.predicted_peak_deg?a:b) : null;
+      const target=metadata.energy_control_autonomous_target_peak_deg;
+      const targetEnergy=Number.isFinite(target) ? potentialMj(target) : null;
+      const best=targetEnergy!==null && validCandidates.length ?
+        validCandidates.reduce((a,b)=>{
+          const aError=Math.abs(a.predicted_energy_mj-targetEnergy);
+          const bError=Math.abs(b.predicted_energy_mj-targetEnergy);
+          return bError<aError || (bError===aError && b.ms<a.ms) ? b : a;
+        }) : null;
       const next=negatives.find(p=>p.peak_time_ms>e.zero_cross_time_ms);
       if(!next) reasons.push('次の負側ピークが未記録');
       const observed=next?.peak_amplitude_deg ?? null;
-      const target=metadata.energy_control_autonomous_target_peak_deg;
       const targetReachable=Number.isFinite(target) && validCandidates.length===5 ?
         Math.min(...validCandidates.map(c=>c.predicted_peak_deg))<=target &&
         target<=Math.max(...validCandidates.map(c=>c.predicted_peak_deg)) : null;
@@ -116,6 +122,8 @@
         battery_mV:state.battery_mV,target_deg:target,
         ...(prediction||{}),predicted_best_width_ms:best?.ms??null,
         predicted_best_peak_deg:best?.predicted_peak_deg??null,
+        predicted_best_energy_error_mj:best&&targetEnergy!==null ?
+          best.predicted_energy_mj-targetEnergy : null,
         target_reachable_with_tested_widths:targetReachable,
         next_peak_time_ms:next?.peak_time_ms??null,observed_next_peak_deg:observed,
         error_deg:prediction?.predicted_peak_deg!=null && Number.isFinite(observed) ?
