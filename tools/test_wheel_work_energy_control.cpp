@@ -48,7 +48,18 @@ int main() {
   assert(!supported(State{74.f,40.f,6200.f,true,8.f},-1));
   assert(supported(State{74.f,40.f,6210.f,true,8.f},-1));
   assert(supported(State{74.f,40.f,8000.f,true,8.f},-1));
-  assert(!supported(State{74.f,40.f,8010.f,true,8.f},-1));
+  assert(supported(State{74.f,40.f,8110.f,true,8.f},-1));
+  assert(supported(State{74.f,40.f,8120.f,true,8.f},-1));
+  assert(!supported(State{74.f,40.f,8121.f,true,8.f},-1));
+  assert(fullChargeCorrectionMj(7990.f)==0.f);
+  assert(std::fabs(fullChargeCorrectionMj(8050.f)+.0298612584f)<1e-6f);
+  assert(std::fabs(fullChargeCorrectionMj(8110.f)+.05972251687f)<1e-6f);
+  const State full_charge{72.f,60.f,8100.f,true,8.f};
+  assert(negative(full_charge,0).valid && !negative(full_charge,0).cross_condition);
+  for (uint16_t ms : {10,25,30,35,40}) {
+    assert(negative(full_charge,ms).valid && negative(full_charge,ms).cross_condition);
+    assert(negative(full_charge,ms).energy_mj<negative(full_charge,0).energy_mj);
+  }
   assert(!supported(State{77.f,40.f,7100.f,true,8.f},-1));
   assert(!supported(State{74.f,3.f,7100.f,true,8.f},-1));
 
@@ -170,4 +181,46 @@ int main() {
     replay.observe(row[2],row[1]);
   }
   assert(evaluated>=5 && after<before*.5f);
+
+  // All 22 full-charge coast states from run 69890231; future peak is a label only.
+  const float coast[][5]={
+      {69.7648f,126.53f,8100.0f,7.87608f,11.01608f},
+      {68.0071f,5.08f,8100.0f,8.16258f,10.22045f},
+      {69.1148f,114.1f,8100.0f,7.81279f,10.95255f},
+      {69.9403f,41.38f,8100.0f,8.13755f,10.80819f},
+      {69.5775f,69.07f,8100.0f,7.81705f,11.21942f},
+      {72.7185f,52.49f,8100.0f,7.86459f,11.54426f},
+      {71.7123f,74.96f,8100.0f,7.63654f,11.78907f},
+      {73.1078f,74.74f,8100.0f,7.75522f,12.03167f},
+      {75.1802f,71.39f,8100.0f,7.94507f,12.18258f},
+      {75.9844f,66.78f,8100.0f,8.27243f,12.0617f},
+      {74.2108f,48.72f,8100.0f,8.45512f,11.75084f},
+      {71.7286f,31.78f,8100.0f,8.25699f,11.37612f},
+      {72.0848f,37.46f,8100.0f,7.88122f,11.22865f},
+      {71.1919f,70.82f,8100.0f,7.70232f,11.40698f},
+      {71.2793f,68.29f,8090.0f,7.72208f,11.64485f},
+      {73.0069f,71.26f,8090.0f,7.68752f,11.9069f},
+      {75.3913f,83.76f,8090.0f,7.90867f,12.15519f},
+      {75.4882f,61.63f,8090.0f,8.2761f,11.94572f},
+      {74.8551f,66.08f,8090.0f,8.28882f,11.9518f},
+      {73.373f,40.68f,8090.0f,8.33391f,11.6414f},
+      {72.498f,39.13f,8090.0f,8.00752f,11.45356f},
+      {72.4501f,56.57f,8090.0f,7.78304f,11.5787f},
+  };
+  float coast_squared=0.f;
+  for (const auto& row : coast) {
+    const State x{row[0],row[1],row[2],true,row[3]};
+    const auto free=negative(x,0);
+    assert(free.valid && !free.cross_condition);
+    const float a=lateral_energy::angle(geometry,free.energy_mj*.001f);
+    coast_squared+=(a-row[4])*(a-row[4]);
+    float previous=free.energy_mj;
+    for (uint16_t ms=10;ms<=40;++ms) {
+      const auto braking=negative(x,ms);
+      assert(braking.valid && braking.cross_condition && braking.energy_mj<previous);
+      previous=braking.energy_mj;
+    }
+  }
+  assert(std::sqrt(coast_squared/22.f)<.26f);
+  assert(negative(State{72.f,60.f,8120.f,true,8.f},0).cross_condition);
 }

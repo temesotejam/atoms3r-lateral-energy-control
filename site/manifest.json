@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.27-positive-energy-feedback",
+  "version": "1.0.28-full-charge-negative",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

@@ -6,7 +6,7 @@
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_pooled_negative_31runs_20261023";
+constexpr char kRevision[] = "wheel_work_negative_full_charge_20261023";
 constexpr float kRadPerDeg = 0.017453292519943295f;
 constexpr float kPositiveMinQ = 8.79588f;
 constexpr float kPositiveMaxQ = 15.33208f;
@@ -58,12 +58,20 @@ inline bool extendedNegativeSupported(const State& s) {
       s.battery_mv >= 7280.f && s.battery_mv <= 7570.f;
 }
 
-// Marginal ranges of the 31-run fit; not joint validation of every duration
-// at every state. A completed-peak gate limits new strong-pulse combinations.
+// Original 31-run input fit plus one high-voltage coast calibration run.
+// 8120 mV includes one telemetry step above the observed 8110 mV maximum.
+// High-voltage pulse effects are cross-condition predictions at every width.
+inline float fullChargeCorrectionMj(float battery_mv) {
+  const float weight=std::fmax(0.f,std::fmin(1.f,(battery_mv-8000.f)/100.f));
+  return -.05972251687f*weight;
+}
+
+// Marginal ranges are not joint validation of every duration at every state.
+// A completed-peak gate limits new strong-pulse combinations.
 inline bool broadNegativeSupported(const State& s) {
   return freshFinite(s) && s.rate_dps >= 57.2522f && s.rate_dps <= 76.2778f &&
       s.wheel_rpm >= 4.28f && s.wheel_rpm <= 575.79f &&
-      s.battery_mv >= 6210.f && s.battery_mv <= 8000.f &&
+      s.battery_mv >= 6210.f && s.battery_mv <= 8120.f &&
       std::isfinite(s.previous_peak_deg) && s.previous_peak_deg >= 5.0288f &&
       s.previous_peak_deg <= 8.56178f;
 }
@@ -110,11 +118,12 @@ inline Prediction negative(const State& s, uint16_t width_ms, float residual_mj 
   p.change_mj=p.work_mj-after_zero;
   const float omega=s.rate_dps*kRadPerDeg;
   p.free_mj=.29017591957f+.68047892000f*omega*omega-.01436825026f*rpm
-      +.00500262082f*previous+.01211327167f*voltage;
+      +.00500262082f*previous+.01211327167f*voltage+fullChargeCorrectionMj(s.battery_mv);
   p.energy_mj=p.free_mj+.44113787836f*p.change_mj+residual_mj;
   p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
   p.branch=4;
-  p.cross_condition=width_ms>25 && !extendedNegativeSupported(s);
+  p.cross_condition=s.battery_mv>8110.f || (width_ms>0 && s.battery_mv>8000.f) ||
+      (width_ms>25 && !extendedNegativeSupported(s));
   return p;
 }
 

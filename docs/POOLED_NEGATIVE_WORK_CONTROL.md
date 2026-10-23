@@ -1,3 +1,23 @@
+## 1.0.28: full-charge coast calibration and negative control
+
+Run 69890231 recorded 8.09-8.11 V. Its 34 negative decisions were skipped by the previous 8.00 V ceiling. The stable 10-30 s interval supplies 22 no-command negative peaks. Only their pre-crossing rate, wheel speed, previous positive peak and voltage are runtime inputs; the subsequent peak is an offline label.
+
+Keep the original pulse and post-pulse work equations and the original 31-run arrival-energy coefficients. Modify the free arrival energy, in mJ:
+
+`E_free_new = E_free_old - 0.05972251687 * clamp((battery_mV - 8000)/100, 0, 1)`
+
+`E_peak(input) = E_free_new + 0.44113787836 * Delta_W(input) + b_negative`
+
+Choose current duration by minimizing the difference to the target potential energy. The extra term is an empirical arrival-energy calibration, not an independently identified physical loss. The input-effect multiplier is unchanged. At or below 8.00 V the calibration is zero, preserving the original 31-run predictions.
+
+First fit on 10-20 s, then test on unused 20-30 s: angle RMSE decreases from 0.2991 to 0.1587 degrees (11 test events). The final coefficient includes all 22 events; its training RMSE is 0.2423 degrees. Reproduce with `python tools/fit_full_charge_negative.py`; see `full_charge_negative_validation.json`, the CSV fixture and hashed source manifest.
+
+Voltage admission is now 6.21-8.12 V; the upper 10 mV is one telemetry step above the whole-run observed maximum. Other state limits, fresh-speed requirement and opposite-peak protection remain. Every nonzero negative input above 8.00 V is marked `work_prediction_cross_condition`, including 10-25 ms. Even a no-input prediction at the unmeasured 8.12 V margin is flagged. Logs separate the calibrated baseline from predicted pulse and post-pulse work.
+
+High-voltage braking has not been measured in this run. The 25/30/35/40 ms cap continues to advance only after completed matched peaks and a healthy previous positive peak. A target outside the permitted energy range remains saturated; duration never exceeds 40 ms. Prediction improvement is not proof of reaching 8 degrees. The 30-second preset and separate positive energy feedback remain.
+
+---
+
 ## 1.0.27: positive energy feedback and 30-second run
 
 The work-control preset now records 30 seconds. Other normal and comparison presets retain their existing durations. Countdown, run termination and RWLOG metadata use the same duration.
