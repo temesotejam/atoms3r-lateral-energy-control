@@ -65,6 +65,10 @@ public:
     return energy_bridge_enabled_ && !negative_probe_mode_ &&
         energy_control_autonomous_brake_max_ms_ == 25;
   }
+  bool wheelWorkMode() const {
+    return energy_bridge_enabled_ && !negative_probe_mode_ &&
+        energy_control_autonomous_brake_max_ms_ == 40;
+  }
   bool negativeProbeBatchMode() const {
     return negative_probe_mode_ && autonomous_brake_limit::batch(energy_control_autonomous_brake_max_ms_);
   }

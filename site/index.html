@@ -17,6 +17,10 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
+      <h2>1.0.23：ホイールの仕事を使う目標角制御</h2>
+      <p>実機のWeb画面で「仕事に基づく制御で15秒測定を開始」を押します。脚の前後移動を固定し、目標8°で正側は300・350・400 mAと入力時間、負側は30・35・40 msを、その時点で予測した次ピークの位置エネルギーから選びます。測定済みの入力範囲を超える逆算は行いません。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/WHEEL_WORK_ONE_PEAK_CONTROL.md">式と手順</a></p>
+    </section>
+    <section class="panel important">
       <h2>1.0.22：正側300・350・400 mAの一括測定</h2>
       <p>実機のWeb画面で「正側の電流3条件を測定」を押します。脚の前後移動を固定し、目標8°で30秒間測定します。始動キックは300 mA、負側は300 mA・40 msに固定し、正側の電流だけを300・350・400 mAで順序を変えます。各ZEROクロスの割当条件、実際の入力、両側のピーク、電池電圧、ホイールの動きをRWLOGへ保存します。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/positive_current_batch_20261023.md">測定手順</a></p>
     </section>

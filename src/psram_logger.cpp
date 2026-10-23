@@ -21,6 +21,7 @@ extern FootObserver feet;
 #include "config.h"
 #include "lateral_energy_control.h"
 #include "one_peak_energy_inverse.h"
+#include "wheel_work_energy_control.h"
 
 static constexpr uint16_t RWLOG_FORMAT_VERSION = 56;
 static constexpr uint32_t RWLOG_FLAG_CRC32 = 1U << 0;
@@ -467,14 +468,23 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"energy_control_v0_output_policy\":\"sole_actual_output_path;accepted_zero_cross_only;no_braking;all_other_paths_fail_closed\",";
   const bool inverse_mode = energy_bridge_enabled_ && !negative_probe_mode_ &&
       autonomous_brake_max_ms_ == 25;
-  json += "\"energy_model\":\"" + String(inverse_mode ? "one_peak_energy_inverse_negative" :
+  const bool work_mode = energy_bridge_enabled_ && !negative_probe_mode_ &&
+      autonomous_brake_max_ms_ == 40;
+  json += "\"energy_model\":\"" + String(work_mode ? "wheel_work_one_peak_control" : inverse_mode ? "one_peak_energy_inverse_negative" :
       energy_bridge_enabled_ ? "angle_energy_bridge" : "quadratic_energy_inverse") + "\",";
+  if (work_mode) {
+    json += "\"wheel_work_model_revision\":\"" + String(wheel_work_energy_control::kRevision) + "\",";
+    json += "\"wheel_work_model_scope\":\"fixed_leg;target_8deg;positive_300_350_400mA_Q_8.79588_to_15.33208mAs;negative_300mA_30_35_40ms;positive_outside_support_uses_bridge;negative_outside_support_coasts\",";
+    json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;no_extrapolation_beyond_measured_commands\",";
+  }
   if (inverse_mode) {
     json += "\"negative_one_peak_model_revision\":\"" + String(one_peak_energy_inverse::kRevision) + "\",";
     json += "\"negative_one_peak_model_scope\":\"fixed_leg;target_8deg;command_300mA;fit_reference_abs_1.932539deg;runtime_uses_saved_reference_relative_angles;fit_0_10_15_20_25ms;voltage_7.22_to_8.00V\",";
     json += "\"negative_one_peak_input_policy\":\"choose_width_by_target_minus_predicted_peak_energy;within_run_three_peak_raw_fit_residual_mean;25_to_30ms_one_ms_completed_peak_feedback;stop_extension_when_previous_positive_peak_below_7deg;skip_outside_support_or_stale_speed\",";
   }
-  json += "\"energy_control_autonomous_policy\":\"" + String(inverse_mode
+  json += "\"energy_control_autonomous_policy\":\"" + String(work_mode
+      ? "MEKF_zero_cross;positive_choose_measured_300_350_400mA_and_Q;negative_choose_30_35_40ms;outside_support_fallback_or_coast"
+      : inverse_mode
       ? "MEKF_peak_and_zero_cross;positive_side_historical_bridge;negative_side_one_peak_work_response;bounded_0_to_30ms_brake"
       : energy_bridge_enabled_
       ? "MEKF_peak_and_zero_cross;historical_positive_Q_angle_map_transformed_to_potential;excess_coasts;no_reverse_command;excite_max_100ms"
@@ -624,6 +634,8 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       ? "positive_side_bridge;negative_side_balanced_fixed_raw_positive_batch;no_negative_peak_learning"
       : negative_probe_mode_
       ? "positive_side_bridge;negative_side_fixed_raw_positive_probe;no_negative_peak_learning"
+      : work_mode
+      ? "positive_and_negative_predicted_wheel_work_to_one_peak_arrival_energy;bounded_measured_commands"
       : inverse_mode
       ? "positive_side_bridge;negative_side_one_peak_energy_width_inverse;bounded_25_to_30ms_feedback"
       : energy_bridge_enabled_
@@ -1567,10 +1579,14 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     appendAutonomousNullable("rate_baseline_peak_deg", e.rate_baseline_peak_deg, 5);
     appendAutonomousNullable("rate_baseline_correction_deg", e.rate_baseline_correction_deg, 5);
     detail += ",\"rate_baseline_reason\":" + String(e.rate_baseline_reason);
+    const bool work_event = energy_bridge_enabled_ && !negative_probe_mode_ &&
+        autonomous_brake_max_ms_ == 40 && !e.energy_model_extrapolated;
     const bool inverse_event = energy_bridge_enabled_ && !negative_probe_mode_ &&
         autonomous_brake_max_ms_ == 25 && e.physical_next_peak_side < 0;
     detail += ",\"free_model_revision\":\"" + String(inverse_event ? one_peak_energy_inverse::kRevision :
         energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
+    if (work_event)
+      detail += ",\"arrival_energy_model_revision\":\"" + String(wheel_work_energy_control::kRevision) + "\"";
     appendAutonomousNullable("passive_energy_j", e.passive_energy_j, 8);
     appendAutonomousNullable("target_peak_deg", e.target_peak_deg, 5);
     appendAutonomousNullable("target_energy_j", e.target_energy_j, 8);

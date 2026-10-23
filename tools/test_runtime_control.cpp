@@ -138,6 +138,12 @@ int main(){
     assert(w.requestStop());w.oneStep();
     assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
   }
+  assert(!w.request(RunControlWorker::Command::Start,10,0.0f,300,40,false,true,false));
+  assert(w.request(RunControlWorker::Command::Start,8,0.0f,300,40,false,true,false));
+  w.oneStep();
+  assert(!m.probe && m.brake==40 && m.target==8 && m.current==300);
+  assert(w.requestStop());w.oneStep();
+  assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
   assert(w.request(RunControlWorker::Command::Start));w.oneStep();
   assert(m.target==Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG);
   std::cout<<"permanent owner, command exclusion, STOP precedence, sealed audit and wrap PASS\n";

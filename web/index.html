@@ -12,6 +12,11 @@
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
 <p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
+<div id="work-energy-control">
+  <h2>固定脚・ホイールの仕事を使う制御（15秒）</h2>
+  <p class="muted">脚の前後移動を固定し、目標8°で測ります。正側はZEROクロス時の角速度、ホイール回転数、電池電圧から入力後の仕事と次ピークを予測し、300・350・400 mAと入力時間を選びます。負側は30・35・40 msから選びます。目標が測定済みの範囲で届かない場合は上限を記録し、40 msを超える入力はしません。条件外では正側は従来式へ切り替え、負側は入力を見送ります。</p>
+  <button id="work-start" type="button" disabled>仕事に基づく制御で15秒測定を開始</button>
+</div>
 <div id="negative-energy-control">
   <h2>固定脚・新しいエネルギー制御（15秒）</h2>
   <p class="muted">脚の前後移動を固定し、目標8°・300 mAで測ります。正側は従来制御、負側は次の最大角度に必要なエネルギーから入力時間を選びます。今の姿勢で直立基準を保存済みなら、そのMEKF絶対角を学習時の数値に合わせる必要はありません。</p>
@@ -35,7 +40,7 @@
 <p><label for="target">目標とする左右の最大角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
 <p class="muted" id="target-help">ZEROクロスの角速度から次の最大角度を予測し、選んだ目標に近づくよう電流の入力時間を0〜100 msで決めます。</p>
 <p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
-<p><label for="energy-model">ZEROクロス後の予測式 </label><select id="energy-model" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="bridge" selected>旧到達角予測をエネルギーに換算</option><option value="bridge_inverse">次ピークのエネルギーから負側入力を選ぶ（固定脚で試験）</option><option value="quadratic">現行の二次エネルギー式（比較用）</option></select></p>
+<p><label for="energy-model">ZEROクロス後の予測式 </label><select id="energy-model" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="bridge" selected>旧到達角予測をエネルギーに換算</option><option value="work_control">ホイールの仕事から両側の入力を選ぶ（固定脚で試験）</option><option value="bridge_inverse">次ピークのエネルギーから負側入力を選ぶ（固定脚で試験）</option><option value="quadratic">現行の二次エネルギー式（比較用）</option></select></p>
 <p class="muted">前者は旧版0.47.31の次ピーク角を位置エネルギーに換算し、不足分だけ正方向へ入力します。過剰時は入力を止めます。二次式を選ぶと従来の逆入力設定が使えます。</p>
 <p class="muted">新しい方式は目標8°・300 mAで固定します。正側は従来制御、負側は速度・直前のピーク・電圧・ホイール回転数から次ピークのエネルギーを予測して入力時間を選びます。実測条件外では負側に入力しません。25 msを超える入力は実測ピークを確認しながら最大30 msまで1 msずつ増やします。脚を前後に動かさない条件で試してください。</p>
 <p class="muted" id="run-model" role="status">予測式は測定開始時に確定します。</p>

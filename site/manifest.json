@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.22-positive-current-start-fix",
+  "version": "1.0.23-wheel-work-control",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

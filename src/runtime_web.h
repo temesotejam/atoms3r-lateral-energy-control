@@ -14,6 +14,11 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
 <p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
+<div id="work-energy-control">
+  <h2>固定脚・ホイールの仕事を使う制御（15秒）</h2>
+  <p class="muted">脚の前後移動を固定し、目標8°で測ります。正側はZEROクロス時の角速度、ホイール回転数、電池電圧から入力後の仕事と次ピークを予測し、300・350・400 mAと入力時間を選びます。負側は30・35・40 msから選びます。目標が測定済みの範囲で届かない場合は上限を記録し、40 msを超える入力はしません。条件外では正側は従来式へ切り替え、負側は入力を見送ります。</p>
+  <button id="work-start" type="button" disabled>仕事に基づく制御で15秒測定を開始</button>
+</div>
 <div id="negative-energy-control">
   <h2>固定脚・新しいエネルギー制御（15秒）</h2>
   <p class="muted">脚の前後移動を固定し、目標8°・300 mAで測ります。正側は従来制御、負側は次の最大角度に必要なエネルギーから入力時間を選びます。今の姿勢で直立基準を保存済みなら、そのMEKF絶対角を学習時の数値に合わせる必要はありません。</p>
@@ -37,7 +42,7 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p><label for="target">目標とする左右の最大角度 </label><select id="target" disabled aria-describedby="target-help" style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="8" selected>8°</option><option value="10">10°</option><option value="12">12°</option></select></p>
 <p class="muted" id="target-help">ZEROクロスの角速度から次の最大角度を予測し、選んだ目標に近づくよう電流の入力時間を0〜100 msで決めます。</p>
 <p class="muted" id="run-target" role="status">目標角度は測定開始時に確定します。</p>
-<p><label for="energy-model">ZEROクロス後の予測式 </label><select id="energy-model" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="bridge" selected>旧到達角予測をエネルギーに換算</option><option value="bridge_inverse">次ピークのエネルギーから負側入力を選ぶ（固定脚で試験）</option><option value="quadratic">現行の二次エネルギー式（比較用）</option></select></p>
+<p><label for="energy-model">ZEROクロス後の予測式 </label><select id="energy-model" disabled style="font:inherit;padding:10px 14px;border:1px solid #aab8c6;border-radius:8px;background:white"><option value="bridge" selected>旧到達角予測をエネルギーに換算</option><option value="work_control">ホイールの仕事から両側の入力を選ぶ（固定脚で試験）</option><option value="bridge_inverse">次ピークのエネルギーから負側入力を選ぶ（固定脚で試験）</option><option value="quadratic">現行の二次エネルギー式（比較用）</option></select></p>
 <p class="muted">前者は旧版0.47.31の次ピーク角を位置エネルギーに換算し、不足分だけ正方向へ入力します。過剰時は入力を止めます。二次式を選ぶと従来の逆入力設定が使えます。</p>
 <p class="muted">新しい方式は目標8°・300 mAで固定します。正側は従来制御、負側は速度・直前のピーク・電圧・ホイール回転数から次ピークのエネルギーを予測して入力時間を選びます。実測条件外では負側に入力しません。25 msを超える入力は実測ピークを確認しながら最大30 msまで1 msずつ増やします。脚を前後に動かさない条件で試してください。</p>
 <p class="muted" id="run-model" role="status">予測式は測定開始時に確定します。</p>
@@ -531,19 +536,20 @@ function controls() {
   const building = latest?.export_phase === 'building';
   $('start').disabled = !fresh || busy || transferRunning || !latest.ready || !latest.upright_reference?.valid || latest.running || latest.export_phase !== 'empty';
   $('inverse-start').disabled = $('start').disabled;
+  $('work-start').disabled = $('start').disabled;
   $('probe-batch').disabled = $('start').disabled;
   $('probe-extended').disabled = $('start').disabled;
   $('probe-positive-current').disabled = $('start').disabled;
   $('upright-reference-capture').disabled = !fresh || busy || transferRunning || building ||
     !latest.controller_fresh || !latest.imu_ok || latest.running || latest.pulse_active || latest.motor_mA !== 0 ||
     !['READY_TO_MEASURE', 'FINISHED', 'ESTOP'].includes(latest.state);
-  const inverseSelected = $('energy-model').value === 'bridge_inverse';
-  $('target').disabled = $('start').disabled || inverseSelected;
+  const dedicatedSelected = ['bridge_inverse','work_control'].includes($('energy-model').value);
+  $('target').disabled = $('start').disabled || dedicatedSelected;
   $('input-percent').disabled = $('start').disabled;
-  $('input-current').disabled = $('start').disabled || inverseSelected;
+  $('input-current').disabled = $('start').disabled || dedicatedSelected;
   $('energy-model').disabled = $('start').disabled;
-  $('brake-max').disabled = $('start').disabled || ['bridge','bridge_inverse'].includes($('energy-model').value);
-  $('peak-adaptation').disabled = $('start').disabled || inverseSelected;
+  $('brake-max').disabled = $('start').disabled || ['bridge','bridge_inverse','work_control'].includes($('energy-model').value);
+  $('peak-adaptation').disabled = $('start').disabled || dedicatedSelected;
   $('clear').disabled = !fresh || busy || transferRunning || building || latest.running || !['FINISHED', 'ESTOP'].includes(latest.state);
   $('download').disabled = !fresh || busy || transferRunning || !latest.downloadable || latest.running;
   $('cancel').disabled = !transferRunning;
@@ -580,9 +586,12 @@ function renderOffline() {
     : `目標角度：${requestedTargetDeg}°（ZEROクロスで入力時間を計算）`;
   $('run-percent').textContent = requestedInputPercent === null
     ? '通常入力はZEROクロスで行います。'
-    : `開始要求：ZEROクロスで${requestedInputCurrentMa} mA、入力時間はエネルギーから計算`;
+    : requestedEnergyModel === 'work_control'
+      ? '開始要求：正側300・350・400 mAから選択、負側300 mA'
+      : `開始要求：ZEROクロスで${requestedInputCurrentMa} mA、入力時間はエネルギーから計算`;
   $('run-brake').textContent = requestedBrakeMaxMs === null
     ? '負側ブレーキ上限はWeb復帰後に確認します。'
+    : requestedEnergyModel === 'work_control' ? '開始要求：負側は実測30・35・40 msから選択'
     : requestedEnergyModel === 'bridge_probe_positive_current' ? '開始要求：負側40 ms固定、正側300・350・400 mAを順序を変えて測定'
     : requestedEnergyModel === 'bridge_probe_extended' ? '開始要求：負側30・35・40 msを順序を変えて測定'
     : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：負側5条件を順序を変えて測定'
@@ -590,6 +599,7 @@ function renderOffline() {
       : `開始要求：負側ブレーキ上限 ${requestedBrakeMaxMs} ms`;
   $('run-model').textContent = requestedEnergyModel === 'bridge'
     ? '開始要求：旧到達角予測をエネルギーに換算（逆入力なし）'
+    : requestedEnergyModel === 'work_control' ? '開始要求：ホイールの仕事から次ピークの位置エネルギーを予測して入力を選択'
     : requestedEnergyModel === 'bridge_probe_positive_current' ? '開始要求：固定脚・正側電流3条件の一括実験'
     : requestedEnergyModel === 'bridge_probe_extended' ? '開始要求：固定脚・負側3条件の一括実験'
     : requestedEnergyModel === 'bridge_probe_batch' ? '開始要求：固定脚・負側5条件の一括実験'
@@ -668,7 +678,7 @@ function render(s) {
     $('brake-max').value = String(s.brake_max_ms);
     brakeInitialized = true; brakeBootId = s.boot_id;
   }
-  if (['bridge','bridge_inverse','bridge_probe','bridge_probe_batch','bridge_probe_extended','bridge_probe_positive_current','quadratic'].includes(s.energy_model) &&
+  if (['bridge','bridge_inverse','work_control','bridge_probe','bridge_probe_batch','bridge_probe_extended','bridge_probe_positive_current','quadratic'].includes(s.energy_model) &&
       (!modelInitialized || modelBootId !== s.boot_id || s.running || terminal)) {
     $('energy-model').value = s.energy_model.startsWith('bridge_probe') ? 'bridge' : s.energy_model;
     modelInitialized = true; modelBootId = s.boot_id;
@@ -681,7 +691,9 @@ function render(s) {
     ? `今回の予測誤差の学習補正：${s.peak_adaptation_enabled ? '使用する' : '使用しない'}`
     : '学習補正の設定は測定開始時に確定します。';
   $('run-percent').textContent = s.running || terminal
-    ? s.energy_model === 'bridge_probe_positive_current'
+    ? s.energy_model === 'work_control'
+      ? '今回の入力：正側300・350・400 mAから選択、負側300 mA'
+      : s.energy_model === 'bridge_probe_positive_current'
       ? '今回の入力：正側300・350・400 mA、負側300 mA。正側の入力時間は従来の計算で可変'
       : `今回の入力：ZEROクロスで${s.input_current_mA} mA、入力時間は可変`
     : '通常入力はZEROクロスで行います。';
@@ -692,6 +704,7 @@ function render(s) {
     ? s.energy_model === 'bridge_probe_positive_current' ? '今回の負側入力：300 mA・40 msに固定'
       : s.energy_model === 'bridge_probe_extended' ? '今回の負側入力：30・35・40 msを3条件ずつ順序を変更'
       : s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを5条件ずつ順序を変更'
+      : s.energy_model === 'work_control' ? '今回の負側入力：実測30・35・40 msから選択（上限40 ms）'
       : s.energy_model === 'bridge_inverse' ? '今回の負側入力：実測0〜25 ms、ピークを確認して最大30 ms'
       : s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';
@@ -699,6 +712,7 @@ function render(s) {
     ? s.energy_model === 'bridge_probe_positive_current' ? '今回の方式：正側電流300・350・400 mAを順序変更、負側40 ms固定'
       : s.energy_model === 'bridge_probe_extended' ? '今回の方式：正側は従来制御、負側は30・35・40 msの一括実験'
       : s.energy_model === 'bridge_probe_batch' ? '今回の方式：正側は従来制御、負側は5条件の一括実験'
+      : s.energy_model === 'work_control' ? '今回の予測式：ホイールの入力後の仕事を含めて次ピークを予測'
       : s.energy_model === 'bridge_inverse' ? '今回の予測式：次ピークの位置エネルギーから負側入力時間を選択'
       : s.energy_model === 'bridge' ? '今回の予測式：旧到達角予測をエネルギーに換算' : '今回の予測式：二次エネルギー式'
     : '予測式は測定開始時に確定します。';
@@ -786,8 +800,9 @@ async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
   const extendedPackage = forcedModel === 'bridge_probe_extended';
   const positiveCurrentPackage = forcedModel === 'bridge_probe_positive_current';
   const batchPackage = isBatchPackage || extendedPackage || positiveCurrentPackage;
+  const workPackage = (forcedModel || $('energy-model').value) === 'work_control';
   const inversePackage = !isBatchPackage && (forcedModel || $('energy-model').value) === 'bridge_inverse';
-  const target = batchPackage || inversePackage ? 8 : Number($('target').value);
+  const target = batchPackage || inversePackage || workPackage ? 8 : Number($('target').value);
   if (!targetChoices.includes(target)) {
     $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
   }
@@ -797,19 +812,19 @@ async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
     $('message').textContent = 'ZEROクロス設定を確認してください。'; return;
   }
   const currentText = $('input-current').value.trim();
-  const inputCurrentMa = batchPackage || inversePackage ? 300 : Number(currentText);
-  if ((!batchPackage && !inversePackage && !currentText) || !validInputCurrent(inputCurrentMa)) {
+  const inputCurrentMa = batchPackage || inversePackage || workPackage ? 300 : Number(currentText);
+  if ((!batchPackage && !inversePackage && !workPackage && !currentText) || !validInputCurrent(inputCurrentMa)) {
     $('message').textContent = '指令電流を100〜1200 mAの範囲で10 mA刻みで設定してください。'; return;
   }
   const energyModel = isBatchPackage ? 'bridge_probe_batch' : (forcedModel || $('energy-model').value);
-  if (!['bridge', 'bridge_inverse', 'bridge_probe_batch', 'bridge_probe_extended', 'bridge_probe_positive_current', 'quadratic'].includes(energyModel)) {
+  if (!['bridge', 'bridge_inverse', 'work_control', 'bridge_probe_batch', 'bridge_probe_extended', 'bridge_probe_positive_current', 'quadratic'].includes(energyModel)) {
     $('message').textContent = '予測式を選択してください。'; return;
   }
-  const brakeMaxMs = positiveCurrentPackage ? 50 : extendedPackage ? 40 : isBatchPackage || inversePackage ? 25 : energyModel === 'bridge' ? 0 : Number($('brake-max').value);
-  if (!(positiveCurrentPackage ? [50] : extendedPackage ? [40] : isBatchPackage || inversePackage ? [25] : brakeChoices).includes(brakeMaxMs)) {
+  const brakeMaxMs = positiveCurrentPackage ? 50 : extendedPackage ? 40 : workPackage ? 40 : isBatchPackage || inversePackage ? 25 : energyModel === 'bridge' ? 0 : Number($('brake-max').value);
+  if (!(positiveCurrentPackage ? [50] : extendedPackage ? [40] : workPackage ? [40] : isBatchPackage || inversePackage ? [25] : brakeChoices).includes(brakeMaxMs)) {
     $('message').textContent = '負側ブレーキ上限を0・20・50 msから選択してください。'; return;
   }
-  const adaptationValue = batchPackage || inversePackage ? '0' : $('peak-adaptation').value;
+  const adaptationValue = batchPackage || inversePackage || workPackage ? '0' : $('peak-adaptation').value;
   if (!['0', '1'].includes(adaptationValue)) {
     $('message').textContent = '予測誤差の学習補正の設定を確認してください。'; return;
   }
@@ -820,7 +835,7 @@ async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
   requestedBrakeMaxMs = brakeMaxMs;
   requestedEnergyModel = energyModel;
   const runLabel = positiveCurrentPackage ? '正側300・350・400 mAの一括実験' : extendedPackage ? '負側30・35・40 msの一括実験' : isBatchPackage ? '負側5条件の一括実験' :
-    inversePackage ? '固定脚・負側のエネルギー制御' : '左右揺動エネルギー制御';
+    workPackage ? '固定脚・ホイール仕事に基づく制御' : inversePackage ? '固定脚・負側のエネルギー制御' : '左右揺動エネルギー制御';
   commandInFlight = true; setOffline(batchPackage ? 50000 : 30000); $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}&energy_model=${energyModel}`, {method:'POST', kind:'text'});
@@ -1111,6 +1126,7 @@ async function capturePose(baseline) {
 }
 $('start').onclick = () => startOfflineRun();
 $('inverse-start').onclick = () => startOfflineRun(false, 'bridge_inverse');
+$('work-start').onclick = () => startOfflineRun(false, 'work_control');
 $('probe-batch').onclick = () => startOfflineRun(true);
 $('probe-extended').onclick = () => startOfflineRun(false, 'bridge_probe_extended');
 $('probe-positive-current').onclick = () => startOfflineRun(false, 'bridge_probe_positive_current');

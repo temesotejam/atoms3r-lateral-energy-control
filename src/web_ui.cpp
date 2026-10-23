@@ -182,7 +182,8 @@ void WebUi::command(RunControlWorker::Command cmd) {
          server_->arg("energy_model") != "bridge_probe_batch" &&
          server_->arg("energy_model") != "bridge_probe_extended" &&
          server_->arg("energy_model") != "bridge_probe_positive_current" &&
-         server_->arg("energy_model") != "bridge_inverse")) {
+         server_->arg("energy_model") != "bridge_inverse" &&
+         server_->arg("energy_model") != "work_control")) {
       server_->send(400, "text/plain", "energy_model_invalid_reload_page"); return;
     }
     const bool negative_probe_batch_mode = server_->arg("energy_model") == "bridge_probe_batch";
@@ -197,7 +198,8 @@ void WebUi::command(RunControlWorker::Command cmd) {
            autonomous_brake_limit::batch(brake_max_ms) : autonomous_brake_limit::probe(brake_max_ms)) ||
          target_deg != 8.0f || input_current_mA != 300 || peak_adaptation_enabled)) ||
         (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0 &&
-         !(server_->arg("energy_model") == "bridge_inverse" && brake_max_ms == 25 &&
+         !((server_->arg("energy_model") == "bridge_inverse" && brake_max_ms == 25 ||
+            server_->arg("energy_model") == "work_control" && brake_max_ms == 40) &&
            target_deg == 8.0f && input_current_mA == 300 && !peak_adaptation_enabled)) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms))) {
       server_->send(400, "text/plain", "experiment_package_settings_invalid_reload_page"); return;
@@ -248,6 +250,7 @@ void WebUi::status() {
   json += ",\"brake_max_ms\":" + String(s.brake_max_ms);
   json += ",\"peak_adaptation_enabled\":" + String(s.peak_adaptation_enabled ? "true" : "false");
   json += ",\"energy_model\":\"" + String(s.energy_bridge_enabled && !s.negative_probe_mode &&
+      s.brake_max_ms == 40 ? "work_control" : s.energy_bridge_enabled && !s.negative_probe_mode &&
       s.brake_max_ms == 25 ? "bridge_inverse" : s.negative_probe_mode ?
       (autonomous_brake_limit::positiveCurrentBatch(s.brake_max_ms) ? "bridge_probe_positive_current" :
        autonomous_brake_limit::extendedBatch(s.brake_max_ms) ? "bridge_probe_extended" :
