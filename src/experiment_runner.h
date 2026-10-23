@@ -61,6 +61,10 @@ public:
   bool energyBridgeEnabled() const { return energy_bridge_enabled_; }
   bool setNegativeProbeMode(bool enabled);
   bool negativeProbeMode() const { return negative_probe_mode_; }
+  bool energyInverseMode() const {
+    return energy_bridge_enabled_ && !negative_probe_mode_ &&
+        energy_control_autonomous_brake_max_ms_ == 25;
+  }
   bool negativeProbeBatchMode() const {
     return negative_probe_mode_ && autonomous_brake_limit::batch(energy_control_autonomous_brake_max_ms_);
   }
@@ -440,6 +444,12 @@ private:
   bool negative_probe_mode_ = false;
   uint16_t negative_probe_batch_crossing_index_ = 0;
   uint32_t negative_probe_batch_seed_ = 0;
+  float inverse_negative_residual_j_[3] = {};
+  uint8_t inverse_negative_residual_count_ = 0;
+  uint8_t inverse_negative_residual_next_ = 0;
+  uint8_t inverse_negative_extra_ms_ = 0;
+  uint16_t inverse_negative_pending_width_ms_ = 0;
+  float inverse_negative_pending_bias_j_ = 0.f;
   float energy_control_autonomous_target_peak_deg_ = Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG;
   lateral_energy::Geometry lateral_energy_geometry_{
       Config::ENERGY_CONTROL_V0_MASS_KG,Config::ENERGY_CONTROL_V0_GRAVITY_M_S2,

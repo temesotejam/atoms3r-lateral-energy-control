@@ -13,9 +13,13 @@
     <header class="hero">
       <p class="eyebrow">ATOMS3R / FREE-FOOT AMPLITUDE CONTROL</p>
       <h1>左右揺動エネルギー制御<br><span>MEKF・リアクションホイール・ログ</span></h1>
-      <p class="lead">MEKFで左右の姿勢を推定し、ZEROクロスごとに目標ピーク角へ必要な入力を計算します。初期選択の旧到達角予測モードでは余剰時に入力を止めます。二次式の比較モードでは逆入力も選べます。係数は予備データに基づく暫定値です。</p>
+      <p class="lead">MEKFで左右の姿勢を推定し、ZEROクロスごとに目標ピーク角へ必要な入力を計算します。固定脚向けの新しい方式では、負側の次ピークに必要なエネルギーから入力時間を選びます。係数は予備データに基づく暫定値です。</p>
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
+    <section class="panel important">
+      <h2>1.0.17：負側の次ピークをエネルギーで予測して入力</h2>
+      <p>実機のWeb画面で「次ピークのエネルギーから負側入力を選ぶ」を選択します。固定脚・目標8°・300 mAに限定し、測定した0・10・15・20・25 msから入力時間を選びます。目標に届かない場合は、実測ピークを確認して最大30 msまで1 msずつ調整します。直立基準・電圧・ホイール速度が測定範囲外なら負側入力を見送ります。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/NEGATIVE_ONE_PEAK_ENERGY_INVERSE.md">式と適用条件</a></p>
+    </section>
     <section class="panel important">
       <h2>1.0.16：固定脚・負側5条件の順序を変える一括実験</h2>
       <p>実機のWeb画面で「負側5条件の一括実験を開始」を押します。0・10・15・20・25 msを5条件ずつ順序を変え、30秒間測定します。割り当てた条件と実際の出力をRWLOGへ保存し、仕事は取得後に計算します。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/randomized_negative_work_batch_20261021.md">実験手順</a></p>

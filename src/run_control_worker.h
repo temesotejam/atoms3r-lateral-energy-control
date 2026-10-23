@@ -120,7 +120,9 @@ class RunControlWorker {
         (negative_probe_mode && (!energy_bridge_enabled ||
           !(autonomous_brake_limit::probe(brake_max_ms) || autonomous_brake_limit::batch(brake_max_ms)) ||
           target_deg != 8.0f || input_current_mA != 300 || peak_adaptation_enabled)) ||
-        (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0) ||
+        (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0 &&
+          !(brake_max_ms == 25 && target_deg == 8.0f && input_current_mA == 300 &&
+            !peak_adaptation_enabled)) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms)))) return false;
     portENTER_CRITICAL(&mux_);
     const bool accepted = !command_state_.pending && !snapshot_.running && !stop_requested_;

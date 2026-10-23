@@ -22,10 +22,10 @@ for name in list(allowed)+unchanged:
     assert before==after,'unauthorized controller change: '+name
 runner_before=subprocess.check_output(['git','show',baseline+':src/experiment_runner.cpp'],cwd=root).decode().replace('\r\n','\n')
 runner_after=(root/'src/experiment_runner.cpp').read_text(encoding='utf-8')
-def selected_decision(source):
-    return source.split('  auto decide_selected=[&]',1)[1].split('  if (!decision.valid',1)[0]
-assert selected_decision(runner_before)==selected_decision(runner_after), \
-    'legacy bridge/quadratic decision changed during probe addition'
+def legacy_decision(source):
+    return source.split('  auto decide_selected=[&]',1)[1].split('    return energy_bridge_enabled_',1)[1].split('  };',1)[0]
+assert legacy_decision(runner_before)==legacy_decision(runner_after), \
+    'legacy bridge/quadratic decision changed during inverse-mode addition'
 assert '      observation.position_sequence != last_logged_position_sequence_ ||\n' in runner_after
 assert '  last_logged_position_sequence_ = roller_telemetry.position_sequence;\n' in runner_after
 assert '  uint32_t last_logged_position_sequence_ = 0;\n' in \
@@ -37,4 +37,4 @@ assert 'recordIo(' not in position and 'setCurrentMa(' not in position and 'stop
 update=source.split('void Roller485Manager::update() {',1)[1].split('bool Roller485Manager::setCurrentMa',1)[0]
 assert update.index('requested_current_mA_ != command_mA_')<update.index('readPositionFresh()')
 assert 'if (requested_current_mA_ != command_mA_) return;\n  if (last_speed_due_us_' in update
-print('Legacy decision math, MEKF and position observation guarded; probe additions allowed PASS')
+print('Legacy decision math, MEKF and position observation guarded; inverse-mode addition allowed PASS')

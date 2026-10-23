@@ -14,6 +14,7 @@
 #include "upright_reference_store.h"
 #include "direct_q_solver.h"
 #include "negative_probe_batch.h"
+#include "one_peak_energy_inverse.h"
 
 namespace {
 struct V46MekfRunReinitAccumulator {
@@ -1075,7 +1076,10 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
        energy_control_autonomous_input_current_mA_ != 300 || peak_adaptation_enabled_ ||
        !(autonomous_brake_limit::probe(energy_control_autonomous_brake_max_ms_) ||
          autonomous_brake_limit::batch(energy_control_autonomous_brake_max_ms_)))) ||
-      (!negative_probe_mode_ && energy_bridge_enabled_ && energy_control_autonomous_brake_max_ms_ != 0)) {
+      (!negative_probe_mode_ && energy_bridge_enabled_ && energy_control_autonomous_brake_max_ms_ != 0 &&
+       !(energy_control_autonomous_brake_max_ms_ == 25 &&
+         energy_control_autonomous_target_peak_deg_ == 8.0f &&
+         energy_control_autonomous_input_current_mA_ == 300 && !peak_adaptation_enabled_))) {
     status_.last_error = "negative_probe_settings_invalid"; return false;
   }
   g_v46_mekf_run_reinit = V46MekfRunReinitAccumulator{};
@@ -2422,6 +2426,12 @@ void ExperimentRunner::updateEnergyControlV0Pulse(uint32_t now_ms) {
   }
 }
 void ExperimentRunner::resetEnergyControlAutonomous() {
+  for (float &residual : inverse_negative_residual_j_) residual = 0.f;
+  inverse_negative_residual_count_ = 0;
+  inverse_negative_residual_next_ = 0;
+  inverse_negative_extra_ms_ = 0;
+  inverse_negative_pending_width_ms_ = 0;
+  inverse_negative_pending_bias_j_ = 0.f;
   negative_probe_batch_crossing_index_ = 0;
   solver_shadow_event_ = PsramLogger::SolverShadowEvent{};
   solver_shadow_pending_ = false;
@@ -2773,6 +2783,28 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
         energy_control_autonomous_pending_mode_, energy_control_autonomous_pending_wheel_rpm_,
         energy_control_autonomous_pending_wheel_valid_,
         energy_control_autonomous_pending_wheel_age_us_, event.model_residual_j);
+    if (energyInverseMode() && physical_side < 0 &&
+        inverse_negative_pending_width_ms_ <= 25) {
+      // Store residual against the original fit, not the already corrected prediction.
+      inverse_negative_residual_j_[inverse_negative_residual_next_] =
+          event.model_residual_j + inverse_negative_pending_bias_j_;
+      inverse_negative_residual_next_ = (inverse_negative_residual_next_ + 1) % 3;
+      if (inverse_negative_residual_count_ < 3) ++inverse_negative_residual_count_;
+    }
+  }
+  if (energyInverseMode() && physical_side < 0 && event.pending_command_matched) {
+    // Extend beyond the measured 25 ms range only after a completed peak.
+    // A weak preceding positive peak disables extension to protect the cycle.
+    const bool opposite_healthy = energy_control_autonomous_last_peak_valid_ &&
+        energy_control_autonomous_last_peak_side_ > 0 &&
+        energy_control_autonomous_last_peak_amplitude_deg_ >= one_peak_energy_inverse::kLowOppositePeakDeg;
+    if (!opposite_healthy || event.peak_amplitude_deg < 5.f) inverse_negative_extra_ms_ = 0;
+    else if (event.peak_error_deg > one_peak_energy_inverse::kPeakDeadbandDeg &&
+             inverse_negative_pending_width_ms_ >= 25 && inverse_negative_extra_ms_ < 5)
+      ++inverse_negative_extra_ms_;
+    else if (event.peak_error_deg < -one_peak_energy_inverse::kPeakDeadbandDeg &&
+             inverse_negative_extra_ms_ > 0)
+      --inverse_negative_extra_ms_;
   }
   event.antiwindup_upper_hold = event.pending_command_matched &&
       energy_control_autonomous_pending_saturated_upper_ && event.energy_error_j > 0;
@@ -2780,7 +2812,7 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       energy_control_autonomous_pending_saturated_lower_ && event.energy_error_j < 0;
   float* integral = physical_side > 0 ? &energy_control_autonomous_integral_plus_j_ :
       &energy_control_autonomous_integral_minus_j_;
-  if (!(negative_probe_mode_ && physical_side < 0)) *integral = energy_bridge_enabled_
+  if (!((negative_probe_mode_ || energyInverseMode()) && physical_side < 0)) *integral = energy_bridge_enabled_
       ? lateral_energy::updateBridgeIntegral(*integral,event.energy_error_j,event.target_energy_j,
             physical_side,energy_control_autonomous_pending_saturated_upper_,
             energy_control_autonomous_pending_saturated_lower_,event.pending_command_matched)
@@ -3119,7 +3151,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       bounded_integral_j;
   auto requested_mode = uncorrected_request_j > 0.f ? peak_error_adaptation::Excite :
       (uncorrected_request_j < 0.f ? peak_error_adaptation::Brake : peak_error_adaptation::Coast);
-  if (energy_bridge_enabled_ && requested_mode == peak_error_adaptation::Brake)
+  if (energy_bridge_enabled_ && !energyInverseMode() && requested_mode == peak_error_adaptation::Brake)
     requested_mode = peak_error_adaptation::Coast;
   if (requested_mode == peak_error_adaptation::Brake &&
       event.physical_next_peak_side < 0 && energy_control_autonomous_brake_max_ms_ == 0)
@@ -3131,8 +3163,53 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // A learned correction cannot reverse the selected drive/brake decision.
   const float bias_limit_j = .5f * fabsf(uncorrected_request_j);
   prediction_bias_j = fmaxf(-bias_limit_j, fminf(bias_limit_j, prediction_bias_j));
+  const bool inverse_negative = energyInverseMode() && event.physical_next_peak_side < 0;
+  float inverse_residual_j = 0.f;
+  if (inverse_negative && inverse_negative_residual_count_) {
+    for (uint8_t i=0; i<inverse_negative_residual_count_; ++i)
+      inverse_residual_j += inverse_negative_residual_j_[i];
+    inverse_residual_j /= inverse_negative_residual_count_;
+    // Do not let a few noisy peaks overwhelm the fitted response.
+    inverse_residual_j = fmaxf(-.00020f, fminf(.00020f, inverse_residual_j));
+  }
+  one_peak_energy_inverse::Choice inverse_choice;
   audit.solver_started=1; audit.solver_start_us=micros();
   auto decide_selected=[&](float bias) RW_SPEED_CODE {
+    if (inverse_negative) {
+      lateral_energy::Decision d;
+      const one_peak_energy_inverse::State state{
+          event.zero_cross_abs_rate_dps, event.pre_input_wheel_speed_rpm,
+          event.previous_peak_amplitude_deg, static_cast<float>(event.vbat_mV),
+          upright_reference_.pitch_deg};
+      event.rate_support_diagnostic = one_peak_energy_inverse::supported(state) &&
+          peak_error_adaptation::speedUsable(event.pre_input_wheel_speed_rpm,
+              event.pre_input_wheel_speed_valid,event.pre_input_wheel_speed_age_us);
+      if (!event.rate_support_diagnostic) return d;
+      const bool protect = energy_control_autonomous_last_peak_valid_ &&
+          energy_control_autonomous_last_peak_side_ > 0 &&
+          energy_control_autonomous_last_peak_amplitude_deg_ <
+              one_peak_energy_inverse::kLowOppositePeakDeg;
+      inverse_choice = one_peak_energy_inverse::choose(state,
+          event.target_energy_j*1000.f,inverse_residual_j*1000.f,
+          inverse_negative_extra_ms_,protect);
+      if (!inverse_choice.valid) return d;
+      d.valid=true; d.ms=inverse_choice.width_ms; d.evaluations=5;
+      d.command_sign=d.ms ? -1 : 0;
+      d.free_j=inverse_choice.free_mj*.001f;
+      d.target_j=event.target_energy_j;
+      d.predicted_j=inverse_choice.energy_mj*.001f;
+      d.deficit_j=d.target_j-d.free_j;
+      d.commanded_deficit_j=d.deficit_j;
+      d.corrected_target_j=d.target_j;
+      d.energy_error_j=d.target_j-d.predicted_j;
+      d.selected_q_mAs=d.ms ? -lateral_energy::charge(lateral_current_table_,d.ms,
+          event.i0_estimated_mA,goal_current_mA) : 0.f;
+      d.requested_q_mAs=d.selected_q_mAs;
+      d.lower=inverse_choice.below_reachable;
+      d.upper=inverse_choice.above_reachable;
+      d.extrapolated=inverse_choice.extrapolated;
+      return d;
+    }
     return energy_bridge_enabled_
         ? lateral_energy::decideBridge(lateral_energy_geometry_,lateral_current_table_,
             event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
@@ -3144,12 +3221,18 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
             bias);
   };
   auto decision=decide_selected(prediction_bias_j);
-  if (decision.valid && prediction_bias_j != 0.f &&
+  if (!inverse_negative && decision.valid && prediction_bias_j != 0.f &&
       peak_error_adaptation::modeForSignedCharge(decision.selected_q_mAs) != requested_mode) {
     // At a mode boundary, retain the original controller decision rather
     // than applying a correction learned from a different pulse direction.
     prediction_bias_j = 0.f;
     decision = decide_selected(0.f);
+  }
+  if (inverse_negative && decision.valid) {
+    prediction_bias_j=inverse_residual_j;
+    event.passive_energy_j=decision.free_j;
+    event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.free_j);
+    event.rate_support_diagnostic=true;
   }
   if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
     audit.stage=1;audit.solver_end_us=micros();
@@ -3187,12 +3270,13 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.commanded_energy_deficit_j=decision.commanded_deficit_j;
   event.corrected_target_energy_j=decision.corrected_target_j;
   event.q_available_mA_s=decision.available_q_mAs;
-  event.q_ff_energy_mA_s=fixed_negative_probe ? NAN : decision.requested_q_mAs;
-  event.q_unclamped_mA_s=fixed_negative_probe ? NAN : decision.unclamped_q_mAs;
-  event.unclamped_inverse_valid=!fixed_negative_probe && std::isfinite(decision.unclamped_q_mAs);
+  event.q_ff_energy_mA_s=(fixed_negative_probe || inverse_negative) ? NAN : decision.requested_q_mAs;
+  event.q_unclamped_mA_s=(fixed_negative_probe || inverse_negative) ? NAN : decision.unclamped_q_mAs;
+  event.unclamped_inverse_valid=!fixed_negative_probe && !inverse_negative && std::isfinite(decision.unclamped_q_mAs);
   event.unclamped_energy_request_j=decision.unclamped_deficit_j;
-  event.maximum_input_work_j=fixed_negative_probe ? NAN : decision.maximum_input_work_j;
+  event.maximum_input_work_j=(fixed_negative_probe || inverse_negative) ? NAN : decision.maximum_input_work_j;
   event.unapplied_energy_request_j=fixed_negative_probe ? NAN :
+      inverse_negative ? decision.target_j-decision.predicted_j :
       decision.unclamped_deficit_j - (decision.predicted_j-decision.free_j);
   event.predicted_current_goal_mA=goal_current_mA;
   event.predicted_current_rise_tau_s=lateral_current_table_.tau;
@@ -3208,7 +3292,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.predicted_next_peak_amplitude_deg=fixed_negative_probe ? NAN :
       lateral_energy::angle(lateral_energy_geometry_,decision.predicted_j);
   event.predicted_observed_energy_j = fixed_negative_probe ? NAN :
-      fmaxf(0.f, decision.predicted_j + prediction_bias_j);
+      fmaxf(0.f, decision.predicted_j + (inverse_negative ? 0.f : prediction_bias_j));
   event.predicted_observed_next_peak_deg = lateral_energy::angle(
       lateral_energy_geometry_, event.predicted_observed_energy_j);
   event.solver_required_width_ms=static_cast<float>(selected_width_ms);
@@ -3228,6 +3312,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   audit.solver_us=static_cast<uint32_t>(audit.solver_end_us-audit.solver_start_us);
   audit.selected_search_us=audit.solver_us;audit.fast_solver_us=audit.solver_us;
   energy_control_autonomous_pending_peak_ = true;
+  inverse_negative_pending_width_ms_ = inverse_negative ? selected_width_ms : 0;
+  inverse_negative_pending_bias_j_ = inverse_negative ? inverse_residual_j : 0.f;
   energy_control_autonomous_pending_probe_ = fixed_negative_probe;
   energy_control_autonomous_pending_next_side_ = event.physical_next_peak_side;
   energy_control_autonomous_pending_target_deg_ = event.target_peak_deg;
@@ -3249,12 +3335,14 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     return;
   }
   if (status_.emergency_stop || status_.state != ExperimentState::RUNNING_BATCH_SWEEP) {
+    if (inverse_negative) energy_control_autonomous_pending_peak_ = false;
     event.reason = Config::ENERGY_CONTROL_AUTONOMOUS_REASON_ESTOP_OR_STATE;
     logger_->addEnergyControlAutonomousZeroCrossEvent(event);
     rearm_for_next_peak();
     return;
   }
   if (!roller_ || !roller_->ok()) {
+    if (inverse_negative) energy_control_autonomous_pending_peak_ = false;
     event.reason = Config::ENERGY_CONTROL_AUTONOMOUS_REASON_ROLLER_NOT_READY;
     logger_->addEnergyControlAutonomousZeroCrossEvent(event);
     rearm_for_next_peak();
@@ -3269,6 +3357,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   status_.current_audit_q_target_mA_s = event.q_command_mA_s;
   status_.current_audit_q_pred_mA_s = event.q_effective_pred_mA_s;
   if (!beginEnergyControlAutonomousPulse(now_ms, t_test_ms, event.q_command_direction, selected_width_ms)) {
+    if (inverse_negative) energy_control_autonomous_pending_peak_ = false;
     event.command_current_mA = 0;
     event.pulse_width_ms = 0;
     event.pulse_start_ms = 0;

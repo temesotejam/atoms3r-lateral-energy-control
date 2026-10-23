@@ -18,6 +18,7 @@ extern FootObserver feet;
 
 #include "config.h"
 #include "lateral_energy_control.h"
+#include "one_peak_energy_inverse.h"
 
 static constexpr uint16_t RWLOG_FORMAT_VERSION = 56;
 static constexpr uint32_t RWLOG_FLAG_CRC32 = 1U << 0;
@@ -462,18 +463,32 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"energy_control_v0_potential_role\":\"geometry_potential_only;not_a_J_eff_or_dissipation_fit\",";
   json += "\"passive_motor_command_policy\":\"passive_capture_only:all_recorded_samples_command_0mA_and_output_off\",";
   json += "\"energy_control_v0_output_policy\":\"sole_actual_output_path;accepted_zero_cross_only;no_braking;all_other_paths_fail_closed\",";
-  json += "\"energy_model\":\"" + String(energy_bridge_enabled_ ? "angle_energy_bridge" : "quadratic_energy_inverse") + "\",";
-  json += "\"energy_control_autonomous_policy\":\"" + String(energy_bridge_enabled_
+  const bool inverse_mode = energy_bridge_enabled_ && !negative_probe_mode_ &&
+      autonomous_brake_max_ms_ == 25;
+  json += "\"energy_model\":\"" + String(inverse_mode ? "one_peak_energy_inverse_negative" :
+      energy_bridge_enabled_ ? "angle_energy_bridge" : "quadratic_energy_inverse") + "\",";
+  if (inverse_mode) {
+    json += "\"negative_one_peak_model_revision\":\"" + String(one_peak_energy_inverse::kRevision) + "\",";
+    json += "\"negative_one_peak_model_scope\":\"fixed_leg;target_8deg;command_300mA;reference_1.932539deg;fit_0_10_15_20_25ms;voltage_7.22_to_8.00V\",";
+    json += "\"negative_one_peak_input_policy\":\"choose_width_by_target_minus_predicted_peak_energy;within_run_three_peak_raw_fit_residual_mean;25_to_30ms_one_ms_completed_peak_feedback;stop_extension_when_previous_positive_peak_below_7deg;skip_outside_support_or_stale_speed\",";
+  }
+  json += "\"energy_control_autonomous_policy\":\"" + String(inverse_mode
+      ? "MEKF_peak_and_zero_cross;positive_side_historical_bridge;negative_side_one_peak_work_response;bounded_0_to_30ms_brake"
+      : energy_bridge_enabled_
       ? "MEKF_peak_and_zero_cross;historical_positive_Q_angle_map_transformed_to_potential;excess_coasts;no_reverse_command;excite_max_100ms"
       : "MEKF_peak_and_zero_cross;quadratic_signed_energy_inverse;excite_max_100ms;selected_reverse_brake_limit") + "\",";
   json += "\"lateral_energy_revision\":\"" + String(energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\",";
   json += "\"lateral_energy_units\":\"" + String(energy_bridge_enabled_
       ? "rate_deg_per_s;arrival_energy_J;Q_fit_mA_s;time_ms"
       : "omega_rad_per_s;effective_energy_J;Q_log_mA_s;Q_fit_A_s;time_ms") + "\",";
-  json += "\"lateral_energy_formula\":\"" + String(energy_bridge_enabled_
+  json += "\"lateral_energy_formula\":\"" + String(inverse_mode
+      ? "positive_side_historical_bridge;negative_side_E_peak=E_free(state)+0.4229016404*(W_on(T)+W_after(T)-W_after(0))+within_run_residual;choose_T_min_abs(E_peak-U_8deg)"
+      : energy_bridge_enabled_
       ? "A_free=max(0,a_side+b_side*(abs_rate_dps-65));E_free=U(A_free);E_target=U(target_deg);E_arrival(Q)=U(A_free+g_side*Q_mAs);Q_positive=inverse_U(E_target+integral-bias);width=inverse_current_rise(Q);negative_request=coast"
       : "E_free=max(0,c_omega2*omega^2+c_offset);E_target=U(target_deg);DeltaE=E_target-E_free+I_side-bias;DeltaE=alpha_side*abs(omega)*Q+beta_side*Q^2;signed_Q=inverse(DeltaE)") + "\",";
-  json += "\"lateral_energy_coefficient_status\":\"" + String(energy_bridge_enabled_
+  json += "\"lateral_energy_coefficient_status\":\"" + String(inverse_mode
+      ? "negative_fixed_leg_fourteen_run_fit;measured_widths_0_10_15_20_25ms;25_to_30ms_extrapolated_closed_loop_validation_pending"
+      : energy_bridge_enabled_
       ? "historical_04731_positive_Q_peak_angle_fit;energy_is_potential_mapping_not_measured_shaft_work;current_upright_reference_closed_loop_validation_pending"
       : "provisional_58_corrected_polarity_free_foot_events;reverse_response_not_separately_identified") + "\",";
   json += "\"energy_control_autonomous_revision\":\"" + String(energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\",";
@@ -529,7 +544,9 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"energy_control_autonomous_startup_pump\":false,";
   json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);saved_operator_upright_reference;no_delay_projection;no_output_scaling\",";
   json += "\"energy_control_autonomous_rate_coordinate\":\"(gy_dps-mekf_bias_y_dps)*mekf_gyro_y_scale;live_MEKF_bias;historical_Q1_rate_support_rescaled\",";
-  json += "\"energy_control_autonomous_model_coordinate_status\":\"" + String(energy_bridge_enabled_
+  json += "\"energy_control_autonomous_model_coordinate_status\":\"" + String(inverse_mode
+      ? "negative_side_fit_saved_upright_reference_1.932539deg;positive_side_historical_bridge_coordinate_validation_pending"
+      : energy_bridge_enabled_
       ? "04731_measurement_start_relative_fit_reused_with_saved_upright_reference;coordinate_shift_and_hardware_validation_pending"
       : "fixed_foot_3run_MEKF_refit;new_closed_loop_hardware_validation_pending") + "\",";
   json += "\"rate_baseline_revision\":\"fixed_foot_mekf_rate_refit_04731_20260929\",";
@@ -558,7 +575,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"energy_control_autonomous_normal_width_min_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_normal_width_max_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : lateral_energy::kBrakeMaxMs) + ",";
-  json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
+  json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(inverse_mode ? 30 : energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
   json += "\"fixed_negative_work_probe\":" + String(negative_probe_mode_ ? "true" : "false") + ",";
   json += "\"fixed_negative_work_probe_width_ms\":" + String(negative_probe_batch_mode ? 0 :
       (negative_probe_mode_ ? autonomous_brake_max_ms_ : 0)) + ",";
@@ -578,6 +595,8 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       ? "positive_side_bridge;negative_side_balanced_fixed_raw_positive_batch;no_negative_peak_learning"
       : negative_probe_mode_
       ? "positive_side_bridge;negative_side_fixed_raw_positive_probe;no_negative_peak_learning"
+      : inverse_mode
+      ? "positive_side_bridge;negative_side_one_peak_energy_width_inverse;bounded_25_to_30ms_feedback"
       : energy_bridge_enabled_
       ? "positive_Q_from_inverse_potential_and_historical_angle_gain;current_rise_binary_search;negative_request_coasts;reverse_Q_not_identified"
       : "signed_energy_error_to_signed_Q_quadratic_inverse;current_rise_binary_search;reverse_brake_limit_selected;negative_Q_extrapolated") + "\",";
@@ -1519,7 +1538,10 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     appendAutonomousNullable("rate_baseline_peak_deg", e.rate_baseline_peak_deg, 5);
     appendAutonomousNullable("rate_baseline_correction_deg", e.rate_baseline_correction_deg, 5);
     detail += ",\"rate_baseline_reason\":" + String(e.rate_baseline_reason);
-    detail += ",\"free_model_revision\":\"" + String(energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
+    const bool inverse_event = energy_bridge_enabled_ && !negative_probe_mode_ &&
+        autonomous_brake_max_ms_ == 25 && e.physical_next_peak_side < 0;
+    detail += ",\"free_model_revision\":\"" + String(inverse_event ? one_peak_energy_inverse::kRevision :
+        energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
     appendAutonomousNullable("passive_energy_j", e.passive_energy_j, 8);
     appendAutonomousNullable("target_peak_deg", e.target_peak_deg, 5);
     appendAutonomousNullable("target_energy_j", e.target_energy_j, 8);

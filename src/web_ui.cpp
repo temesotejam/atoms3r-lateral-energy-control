@@ -179,7 +179,8 @@ void WebUi::command(RunControlWorker::Command cmd) {
     if (!server_->hasArg("energy_model") ||
         (server_->arg("energy_model") != "bridge" && server_->arg("energy_model") != "quadratic" &&
          server_->arg("energy_model") != "bridge_probe" &&
-         server_->arg("energy_model") != "bridge_probe_batch")) {
+         server_->arg("energy_model") != "bridge_probe_batch" &&
+         server_->arg("energy_model") != "bridge_inverse")) {
       server_->send(400, "text/plain", "energy_model_invalid_reload_page"); return;
     }
     const bool negative_probe_batch_mode = server_->arg("energy_model") == "bridge_probe_batch";
@@ -189,7 +190,9 @@ void WebUi::command(RunControlWorker::Command cmd) {
     if ((negative_probe_mode && (!(negative_probe_batch_mode ?
            autonomous_brake_limit::batch(brake_max_ms) : autonomous_brake_limit::probe(brake_max_ms)) ||
          target_deg != 8.0f || input_current_mA != 300 || peak_adaptation_enabled)) ||
-        (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0) ||
+        (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0 &&
+         !(server_->arg("energy_model") == "bridge_inverse" && brake_max_ms == 25 &&
+           target_deg == 8.0f && input_current_mA == 300 && !peak_adaptation_enabled)) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms))) {
       server_->send(400, "text/plain", "experiment_package_settings_invalid_reload_page"); return;
     }
@@ -238,7 +241,8 @@ void WebUi::status() {
   json += ",\"input_current_mA\":" + String(s.input_current_mA);
   json += ",\"brake_max_ms\":" + String(s.brake_max_ms);
   json += ",\"peak_adaptation_enabled\":" + String(s.peak_adaptation_enabled ? "true" : "false");
-  json += ",\"energy_model\":\"" + String(s.negative_probe_mode ?
+  json += ",\"energy_model\":\"" + String(s.energy_bridge_enabled && !s.negative_probe_mode &&
+      s.brake_max_ms == 25 ? "bridge_inverse" : s.negative_probe_mode ?
       (autonomous_brake_limit::batch(s.brake_max_ms) ? "bridge_probe_batch" : "bridge_probe") :
       (s.energy_bridge_enabled ? "bridge" : "quadratic")) + "\"";
   json += ",\"upright_reference\":{\"valid\":" + String(upright_reference::valid(s.upright_reference) ? "true" : "false");
