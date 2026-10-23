@@ -52,6 +52,37 @@ int main() {
   assert(!supported(State{77.f,40.f,7100.f,true,8.f},-1));
   assert(!supported(State{74.f,3.f,7100.f,true,8.f},-1));
 
+  PositiveFeedback positive_feedback;
+  assert(positive_feedback.biasMj()==0.f);
+  for (unsigned i=0;i<12;++i) {
+    const float raw=.8f;
+    const float corrected=raw+positive_feedback.biasMj();
+    // Runtime strips previously applied bias before observing again.
+    positive_feedback.observe(.74f,corrected-positive_feedback.biasMj());
+  }
+  assert(std::fabs(positive_feedback.biasMj()+.06f)<1e-6f);
+  const auto valid_count=positive_feedback.count();
+  positive_feedback.observe(NAN,.8f);
+  positive_feedback.observe(.7f,NAN);
+  assert(positive_feedback.count()==valid_count);
+  PositiveFeedback separate_work_branch;
+  assert(separate_work_branch.biasMj()==0.f);
+  for (unsigned i=0;i<3;++i) positive_feedback.observe(.2f,.8f);
+  assert(std::fabs(positive_feedback.biasMj()+.12f)<1e-6f);
+  positive_feedback=PositiveFeedback{};
+  assert(positive_feedback.count()==0 && positive_feedback.biasMj()==0.f);
+  // Underprediction and overprediction change the energy inverse in opposite directions.
+  lateral_energy::CurrentTable table;
+  assert(table.prepare(.07f));
+  const lateral_energy::Geometry g;
+  const float target=lateral_energy::potential(g,8.f);
+  const auto nominal=lateral_energy::decideBridge(g,table,1,54.f,target,0.f,0.f,300.f);
+  const auto more=lateral_energy::decideBridge(g,table,1,54.f,target,0.f,0.f,300.f,-.00006f);
+  const auto less=lateral_energy::decideBridge(g,table,1,54.f,target,0.f,0.f,300.f,.00006f);
+  assert(nominal.valid && more.valid && less.valid);
+  assert(more.requested_q_mAs>nominal.requested_q_mAs);
+  assert(less.requested_q_mAs<nominal.requested_q_mAs);
+
   NegativeFeedback feedback;
   assert(feedback.capMs(8.f)==25 && feedback.biasMj()==0.f);
   feedback.observe(1.14f,1.08f,.733f,8.f,25);
@@ -104,4 +135,39 @@ int main() {
     assert(negative(x,40).energy_mj<p.energy_mj);
   }
   assert(std::sqrt(squared_error/5.f)<.15f);
+
+  // Causal replay of recorded positive peaks, run 107786469 (1.0.26).
+  // Evaluates prediction correction on the original inputs, not a closed-loop simulation.
+  const float recorded[][3]={
+      {864.f,0.288500000f,0.201410000f},
+      {1663.f,0.288520000f,0.227970000f},
+      {2426.f,0.290290000f,0.257420000f},
+      {3155.f,0.350790000f,0.290060000f},
+      {3876.f,0.451170000f,0.353810000f},
+      {4646.f,0.537680000f,0.411600000f},
+      {5484.f,0.631520000f,0.517240000f},
+      {6415.f,0.734680000f,0.649670000f},
+      {7338.f,0.735190000f,0.654170000f},
+      {8261.f,0.741650000f,0.671700000f},
+      {9178.f,0.740310000f,0.661750000f},
+      {10097.f,0.744960000f,0.670820000f},
+      {11014.f,0.747410000f,0.692510000f},
+      {11928.f,0.747070000f,0.697520000f},
+      {12841.f,0.742950000f,0.695930000f},
+      {13760.f,0.751190000f,0.700480000f},
+      {14688.f,0.749390000f,0.672960000f},
+  };
+  PositiveFeedback replay;
+  float before=0.f,after=0.f;
+  unsigned evaluated=0;
+  for (const auto& row : recorded) {
+    const float bias=replay.biasMj(); // only earlier completed peaks
+    if (row[0]>=10000.f) {
+      before+=(row[2]-row[1])*(row[2]-row[1]);
+      after+=(row[2]-row[1]-bias)*(row[2]-row[1]-bias);
+      ++evaluated;
+    }
+    replay.observe(row[2],row[1]);
+  }
+  assert(evaluated>=5 && after<before*.5f);
 }

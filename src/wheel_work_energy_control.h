@@ -118,9 +118,30 @@ inline Prediction negative(const State& s, uint16_t width_ms, float residual_mj 
   return p;
 }
 
-// Energy-valued feedback from completed, matched negative peaks. The input
-// duration still minimizes the energy error; this cap only controls how fast
-// a new strong-pulse operating combination may be attempted.
+// Residuals always compare measured peak potential energy to the raw model.
+// Instantiate separately for each positive prediction branch. Values are mJ.
+class PositiveFeedback {
+ public:
+  uint8_t count() const { return count_; }
+  __attribute__((noinline)) float biasMj() const {
+    if (count_<2) return 0.f;
+    float sum=0.f;
+    for (uint8_t i=0;i<count_;++i) sum+=residuals_[i];
+    return std::fmax(-.12f,std::fmin(.12f,sum/count_));
+  }
+  __attribute__((noinline)) void observe(float actual_mj, float raw_prediction_mj) {
+    if (!std::isfinite(actual_mj) || !std::isfinite(raw_prediction_mj) ||
+        actual_mj<0.f || raw_prediction_mj<0.f) return;
+    residuals_[next_]=actual_mj-raw_prediction_mj;
+    next_=(next_+1)%3;
+    if (count_<3) ++count_;
+  }
+ private:
+  float residuals_[3]={};
+  uint8_t count_=0,next_=0;
+};
+
+// Completed negative peaks also gate exploration of longer brake inputs.
 class NegativeFeedback {
  public:
   uint16_t capMs(float previous_peak_deg) const {

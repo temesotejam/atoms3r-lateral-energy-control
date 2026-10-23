@@ -290,6 +290,7 @@ static constexpr uint8_t ENERGY_CONTROL_V0_INVALID_EVENT_LOG_OVERFLOW = 12;
 static constexpr char ENERGY_CONTROL_AUTONOMOUS_MEASUREMENT_MODE[] =
     "lateral_energy_mekf_zero_cross_variable_width_rwlog15s";
 static constexpr uint32_t ENERGY_CONTROL_AUTONOMOUS_DURATION_MS = 15000UL;
+static constexpr uint32_t WHEEL_WORK_CONTROL_DURATION_MS = 30000UL;
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG = 8.0f;
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_TARGET_MIN_DEG = 8.0f;
 static constexpr float ENERGY_CONTROL_AUTONOMOUS_TARGET_MAX_DEG = 12.0f;

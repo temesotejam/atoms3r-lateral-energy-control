@@ -1,3 +1,17 @@
+## 1.0.27: positive energy feedback and 30-second run
+
+The work-control preset now records 30 seconds. Other normal and comparison presets retain their existing durations. Countdown, run termination and RWLOG metadata use the same duration.
+
+For each positive prediction branch (historical angle-energy bridge or work model), store the last three completed matched residuals `r = U(actual positive peak) - E_raw_prediction` in mJ. After two observations use `b = clamp(mean(r), -0.12, +0.12) mJ`. Both histories reset each run. Failed writes and unmatched peaks are excluded.
+
+For the work model minimize `abs(E_raw(input) + b - U(target))` over existing supported candidates. For the bridge fallback invert `E_raw(input) = U(target) - b`, retaining the current-response table and input limits. A negative residual requests more energy. The prior target-error integral is disabled in work-control mode to avoid adapting twice. Current integral is not treated as energy.
+
+Store residuals against the raw prediction: subtract the applied bias when the work prediction already includes it. Bridge `predicted_energy_j` remains raw; `predicted_observed_energy_j` includes the correction. `prediction_bias_j` and `work_bias_samples` record both positive branches. Negative prediction and the 25/30/35/40 ms completed-peak gate are unchanged.
+
+Causal replay of run 107786469 uses only earlier completed peaks. For six positive decisions after 10 seconds, energy prediction RMSE decreases from 0.05999 to 0.01668 mJ. See `positive_energy_feedback_replay.json` and the runtime math test. These are unchanged recorded inputs, not a closed-loop simulation or proof of reaching 8 degrees. Real response to changed inputs remains to be measured.
+
+---
+
 # 入力後の仕事を含む負側制御（1.0.26）
 
 ## 実機での手順

@@ -479,6 +479,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     json += "\"wheel_work_model_scope\":\"fixed_leg;target_8deg;positive_300_350_400mA_Q_8.79588_to_15.33208mAs;negative_pooled_31runs_670events_300mA_0_or_10_to_40ms;positive_outside_support_uses_bridge;negative_outside_support_coasts\",";
     json += "\"wheel_work_broad_negative_support\":\"rate_57.2522_to_76.2778dps;wheel_4.28_to_575.79rpm;battery_6210_to_8000mV;previous_peak_5.0288_to_8.56178deg;marginal_ranges_not_full_joint_coverage;opposite_peak_below_7deg_skips_braking\",";
     json += "\"wheel_work_negative_feedback\":\"last_3_matched_healthy_negative_peaks;raw_model_energy_residual_mean_after_2_samples;clamp_0.12mJ;cap_25_30_35_40ms_advances_after_2_completed_cap_inputs_with_excess_above_0.03mJ_and_previous_positive_at_least_7.5deg;weak_positive_caps_25ms;undershoot_reduces_cap;reset_each_run\",";
+    json += "\"wheel_work_positive_feedback\":\"separate_bridge_and_work_last_3_matched_peaks;actual_U_minus_raw_prediction;after_2_samples;clamp_0.12mJ;reset_each_run;no_parallel_energy_integral\",";
     json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"legacy_negative_extended\",\"3\":\"legacy_negative_broad\",\"4\":\"negative_pooled_0_or_10_to_40ms\"},";
     json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;cross_condition_strong_pulses_flagged;no_duration_beyond_40ms\",";
   }
@@ -551,7 +552,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   const bool positive_current_batch_mode = negative_probe_mode_ &&
       autonomous_brake_limit::positiveCurrentBatch(autonomous_brake_max_ms_);
   json += "\"autonomous_duration_ms\":" + String((negative_probe_batch_mode || positive_current_batch_mode) ?
-      negative_probe_batch::kDurationMs : Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS) + ",";
+      negative_probe_batch::kDurationMs : work_mode ? Config::WHEEL_WORK_CONTROL_DURATION_MS : Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS) + ",";
   json += "\"energy_control_autonomous_free_model\":\"" + String(energy_bridge_enabled_
       ? "U(max(0,a_side+b_side*(rate_dps-65)));historical_angle_predictor"
       : "max(0,c_omega2*omega^2+c_offset);empirical_effective_energy") + "\",";
