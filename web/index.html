@@ -22,6 +22,11 @@
   <p class="muted">脚の前後移動を固定します。目標8°・300 mAで負側の入力時間を3条件で順序を変えて試します。正側は従来制御を続けます。負側ピークと次の正側ピークまで記録します。終了後はRWLOGを保存してください。</p>
   <button id="probe-extended" type="button" disabled>負側3条件の一括測定を開始</button>
 </div>
+<div id="positive-current-package">
+  <h2>正側の電流3条件の一括測定（30秒）</h2>
+  <p class="muted">脚の前後移動を固定します。目標8°、始動キックと負側は300 mA、負側の減速は40 msに固定します。正側だけ300・350・400 mAを3回ごとに順序を変えて試し、両側のピークと電圧・ホイールの動きを記録します。終了後はRWLOGを保存してください。</p>
+  <button id="probe-positive-current" type="button" disabled>正側の電流3条件を測定</button>
+</div>
 <details id="negative-probe-packages"><summary>負側5条件の一括実験を行う（30秒）</summary>
   <p class="muted">入力時間0・10・15・20・25 msを5条件ずつ順序を変えて試す測定です。正側の制御は従来どおりです。毎回RWLOGを保存し、「ログを消去・次の測定へ」を押してから次の回を始めてください。</p>
   <button id="probe-batch" type="button" disabled>負側5条件の一括実験を開始</button>

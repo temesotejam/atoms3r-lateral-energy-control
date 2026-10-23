@@ -71,7 +71,11 @@ public:
   bool negativeProbeExtendedMode() const {
     return negative_probe_mode_ && autonomous_brake_limit::extendedBatch(energy_control_autonomous_brake_max_ms_);
   }
+  bool positiveCurrentBatchMode() const {
+    return negative_probe_mode_ && autonomous_brake_limit::positiveCurrentBatch(energy_control_autonomous_brake_max_ms_);
+  }
   bool anyNegativeProbeBatchMode() const { return negativeProbeBatchMode() || negativeProbeExtendedMode(); }
+  bool anyProbeBatchMode() const { return anyNegativeProbeBatchMode() || positiveCurrentBatchMode(); }
   bool beginUprightReferenceCapture();
   bool pollUprightReferenceCapture(bool& ok, const char*& result);
   const upright_reference::Record& uprightReference() const { return upright_reference_; }
@@ -334,7 +338,7 @@ private:
   void RW_SPEED_CODE updateEnergyControlAutonomousPulse(uint32_t now_ms);
   void runEnergyControlAutonomousSolverShadow();
   bool RW_SPEED_CODE beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32_t t_test_ms,
-                                         int8_t direction, uint16_t pulse_width_ms);
+      int8_t direction, uint16_t pulse_width_ms, int16_t command_current_mA);
   bool RW_SPEED_CODE beginEnergyControlAutonomousStartKickPulse(uint32_t now_ms, int8_t direction);
   float RW_SPEED_CODE energyControlPotentialJ(float amplitude_deg) const;
   // V46ai: no previous-amplitude free-peak method.
@@ -447,6 +451,7 @@ private:
   uint16_t energy_control_autonomous_brake_max_ms_ = autonomous_brake_limit::kDefaultMs;
   bool negative_probe_mode_ = false;
   uint16_t negative_probe_batch_crossing_index_ = 0;
+  uint16_t positive_current_batch_crossing_index_ = 0;
   uint32_t negative_probe_batch_seed_ = 0;
   float inverse_negative_residual_j_[3] = {};
   uint8_t inverse_negative_residual_count_ = 0;
@@ -460,6 +465,7 @@ private:
       Config::ENERGY_CONTROL_V0_CG_HEIGHT_M,Config::ENERGY_CONTROL_V0_RADIUS_M,
       Config::ENERGY_CONTROL_V0_INNER_EDGE_X_M,Config::ENERGY_CONTROL_V0_OUTER_EDGE_X_M};
   lateral_energy::CurrentTable lateral_current_table_;
+  lateral_energy::CurrentTable positive_current_probe_tables_[2];
   peak_error_adaptation::Model peak_error_model_;
   bool peak_adaptation_enabled_ = false;
   bool energy_bridge_enabled_ = true;

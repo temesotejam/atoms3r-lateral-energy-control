@@ -3,6 +3,8 @@ set -euo pipefail
 python3 tools/embed_runtime_web.py --check
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_negative_probe_batch.cpp -o /tmp/test_negative_probe_batch
 /tmp/test_negative_probe_batch
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_positive_current_batch.cpp -o /tmp/test_positive_current_batch
+/tmp/test_positive_current_batch
 g++ -std=c++11 -O2 -Wall -Wextra -Werror tools/test_one_peak_energy_inverse.cpp -o /tmp/test_one_peak_energy_inverse
 /tmp/test_one_peak_energy_inverse
 node --check web/runtime.js

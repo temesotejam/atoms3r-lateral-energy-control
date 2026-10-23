@@ -3,6 +3,7 @@
 #include "psram_logger.h"
 #include "negative_probe_batch.h"
 #include "negative_probe_extended_batch.h"
+#include "positive_current_batch.h"
 #include "imu_manager.h"
 extern ImuManager imu;
 #include "run_control_worker.h"
@@ -532,7 +533,9 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       autonomous_brake_limit::extendedBatch(autonomous_brake_max_ms_);
   const bool negative_probe_batch_mode = negative_probe_mode_ &&
       (autonomous_brake_limit::batch(autonomous_brake_max_ms_) || negative_probe_extended_mode);
-  json += "\"autonomous_duration_ms\":" + String(negative_probe_batch_mode ?
+  const bool positive_current_batch_mode = negative_probe_mode_ &&
+      autonomous_brake_limit::positiveCurrentBatch(autonomous_brake_max_ms_);
+  json += "\"autonomous_duration_ms\":" + String((negative_probe_batch_mode || positive_current_batch_mode) ?
       negative_probe_batch::kDurationMs : Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS) + ",";
   json += "\"energy_control_autonomous_free_model\":\"" + String(energy_bridge_enabled_
       ? "U(max(0,a_side+b_side*(rate_dps-65)));historical_angle_predictor"
@@ -580,10 +583,22 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : lateral_energy::kBrakeMaxMs) + ",";
   json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(inverse_mode ? 30 : energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
   json += "\"fixed_negative_work_probe\":" + String(negative_probe_mode_ ? "true" : "false") + ",";
-  json += "\"fixed_negative_work_probe_width_ms\":" + String(negative_probe_batch_mode ? 0 :
+  json += "\"fixed_negative_work_probe_width_ms\":" + String(positive_current_batch_mode ?
+      positive_current_batch::kNegativeWidthMs : negative_probe_batch_mode ? 0 :
       (negative_probe_mode_ ? autonomous_brake_max_ms_ : 0)) + ",";
   json += "\"negative_probe_batch\":" + String(negative_probe_batch_mode ? "true" : "false") + ",";
   json += "\"negative_probe_extended\":" + String(negative_probe_extended_mode ? "true" : "false") + ",";
+  json += "\"positive_current_batch\":" + String(positive_current_batch_mode ? "true" : "false") + ",";
+  if (positive_current_batch_mode) {
+    json += "\"positive_current_batch_seed\":" + String(negative_probe_batch_seed_) + ",";
+    json += "\"positive_current_batch_algorithm\":\"seeded_fisher_yates_three_event_blocks_v1\",";
+    json += "\"positive_current_batch_schedule_mA\":[";
+    for (uint16_t i = 0; i < positive_current_batch::kSchedulePreviewLength; ++i) {
+      if (i) json += ",";
+      json += String(positive_current_batch::current(negative_probe_batch_seed_, i));
+    }
+    json += "],";
+  }
   if (negative_probe_batch_mode) {
     json += "\"negative_probe_batch_seed\":" + String(negative_probe_batch_seed_) + ",";
     json += "\"negative_probe_batch_algorithm\":\"" + String(negative_probe_extended_mode ?
@@ -601,7 +616,9 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     json += "],";
   }
   json += "\"autonomous_uses_q_ident_limits\":false,";
-  json += "\"energy_control_autonomous_q_policy\":\"" + String(negative_probe_extended_mode
+  json += "\"energy_control_autonomous_q_policy\":\"" + String(positive_current_batch_mode
+      ? "positive_side_bridge_randomized_300_350_400mA;negative_side_fixed_40ms_300mA;startup_300mA;no_negative_peak_learning"
+      : negative_probe_extended_mode
       ? "positive_side_bridge;negative_side_randomized_30_35_40ms_fixed_raw_positive_batch;previous_positive_peak_and_battery_gate;no_negative_peak_learning"
       : negative_probe_batch_mode
       ? "positive_side_bridge;negative_side_balanced_fixed_raw_positive_batch;no_negative_peak_learning"
@@ -1585,6 +1602,14 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       detail += ",\"negative_probe_batch_index\":null";
       detail += ",\"negative_probe_batch_planned_width_ms\":null";
       detail += ",\"negative_probe_batch_rate_skipped\":null";
+    }
+    const bool positive_current_condition = e.positive_current_batch_index != UINT16_MAX;
+    if (positive_current_condition) {
+      detail += ",\"positive_current_batch_index\":" + String(e.positive_current_batch_index);
+      detail += ",\"positive_current_batch_planned_mA\":" + String(e.positive_current_batch_planned_mA);
+    } else {
+      detail += ",\"positive_current_batch_index\":null";
+      detail += ",\"positive_current_batch_planned_mA\":null";
     }
     appendAutonomousNullable("q1_gain_deg_per_mA_s", e.q1_gain_deg_per_mA_s, 5);
     appendAutonomousNullable("q_ff_energy_mA_s", e.q_ff_energy_mA_s, 5);

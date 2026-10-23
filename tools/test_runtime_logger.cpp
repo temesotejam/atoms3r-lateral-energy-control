@@ -106,6 +106,10 @@ int main(int argc,char** argv){
       z.negative_probe_batch_planned_width_ms=20;
       z.negative_probe_batch_rate_skipped=i%4==1;
     }
+    if (i % 3 == 2) {
+      z.positive_current_batch_index=i;
+      z.positive_current_batch_planned_mA=350;
+    }
     logger.addEnergyControlAutonomousZeroCrossEvent(z);
     logger.addTimingProbeEvent({});
   }

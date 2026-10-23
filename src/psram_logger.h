@@ -375,6 +375,8 @@ class PsramLogger {
     uint16_t negative_probe_batch_index = UINT16_MAX;
     uint16_t negative_probe_batch_planned_width_ms = 0;
     bool negative_probe_batch_rate_skipped = false;
+    uint16_t positive_current_batch_index = UINT16_MAX;
+    int16_t positive_current_batch_planned_mA = 0;
     float q1_gain_deg_per_mA_s = NAN;
     float q_ff_energy_mA_s = NAN;
     float q_angle_diagnostic_mA_s = NAN;

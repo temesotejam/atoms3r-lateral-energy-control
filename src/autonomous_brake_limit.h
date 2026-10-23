@@ -9,6 +9,7 @@ inline bool valid(long value) { return value == 0 || value == 15 || value == 20 
 inline bool probe(long value) { return value == 0 || value == 15 || value == 30; }
 inline bool batch(long value) { return value == 25; }
 inline bool extendedBatch(long value) { return value == 40; }
+inline bool positiveCurrentBatch(long value) { return value == 50; }
 inline bool quadratic(long value) { return value == 0 || value == 20 || value == 50; }
 inline bool parse(const char* text, uint16_t& result) {
   if (!text || !*text) return false;

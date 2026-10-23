@@ -15,6 +15,7 @@
 #include "direct_q_solver.h"
 #include "negative_probe_batch.h"
 #include "negative_probe_extended_batch.h"
+#include "positive_current_batch.h"
 #include "one_peak_energy_inverse.h"
 
 namespace {
@@ -1077,7 +1078,8 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
        energy_control_autonomous_input_current_mA_ != 300 || peak_adaptation_enabled_ ||
        !(autonomous_brake_limit::probe(energy_control_autonomous_brake_max_ms_) ||
          autonomous_brake_limit::batch(energy_control_autonomous_brake_max_ms_) ||
-         autonomous_brake_limit::extendedBatch(energy_control_autonomous_brake_max_ms_)))) ||
+         autonomous_brake_limit::extendedBatch(energy_control_autonomous_brake_max_ms_) ||
+         autonomous_brake_limit::positiveCurrentBatch(energy_control_autonomous_brake_max_ms_)))) ||
       (!negative_probe_mode_ && energy_bridge_enabled_ && energy_control_autonomous_brake_max_ms_ != 0 &&
        !(energy_control_autonomous_brake_max_ms_ == 25 &&
          energy_control_autonomous_target_peak_deg_ == 8.0f &&
@@ -1102,7 +1104,10 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   resetEnergyControlAutonomous();
   lateral_target_energy_j_ = lateral_energy::potential(lateral_energy_geometry_, energy_control_autonomous_target_peak_deg_);
   if (!std::isfinite(lateral_target_energy_j_) ||
-      !lateral_current_table_.prepare(predictRiseTauS(energy_control_autonomous_input_current_mA_))) {
+      !lateral_current_table_.prepare(predictRiseTauS(energy_control_autonomous_input_current_mA_)) ||
+      (positiveCurrentBatchMode() &&
+       (!positive_current_probe_tables_[0].prepare(predictRiseTauS(350)) ||
+        !positive_current_probe_tables_[1].prepare(predictRiseTauS(400))))) {
     g_v46_mekf_run_reinit.active = false;
     energy_control_autonomous_mode_ = false; status_.last_error = "lateral_energy_model_invalid"; return false;
   }
@@ -1123,7 +1128,7 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   stopMotor();
   status_.run_id++;
   if (status_.run_id == 0) status_.run_id = 1;
-  negative_probe_batch_seed_ = anyNegativeProbeBatchMode()
+  negative_probe_batch_seed_ = anyProbeBatchMode()
       ? (static_cast<uint32_t>(micros()) ^
          (0x9e3779b9U * static_cast<uint32_t>(status_.run_id))) : 0;
   last_log_us_ = 0;
@@ -1135,7 +1140,7 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   status_.pulse_direction = 0;
   status_.motor_cmd_mA = 0;
   status_.measure_elapsed_ms = 0;
-  status_.remaining_ms = anyNegativeProbeBatchMode() ? negative_probe_batch::kDurationMs :
+  status_.remaining_ms = anyProbeBatchMode() ? negative_probe_batch::kDurationMs :
       Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS;
   status_.trial_index = 1;
   status_.trial_count = 1;
@@ -2435,6 +2440,7 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   inverse_negative_pending_width_ms_ = 0;
   inverse_negative_pending_bias_j_ = 0.f;
   negative_probe_batch_crossing_index_ = 0;
+  positive_current_batch_crossing_index_ = 0;
   solver_shadow_event_ = PsramLogger::SolverShadowEvent{};
   solver_shadow_pending_ = false;
   timing_probe_event_ = PsramLogger::TimingProbeEvent{};
@@ -2550,10 +2556,11 @@ float ExperimentRunner::energyControlAutonomousCorrectedPrediction(
 }
 
 bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32_t t_test_ms,
-                                                            int8_t direction, uint16_t pulse_width_ms) {
+    int8_t direction, uint16_t pulse_width_ms, int16_t requested_current_mA) {
   if (!energy_control_autonomous_mode_ || status_.emergency_stop ||
       status_.state != ExperimentState::RUNNING_BATCH_SWEEP || status_.pulse_active ||
       !roller_ || !roller_->ok() || (direction != -1 && direction != 1) ||
+      !autonomous_input_current::valid(requested_current_mA) ||
       pulse_width_ms < 1 || pulse_width_ms > Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS ||
       (energy_control_autonomous_phase_ != EnergyControlAutonomousPhase::ENERGY_CONTROL &&
        energy_control_autonomous_phase_ != EnergyControlAutonomousPhase::HOLD) ||
@@ -2565,7 +2572,7 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   energy_control_autonomous_pulse_authorized_ = true;
   const int16_t command_current_mA = static_cast<int16_t>(
       Config::ENERGY_CONTROL_AUTONOMOUS_NORMAL_OUTPUT_SIGN *
-      Config::MOTOR_DRIVER_POLARITY * direction * energy_control_autonomous_input_current_mA_);
+      Config::MOTOR_DRIVER_POLARITY * direction * requested_current_mA);
   const uint32_t set_current_t0_us = micros();
   const bool set_current_ok = roller_->setCurrentMa(command_current_mA);
   const uint32_t set_current_us = static_cast<uint32_t>(micros() - set_current_t0_us);
@@ -2576,7 +2583,7 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   }
 
   const uint32_t state_t0_us = micros();
-  status_.current_mA_setting = energy_control_autonomous_input_current_mA_;
+  status_.current_mA_setting = requested_current_mA;
   status_.pulse_width_ms_setting = pulse_width_ms;
   status_.motor_cmd_mA = command_current_mA;
   status_.pulse_direction = direction;
@@ -2594,8 +2601,8 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   const float v = status_.beta_model_vbat_mV > 0 ? status_.beta_model_vbat_mV / 1000.0f :
       Config::MODEL_VBAT_REFERENCE_V;
   const float target_current_mA = direction * predictCurrentGoalMa(
-      energy_control_autonomous_input_current_mA_, v);
-  const float tau_s = predictRiseTauS(energy_control_autonomous_input_current_mA_);
+      requested_current_mA, v);
+  const float tau_s = predictRiseTauS(requested_current_mA);
   const float width_s = static_cast<float>(pulse_width_ms) / 1000.0f;
   predicted_signed_current_end_mA_ = target_current_mA +
       (i0 - target_current_mA) * expf(-width_s / tau_s);
@@ -3077,6 +3084,17 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
         : negative_probe_batch::width(negative_probe_batch_seed_, negative_probe_batch_crossing_index_);
     ++negative_probe_batch_crossing_index_;
   }
+  int16_t selected_current_mA = energy_control_autonomous_input_current_mA_;
+  const lateral_energy::CurrentTable* selected_current_table = &lateral_current_table_;
+  if (positiveCurrentBatchMode() && event.physical_next_peak_side > 0) {
+    event.positive_current_batch_index = positive_current_batch_crossing_index_;
+    event.positive_current_batch_planned_mA = positive_current_batch::current(
+        negative_probe_batch_seed_, positive_current_batch_crossing_index_);
+    ++positive_current_batch_crossing_index_;
+    selected_current_mA = event.positive_current_batch_planned_mA;
+    if (selected_current_mA == 350) selected_current_table = &positive_current_probe_tables_[0];
+    else if (selected_current_mA == 400) selected_current_table = &positive_current_probe_tables_[1];
+  }
   event.side_mismatch_diagnostic =
       event.physical_next_peak_side != -energy_control_autonomous_last_peak_side_;
   // Historical Q1 support is on the unscaled raw-Y axis; compare in the
@@ -3140,7 +3158,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
 
   const float fast_v = status_.beta_model_vbat_mV > 0
       ? static_cast<float>(status_.beta_model_vbat_mV) / 1000.0f : Config::MODEL_VBAT_REFERENCE_V;
-  const float goal_current_mA = predictCurrentGoalMa(energy_control_autonomous_input_current_mA_,fast_v);
+  const float goal_current_mA = predictCurrentGoalMa(selected_current_mA,fast_v);
   const float aligned_initial_mA = static_cast<float>(event.physical_next_peak_side)*event.i0_estimated_mA;
   event.integral_energy_j = event.physical_next_peak_side > 0
       ? energy_control_autonomous_integral_plus_j_ : energy_control_autonomous_integral_minus_j_;
@@ -3202,7 +3220,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       d.commanded_deficit_j=d.deficit_j;
       d.corrected_target_j=d.target_j;
       d.energy_error_j=d.target_j-d.predicted_j;
-      d.selected_q_mAs=d.ms ? -lateral_energy::charge(lateral_current_table_,d.ms,
+      d.selected_q_mAs=d.ms ? -lateral_energy::charge(*selected_current_table,d.ms,
           event.i0_estimated_mA,goal_current_mA) : 0.f;
       d.requested_q_mAs=d.selected_q_mAs;
       d.lower=inverse_choice.below_reachable;
@@ -3211,10 +3229,10 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       return d;
     }
     return energy_bridge_enabled_
-        ? lateral_energy::decideBridge(lateral_energy_geometry_,lateral_current_table_,
+        ? lateral_energy::decideBridge(lateral_energy_geometry_,*selected_current_table,
             event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
             event.integral_energy_j,aligned_initial_mA,goal_current_mA,bias)
-        : lateral_energy::decide(lateral_energy_geometry_,lateral_current_table_,
+        : lateral_energy::decide(lateral_energy_geometry_,*selected_current_table,
             event.physical_next_peak_side,event.zero_cross_abs_rate_dps,event.target_energy_j,
             event.integral_energy_j,aligned_initial_mA,goal_current_mA,
             event.physical_next_peak_side < 0 ? energy_control_autonomous_brake_max_ms_ : lateral_energy::kBrakeMaxMs,
@@ -3250,19 +3268,20 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // Preserve the positive swing before testing a stronger negative pulse.
   // The extended package records the planned condition even when this gate
   // skips the output, so skipped crossings cannot masquerade as observations.
-  const bool extended_probe_safe = !negativeProbeExtendedMode() ||
+  const bool extended_probe_safe = !(negativeProbeExtendedMode() || positiveCurrentBatchMode()) ||
       (energy_control_autonomous_last_peak_side_ > 0 &&
        event.previous_peak_amplitude_deg >= 7.0f &&
        event.vbat_mV >= 7000 && event.vbat_mV <= 8500);
   const uint16_t selected_width_ms = fixed_negative_probe
-      ? (event.rate_support_diagnostic && extended_probe_safe ? (anyNegativeProbeBatchMode()
+      ? (event.rate_support_diagnostic && extended_probe_safe ? (positiveCurrentBatchMode()
+          ? positive_current_batch::kNegativeWidthMs : anyNegativeProbeBatchMode()
           ? event.negative_probe_batch_planned_width_ms : energy_control_autonomous_brake_max_ms_) : 0)
       : decision.ms;
   event.negative_probe_batch_rate_skipped = anyNegativeProbeBatchMode() && fixed_negative_probe &&
       (!event.rate_support_diagnostic || !extended_probe_safe) &&
       event.negative_probe_batch_planned_width_ms != 0;
   const float selected_q_mA_s = fixed_negative_probe
-      ? (selected_width_ms ? -lateral_energy::charge(lateral_current_table_, selected_width_ms,
+      ? (selected_width_ms ? -lateral_energy::charge(*selected_current_table, selected_width_ms,
             event.i0_estimated_mA, goal_current_mA) : 0.0f)
       : decision.selected_q_mAs;
   if (fixed_negative_probe) {
@@ -3287,14 +3306,14 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       inverse_negative ? decision.target_j-decision.predicted_j :
       decision.unclamped_deficit_j - (decision.predicted_j-decision.free_j);
   event.predicted_current_goal_mA=goal_current_mA;
-  event.predicted_current_rise_tau_s=lateral_current_table_.tau;
+  event.predicted_current_rise_tau_s=selected_current_table->tau;
   event.aligned_initial_current_mA=aligned_initial_mA;
   event.q_saturated_upper=!fixed_negative_probe && decision.upper;
   event.q_saturated_lower=!fixed_negative_probe && decision.lower;
   event.work_omega_q_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_omega_q;
   event.work_q2_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_q2;
   event.energy_model_extrapolated=fixed_negative_probe || decision.extrapolated ||
-      energy_control_autonomous_input_current_mA_!=300;
+      selected_current_mA!=300;
   event.q_command_mA_s=selected_q_mA_s;event.q_effective_pred_mA_s=selected_q_mA_s;
   event.predicted_energy_j=fixed_negative_probe ? NAN : decision.predicted_j;
   event.predicted_next_peak_amplitude_deg=fixed_negative_probe ? NAN :
@@ -3309,7 +3328,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // live on the zero-cross record. Bridge mode inverts the potential and
   // historical positive-Q angle response, not a motor-work equation.
   audit.signed_target_current_mA=event.q_command_direction*goal_current_mA;
-  audit.tau_s=lateral_current_table_.tau;
+  audit.tau_s=selected_current_table->tau;
   audit.ff_q_mA_s=fixed_negative_probe ? NAN : decision.requested_q_mAs;
   audit.ff_width_ms=65535;audit.ff_valid=!fixed_negative_probe;
   audit.corrected_target_energy_j=decision.corrected_target_j;
@@ -3357,14 +3376,15 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     return;
   }
   event.pulse_width_ms = selected_width_ms;
-  event.command_current_mA = energy_control_autonomous_input_current_mA_;
+  event.command_current_mA = selected_current_mA;
   event.pulse_start_ms = t_test_ms;
   event.pulse_end_ms = t_test_ms + selected_width_ms;
   // v45 labels are copied from the already-selected V7 command. They are
   // diagnostic only; neither field is read by the pulse/control path.
   status_.current_audit_q_target_mA_s = event.q_command_mA_s;
   status_.current_audit_q_pred_mA_s = event.q_effective_pred_mA_s;
-  if (!beginEnergyControlAutonomousPulse(now_ms, t_test_ms, event.q_command_direction, selected_width_ms)) {
+  if (!beginEnergyControlAutonomousPulse(now_ms, t_test_ms, event.q_command_direction,
+                                         selected_width_ms, selected_current_mA)) {
     if (inverse_negative) energy_control_autonomous_pending_peak_ = false;
     event.command_current_mA = 0;
     event.pulse_width_ms = 0;
@@ -6094,7 +6114,7 @@ void ExperimentRunner::setSyncLed(bool on) {
 }
 
 uint32_t ExperimentRunner::measurementTotalDurationMs() const {
-  if (energy_control_autonomous_mode_) return anyNegativeProbeBatchMode() ?
+  if (energy_control_autonomous_mode_) return anyProbeBatchMode() ?
       negative_probe_batch::kDurationMs : Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS;
   if (energy_control_v0_mode_) return Config::ENERGY_CONTROL_V0_DURATION_MS;
   if (q_ident_mode_) return Config::Q_IDENT_DURATION_MS;
