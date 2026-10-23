@@ -9,7 +9,7 @@ static constexpr uint8_t kBlockLength = 3;
 static constexpr uint16_t kWidthsMs[kBlockLength] = {30, 35, 40};
 static constexpr uint16_t kSchedulePreviewLength = 40;
 
-inline uint16_t width(uint32_t seed, uint16_t negative_crossing_index) {
+inline __attribute__((noinline)) uint16_t width(uint32_t seed, uint16_t negative_crossing_index) {
   const uint16_t block = negative_crossing_index / kBlockLength;
   uint32_t state = seed ^ (0x9e3779b9U * (static_cast<uint32_t>(block) + 1U));
   if (!state) state = 0x6d2b79f5U;

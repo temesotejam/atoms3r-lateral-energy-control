@@ -3251,8 +3251,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // The extended package records the planned condition even when this gate
   // skips the output, so skipped crossings cannot masquerade as observations.
   const bool extended_probe_safe = !negativeProbeExtendedMode() ||
-      (energy_control_autonomous_last_peak_valid_ &&
-       energy_control_autonomous_last_peak_side_ > 0 &&
+      (energy_control_autonomous_last_peak_side_ > 0 &&
        event.previous_peak_amplitude_deg >= 7.0f &&
        event.vbat_mV >= 7000 && event.vbat_mV <= 8500);
   const uint16_t selected_width_ms = fixed_negative_probe
