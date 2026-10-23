@@ -68,6 +68,10 @@ public:
   bool negativeProbeBatchMode() const {
     return negative_probe_mode_ && autonomous_brake_limit::batch(energy_control_autonomous_brake_max_ms_);
   }
+  bool negativeProbeExtendedMode() const {
+    return negative_probe_mode_ && autonomous_brake_limit::extendedBatch(energy_control_autonomous_brake_max_ms_);
+  }
+  bool anyNegativeProbeBatchMode() const { return negativeProbeBatchMode() || negativeProbeExtendedMode(); }
   bool beginUprightReferenceCapture();
   bool pollUprightReferenceCapture(bool& ok, const char*& result);
   const upright_reference::Record& uprightReference() const { return upright_reference_; }

@@ -48,7 +48,7 @@ jobs:
           cp bmi270-build-patch.json madgwick-build-patch.json dist/
           python "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --chip esp32s3 merge_bin -o dist/merged-firmware.bin 0x0000 dist/bootloader.bin 0x8000 dist/partitions.bin 0xe000 dist/boot_app0.bin 0x10000 dist/firmware.bin
           printf '%s\n' "$GITHUB_SHA" > dist/build-sha.txt
-          printf '%s\n' '1.0.19 negative brake-feedback sign correction; MEKF; fixed-leg 8deg/300mA; measured 0/10/15/20/25ms and bounded 25-30ms feedback; RWLOG v56; saved upright reference' > dist/FLASH_LAYOUT.txt
+          printf '%s\n' '1.0.20 fixed-leg randomized negative 30/35/40ms batch; MEKF; 8deg/300mA; RWLOG v56; saved upright reference; normal controller retained' > dist/FLASH_LAYOUT.txt
           (cd dist && sha256sum *.bin > SHA256SUMS.txt)
           git diff --exit-code
       - uses: actions/upload-artifact@v4

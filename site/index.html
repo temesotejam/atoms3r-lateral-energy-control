@@ -17,6 +17,10 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
+      <h2>1.0.20：負側30・35・40 msの一括測定</h2>
+      <p>実機のWeb画面で「負側3条件の一括測定を開始」を押します。脚の前後移動を固定し、目標8°・300 mAで30秒間測定します。負側入力は3条件の順序を変え、負側ピークと次の正側ピークをRWLOGに残します。正側は従来制御です。通常の15秒制御則は変更していません。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/extended_negative_work_batch_20261023.md">測定手順</a></p>
+    </section>
+    <section class="panel important">
       <h2>1.0.19：固定脚・負側のエネルギー制御</h2>
       <p>実機のWeb画面で「新しい制御で15秒測定を開始」を押します。目標8°・300 mAに固定し、測定した0・10・15・20・25 msから負側の入力時間を選びます。負側の揺れが目標より大きい場合は、実測ピークを確認して最大30 msまで減速入力を1 msずつ延ばします。1.0.19では、この延長判定の符号を修正しました。直立基準は実際の直立姿勢で保存してください。MEKFの絶対角を学習時の値に合わせる必要はありません。電圧・ホイール速度などが測定範囲外なら負側入力を見送ります。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/NEGATIVE_ONE_PEAK_ENERGY_INVERSE.md">式と適用条件</a></p>
     </section>

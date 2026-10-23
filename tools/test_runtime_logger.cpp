@@ -148,4 +148,19 @@ int main(int argc,char** argv){
   assert(exportFile.metadata_.c_str()==reserved_metadata);
   std::cout<<"maximum autonomous events + 768 foot frames: metadata="<<exportFile.header_.metadata_json_size
       <<" bytes, event PSRAM="<<PsramLogger::eventStorageBytes()<<", logger object="<<sizeof(logger)<<" bytes PASS\n";
+  PsramLogger extended;
+  assert(extended.begin());
+  extended.startRun(2, 223456, 300, 100, 1000, false, 0, 800, 0, false,
+      NAN, false, 0, false, true, 0.0f, 40, false, true, true, reference, 12345);
+  assert(extended.addSample(row));
+  extended.markMeasurementDone(); extended.seal();
+  ImmutableExport extended_export;
+  assert(extended_export.begin(extended));
+  assert(extended_export.prepare()); extended_export.build();
+  assert(extended_export.status().phase == ImmutableExport::Phase::Ready);
+  const std::string extended_metadata = extended_export.metadata_.c_str();
+  assert(extended_metadata.find("\"negative_probe_extended\":true") != std::string::npos);
+  assert(extended_metadata.find("seeded_fisher_yates_three_event_blocks_v1") != std::string::npos);
+  assert(extended_metadata.find("\"autonomous_duration_ms\":30000") != std::string::npos);
+  std::cout << "extended negative batch metadata/export PASS\n";
 }

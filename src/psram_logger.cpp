@@ -2,6 +2,7 @@
 #include "gyro_steering.h"
 #include "psram_logger.h"
 #include "negative_probe_batch.h"
+#include "negative_probe_extended_batch.h"
 #include "imu_manager.h"
 extern ImuManager imu;
 #include "run_control_worker.h"
@@ -527,8 +528,10 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"min_half_cycle_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS) + ",";
   json += "\"min_zero_to_peak_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_ZERO_TO_PEAK_MS) + ",";
   json += "\"events_accepted_during_pulse\":false,";
+  const bool negative_probe_extended_mode = negative_probe_mode_ &&
+      autonomous_brake_limit::extendedBatch(autonomous_brake_max_ms_);
   const bool negative_probe_batch_mode = negative_probe_mode_ &&
-      autonomous_brake_limit::batch(autonomous_brake_max_ms_);
+      (autonomous_brake_limit::batch(autonomous_brake_max_ms_) || negative_probe_extended_mode);
   json += "\"autonomous_duration_ms\":" + String(negative_probe_batch_mode ?
       negative_probe_batch::kDurationMs : Config::ENERGY_CONTROL_AUTONOMOUS_DURATION_MS) + ",";
   json += "\"energy_control_autonomous_free_model\":\"" + String(energy_bridge_enabled_
@@ -580,18 +583,27 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"fixed_negative_work_probe_width_ms\":" + String(negative_probe_batch_mode ? 0 :
       (negative_probe_mode_ ? autonomous_brake_max_ms_ : 0)) + ",";
   json += "\"negative_probe_batch\":" + String(negative_probe_batch_mode ? "true" : "false") + ",";
+  json += "\"negative_probe_extended\":" + String(negative_probe_extended_mode ? "true" : "false") + ",";
   if (negative_probe_batch_mode) {
     json += "\"negative_probe_batch_seed\":" + String(negative_probe_batch_seed_) + ",";
-    json += "\"negative_probe_batch_algorithm\":\"seeded_fisher_yates_five_event_blocks_v1\",";
+    json += "\"negative_probe_batch_algorithm\":\"" + String(negative_probe_extended_mode ?
+        "seeded_fisher_yates_three_event_blocks_v1" : "seeded_fisher_yates_five_event_blocks_v1") + "\",";
+    json += "\"negative_probe_batch_skip_policy\":\"" + String(negative_probe_extended_mode ?
+        "rate_outside_bridge_support_or_previous_positive_peak_below_7deg_or_battery_outside_7000_to_8500mV" :
+        "rate_outside_bridge_support") + "\",";
     json += "\"negative_probe_batch_schedule_ms\":[";
     for (uint16_t i = 0; i < negative_probe_batch::kSchedulePreviewLength; ++i) {
       if (i) json += ",";
-      json += String(negative_probe_batch::width(negative_probe_batch_seed_, i));
+      json += String(negative_probe_extended_mode ?
+          negative_probe_extended_batch::width(negative_probe_batch_seed_, i) :
+          negative_probe_batch::width(negative_probe_batch_seed_, i));
     }
     json += "],";
   }
   json += "\"autonomous_uses_q_ident_limits\":false,";
-  json += "\"energy_control_autonomous_q_policy\":\"" + String(negative_probe_batch_mode
+  json += "\"energy_control_autonomous_q_policy\":\"" + String(negative_probe_extended_mode
+      ? "positive_side_bridge;negative_side_randomized_30_35_40ms_fixed_raw_positive_batch;previous_positive_peak_and_battery_gate;no_negative_peak_learning"
+      : negative_probe_batch_mode
       ? "positive_side_bridge;negative_side_balanced_fixed_raw_positive_batch;no_negative_peak_learning"
       : negative_probe_mode_
       ? "positive_side_bridge;negative_side_fixed_raw_positive_probe;no_negative_peak_learning"

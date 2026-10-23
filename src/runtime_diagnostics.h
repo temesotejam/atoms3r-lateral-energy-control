@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define RUNTIME_VERSION "1.0.19-negative-brake-feedback"
+#define RUNTIME_VERSION "1.0.20-negative-extended-batch"
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

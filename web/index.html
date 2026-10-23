@@ -17,6 +17,11 @@
   <p class="muted">脚の前後移動を固定し、目標8°・300 mAで測ります。正側は従来制御、負側は次の最大角度に必要なエネルギーから入力時間を選びます。今の姿勢で直立基準を保存済みなら、そのMEKF絶対角を学習時の数値に合わせる必要はありません。</p>
   <button id="inverse-start" type="button" disabled>新しい制御で15秒測定を開始</button>
 </div>
+<div id="negative-probe-extended-package">
+  <h2>負側30・35・40 msの一括測定（30秒）</h2>
+  <p class="muted">脚の前後移動を固定します。目標8°・300 mAで負側の入力時間を3条件で順序を変えて試します。正側は従来制御を続けます。負側ピークと次の正側ピークまで記録します。終了後はRWLOGを保存してください。</p>
+  <button id="probe-extended" type="button" disabled>負側3条件の一括測定を開始</button>
+</div>
 <details id="negative-probe-packages"><summary>負側5条件の一括実験を行う（30秒）</summary>
   <p class="muted">入力時間0・10・15・20・25 msを5条件ずつ順序を変えて試す測定です。正側の制御は従来どおりです。毎回RWLOGを保存し、「ログを消去・次の測定へ」を押してから次の回を始めてください。</p>
   <button id="probe-batch" type="button" disabled>負側5条件の一括実験を開始</button>

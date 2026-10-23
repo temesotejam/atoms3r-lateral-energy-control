@@ -20,7 +20,7 @@ int main() {
   }
   CurrentTable table;
   uint16_t selected_brake_ms = 99;
-  for (const char* choice : {"0", "20", "50"})
+  for (const char* choice : {"0", "20", "40", "50"})
     assert(autonomous_brake_limit::parse(choice, selected_brake_ms));
   for (const char* invalid : {"", "-1", "10", "51", "20ms"})
     assert(!autonomous_brake_limit::parse(invalid, selected_brake_ms));
