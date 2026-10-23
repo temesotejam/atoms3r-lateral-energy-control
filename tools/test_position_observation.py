@@ -8,6 +8,8 @@ allowed={
     'src/config.h':[
         'static constexpr uint32_t WHEEL_POSITION_READ_PERIOD_US = 5000UL;\n',
         'static constexpr uint16_t WHEEL_POSITION_READ_TIMEOUT_MS = 2;\n',
+        # Authorized 1.0.27 work-control preset only; legacy duration stays frozen.
+        'static constexpr uint32_t WHEEL_WORK_CONTROL_DURATION_MS = 30000UL;\n',
         # Diagnostic-only reasons added by the authorized work-controller
         # extension. Keep every pre-existing config constant frozen below.
         'static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_WORK_OUTSIDE_SUPPORT = 15;\n',

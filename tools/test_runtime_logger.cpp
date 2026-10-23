@@ -187,7 +187,7 @@ int main(int argc,char** argv){
       z.work_prediction_cross_condition = z.work_control_branch==4 && i%4==1;
       z.energy_model_extrapolated = z.energy_model_extrapolated || z.work_prediction_cross_condition;
       z.work_brake_cap_ms = z.work_control_branch==4 ? (z.work_prediction_cross_condition ? 30 : 25) : 0;
-      z.work_bias_samples = z.work_control_branch==4 ? 3 : 0;
+      z.work_bias_samples = z.physical_next_peak_side>0 ? 2 : z.work_control_branch==4 ? 3 : 0;
       work.addEnergyControlAutonomousZeroCrossEvent(z);
     }
     work.markMeasurementDone(); work.seal();
@@ -200,6 +200,8 @@ int main(int argc,char** argv){
         << " error=" << result.error << "\n";
     assert(result.phase == ImmutableExport::Phase::Ready);
     const std::string metadata = work_export.metadata_.c_str();
+    assert(metadata.find("\"autonomous_duration_ms\":30000") != std::string::npos);
+    assert(metadata.find("separate_bridge_and_work_last_3_matched_peaks") != std::string::npos);
     assert(metadata.find("\"energy_control_autonomous_zero_cross_event_rendered_count\":256") != std::string::npos);
     const std::string path = std::string(argv[1]) + (work_first ? ".work-first.rwlog" : ".fallback-first.rwlog");
     std::ofstream work_out(path, std::ios::binary);

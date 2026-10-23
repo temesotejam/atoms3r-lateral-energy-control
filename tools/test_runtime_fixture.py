@@ -255,6 +255,7 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
         work_data[110:110 + work_header['metadata_json_size']],
         parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
     assert work_metadata['energy_model'] == 'wheel_work_one_peak_control'
+    assert work_metadata['autonomous_duration_ms'] == 30000
     assert work_metadata['metadata_json_final_bytes'] == work_header['metadata_json_size']
     assert not work_metadata['metadata_event_detail_truncated']
     work_rows = work_metadata['energy_control_autonomous_zero_cross_events']
@@ -263,6 +264,8 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
     for index, event in enumerate(work_rows):
         fallback = (index % 3 == 0) != work_first
         cross_condition = not fallback and index % 4 == 1
+        if index % 2 == 0:
+            assert event['work_bias_samples'] == 2
         assert event['event_index'] == index + 1
         assert event['energy_model_extrapolated'] == (fallback or cross_condition)
         assert event['work_prediction_cross_condition'] == cross_condition
