@@ -130,7 +130,7 @@ int main(){
     assert(w.requestStop());w.oneStep();
     assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
   }
-  for(uint16_t width : {0,15,25,30,40}) {
+  for(uint16_t width : {0,15,25,30,40,50}) {
     assert(w.request(RunControlWorker::Command::Start,8,0.0f,300,width,false,true,true));
     w.oneStep();
     assert(m.probe&&w.snapshot().negative_probe_mode&&m.brake==width);
