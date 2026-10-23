@@ -17,9 +17,9 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
-      <h2>1.0.24：仕事に基づく制御のログ取得を修正</h2>
-      <p>始動時や予測の適用範囲外の記録が混じるとRWLOGの生成が止まる不具合を修正しました。制御則と測定条件は1.0.23と同じです。</p>
-      <p>実機のWeb画面で「仕事に基づく制御で15秒測定を開始」を押します。脚の前後移動を固定し、目標8°で正側は300・350・400 mAと入力時間、負側は30・35・40 msを、その時点で予測した次ピークの位置エネルギーから選びます。測定済みの入力範囲を超える逆算は行いません。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/WHEEL_WORK_ONE_PEAK_CONTROL.md">式と手順</a></p>
+      <h2>1.0.25：低電圧・低回転数にも負側のエネルギー制御を追加</h2>
+      <p>過去19回・412件の測定から、電圧6.21～8.00 V、回転数4.28～550.04 rpmを含む負側の予測式を追加しました。これらは各変数の測定範囲であり、全組合せの検証済み範囲ではありません。</p>
+      <p>実機のWeb画面で「仕事に基づく制御で15秒測定を開始」を押します。脚の前後移動を固定し、目標8°で正側は300・350・400 mAと入力時間、負側は測定条件に応じて0・10・15・20・25 msまたは30・35・40 msを、その時点で予測した次ピークの位置エネルギーから選びます。測定済みの入力範囲を超える逆算は行いません。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/WHEEL_WORK_ONE_PEAK_CONTROL.md">式と手順</a></p>
     </section>
     <section class="panel important">
       <h2>1.0.22：正側300・350・400 mAの一括測定</h2>

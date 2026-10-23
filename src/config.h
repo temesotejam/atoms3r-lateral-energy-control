@@ -358,6 +358,8 @@ static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_PULSE_WIDTH_GUARD = 11
 static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_CURRENT_WRITE_FAILED = 12;
 static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_Q_BELOW_MIN_PULSE = 13;
 static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_ESTOP_OR_STATE = 14;
+static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_WORK_OUTSIDE_SUPPORT = 15;
+static constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_WORK_PROTECT_OPPOSITE = 16;
 
 // E2 remains an offline diagnostic reference only. It is not called by the
 // passive Q1 runtime, not used for Q1 validity, and has no Q gain constants.

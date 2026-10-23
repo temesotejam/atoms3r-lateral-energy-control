@@ -31,7 +31,8 @@ __attribute__((noinline)) lateral_energy::Decision workDecision(
   lateral_energy::Decision d;
   d.valid=true;d.ms=choice.width_ms;d.evaluations=choice.evaluations;
   d.command_sign=side>0 ? 1 : -1;
-  d.free_j=passive_j;d.target_j=target_j;
+  d.free_j=std::isfinite(choice.free_mj) ? choice.free_mj*.001f : passive_j;
+  d.target_j=target_j;
   d.predicted_j=choice.energy_mj*.001f;
   d.deficit_j=d.target_j-d.free_j;d.commanded_deficit_j=d.deficit_j;
   d.corrected_target_j=d.target_j;d.energy_error_j=d.target_j-d.predicted_j;
@@ -3060,7 +3061,8 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
       event.zero_cross_abs_rate_dps,event.pre_input_wheel_speed_rpm,
       static_cast<float>(event.vbat_mV),
       peak_error_adaptation::speedUsable(event.pre_input_wheel_speed_rpm,
-          event.pre_input_wheel_speed_valid,event.pre_input_wheel_speed_age_us)};
+          event.pre_input_wheel_speed_valid,event.pre_input_wheel_speed_age_us),
+      event.previous_peak_amplitude_deg};
   const bool supported=wheel_work_energy_control::supported(state,side);
   if (state_supported) *state_supported=supported;
   if (!supported ||
@@ -3082,7 +3084,7 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
   } else if (!(energy_control_autonomous_last_peak_valid_ &&
       energy_control_autonomous_last_peak_side_>0 &&
       energy_control_autonomous_last_peak_amplitude_deg_<7.f)) {
-    for (uint16_t width : {30,35,40})
+    for (uint16_t width : {0,10,15,20,25,30,35,40})
       wheel_work_energy_control::consider(choice,300,width,NAN,
           wheel_work_energy_control::negative(state,width),target_mj);
   }
@@ -3259,6 +3261,14 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   if (work_mode)
     work_choice=chooseWheelWork(event,fast_v,&event.rate_support_diagnostic,
         &selected_current_mA,&selected_current_table);
+  if (work_mode) {
+    event.energy_model_extrapolated=!work_choice.valid;
+    event.work_control_branch=work_choice.branch;
+    event.predicted_wheel_work_j=work_choice.work_mj*.001f;
+    event.predicted_input_work_j=work_choice.on_mj*.001f;
+    event.predicted_post_input_work_j=work_choice.after_mj*.001f;
+    event.predicted_work_change_j=work_choice.change_mj*.001f;
+  }
 
   const float goal_current_mA = predictCurrentGoalMa(selected_current_mA,fast_v);
   const float aligned_initial_mA = static_cast<float>(event.physical_next_peak_side)*event.i0_estimated_mA;
@@ -3359,9 +3369,17 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.free_j);
     event.rate_support_diagnostic=true;
   }
+  if (work_mode && work_choice.valid && std::isfinite(work_choice.free_mj)) {
+    event.passive_energy_j=decision.free_j;
+    event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.free_j);
+  }
   if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
     audit.stage=1;audit.solver_end_us=micros();
-    event.reason=Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN;
+    event.reason=work_mode && event.physical_next_peak_side<0 && !work_choice.valid
+        ? (event.rate_support_diagnostic
+            ? Config::ENERGY_CONTROL_AUTONOMOUS_REASON_WORK_PROTECT_OPPOSITE
+            : Config::ENERGY_CONTROL_AUTONOMOUS_REASON_WORK_OUTSIDE_SUPPORT)
+        : Config::ENERGY_CONTROL_AUTONOMOUS_REASON_POTENTIAL_DOMAIN;
     logger_->addEnergyControlAutonomousZeroCrossEvent(event);rearm_for_next_peak();return;
   }
   event.q_command_direction = decision.command_sign<0
@@ -3401,7 +3419,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.unclamped_energy_request_j=decision.unclamped_deficit_j;
   event.maximum_input_work_j=(fixed_negative_probe || inverse_negative) ? NAN : decision.maximum_input_work_j;
   event.unapplied_energy_request_j=fixed_negative_probe ? NAN :
-      inverse_negative ? decision.target_j-decision.predicted_j :
+      (inverse_negative || (work_mode && work_choice.valid)) ? decision.target_j-decision.predicted_j :
       decision.unclamped_deficit_j - (decision.predicted_j-decision.free_j);
   event.predicted_current_goal_mA=goal_current_mA;
   event.predicted_current_rise_tau_s=selected_current_table->tau;

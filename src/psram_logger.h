@@ -371,6 +371,9 @@ class PsramLogger {
     bool unclamped_inverse_valid=false;
     float work_omega_q_coefficient=NAN, work_q2_coefficient=NAN;
     bool energy_model_extrapolated=false;
+    uint8_t work_control_branch=0;
+    float predicted_wheel_work_j=NAN, predicted_input_work_j=NAN;
+    float predicted_post_input_work_j=NAN, predicted_work_change_j=NAN;
     bool fixed_negative_probe=false;
     uint16_t negative_probe_batch_index = UINT16_MAX;
     uint16_t negative_probe_batch_planned_width_ms = 0;

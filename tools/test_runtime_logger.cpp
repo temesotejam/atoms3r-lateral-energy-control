@@ -183,6 +183,7 @@ int main(int argc,char** argv){
       z.event_kind = i == 0 ? 1 : 0;
       z.physical_next_peak_side = i % 2 ? -1 : 1;
       z.energy_model_extrapolated = (i % 3 == 0) != work_first;
+      z.work_control_branch = z.energy_model_extrapolated ? 0 : (i % 2 ? 3 : 1);
       work.addEnergyControlAutonomousZeroCrossEvent(z);
     }
     work.markMeasurementDone(); work.seal();
