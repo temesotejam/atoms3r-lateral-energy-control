@@ -252,6 +252,7 @@ function render(s) {
   const reference = s.upright_reference;
   const cg = s.lateral_cg;
   $('cg-status').textContent = cg?.capturing ? '自然な静止姿勢を測定中です。機体を支えず、動かさないでください。' :
+    cg?.automatic ? `自動補正 · 等価重心ずれ ${format(cg.shift_mm, 3)} mm · 観測${cg.pairs ?? 0}往復／更新${cg.updates ?? 0}回 · ＋8° ${format(cg.positive_target_mj, 3)} mJ／−8° ${format(cg.negative_target_mj, 3)} mJ` :
     cg?.valid ? `重心ずれ ${format(cg.shift_mm, 3)} mmを適用 · ＋8°の目標 ${format(cg.positive_target_mj, 3)} mJ · −8°の目標 ${format(cg.negative_target_mj, 3)} mJ` :
       '重心ずれは未設定、または直立基準の変更で無効です。現在は左右対称の式です。';
   $('upright-reference-status').textContent = reference.capturing
@@ -399,7 +400,7 @@ async function command(path) {
 }
 function referenceResultMessage(result) {
   const messages = {
-    lateral_cg_saved:'重心ずれを本体に保存しました。仕事に基づく制御では左右別の目標エネルギーを使います。',
+    lateral_cg_saved:'重心ずれの初期値を保存しました。仕事に基づく制御では、この値から動作中の自動補正を始めます。',
     lateral_cg_save_failed:'重心ずれを保存できませんでした。停止状態と直立基準を確認してください。',
     lateral_cg_shift_invalid:'重心ずれは−2～＋2 mmの数値で入力してください。',
     equilibrium_contact_not_identifiable:'この静止角からは重心ずれを特定できません。中央の接地範囲内では静止角だけで求められないため、測定した重心ずれをmmで入力してください。元の設定を保っています。',

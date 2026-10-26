@@ -179,11 +179,19 @@ int main(int argc,char** argv){
     lateral_cg::Record cg;
     cg.magic=lateral_cg::kMagic;cg.revision=1;cg.upright_revision=reference.revision;
     cg.upright_abs_deg=reference.pitch_deg;cg.source=1;cg.shift_mm=work_first ? .5f : -.5f;
-    work.recordLateralCg(cg);
+    work.recordLateralCg(work_first ? lateral_cg::Record{} : cg);
     cg.shift_mm=1.5f; // The run retains its snapshot, independently of later edits.
+    if (work_first) {
+      lateral_cg::AdaptiveSnapshot automatic;
+      automatic.enabled=true;automatic.initial_mm=.1f;automatic.shift_mm=.5f;
+      automatic.common_bias_mj=.02f;automatic.pairs=5;automatic.updates=3;
+      work.recordAdaptiveCg(automatic);
+      automatic.shift_mm=1.5f;
+    }
     assert(work.addSample(row));
     for (unsigned i = 0; i < 256; ++i) {
       PsramLogger::EnergyControlAutonomousZeroCrossEvent z{};
+      z.cg_shift_mm=i%2 ? .35f : -.15f;
       z.event_index = i;
       z.event_kind = i == 0 ? 1 : 0;
       z.physical_next_peak_side = i % 2 ? -1 : 1;
@@ -208,7 +216,11 @@ int main(int argc,char** argv){
     assert(metadata.find("\"lateral_cg\":{\"valid\":true") != std::string::npos);
     assert(metadata.find(work_first ? "\"shift_mm\":0.500000" : "\"shift_mm\":-0.500000") != std::string::npos);
     assert(metadata.find("\"autonomous_duration_ms\":30000") != std::string::npos);
-    assert(metadata.find("separate_bridge_and_work_last_3_matched_peaks") != std::string::npos);
+    assert(metadata.find(work_first ? "no_parallel_branch6_residual_bias" : "separate_bridge_and_work_last_3_matched_peaks") != std::string::npos);
+    if (work_first) {
+      assert(metadata.find("\"final_mm\":0.500000") != std::string::npos);
+      assert(metadata.find("\"updates\":3") != std::string::npos);
+    }
     assert(metadata.find("\"energy_control_autonomous_zero_cross_event_rendered_count\":256") != std::string::npos);
     const std::string path = std::string(argv[1]) + (work_first ? ".work-first.rwlog" : ".fallback-first.rwlog");
     std::ofstream work_out(path, std::ios::binary);

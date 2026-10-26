@@ -16,6 +16,7 @@
 #include "autonomous_brake_limit.h"
 #include "upright_reference.h"
 #include "lateral_cg_energy.h"
+#include "adaptive_lateral_cg.h"
 
 // One permanent controller owner, including idle and calibration. HTTP sends
 // commands and consumes POD snapshots; it never calls the live runner/IMU.
@@ -35,6 +36,7 @@ struct RunControlSnapshot {
   bool negative_probe_mode = false;
   upright_reference::Record upright_reference;
   lateral_cg::Record lateral_cg;
+  lateral_cg::AdaptiveSnapshot adaptive_cg;
   bool equilibrium_capturing = false;
   bool upright_reference_capturing = false;
   uint32_t upright_reference_capture_samples = 0;

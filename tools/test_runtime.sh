@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
+python3 tools/fit_adaptive_lateral_cg.py
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_adaptive_lateral_cg.cpp -o /tmp/test_adaptive_lateral_cg
+/tmp/test_adaptive_lateral_cg
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_lateral_cg.cpp src/lateral_cg_store.cpp -o /tmp/test_lateral_cg
 /tmp/test_lateral_cg
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_negative_probe_batch.cpp -o /tmp/test_negative_probe_batch

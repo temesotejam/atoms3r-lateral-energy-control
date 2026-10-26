@@ -1,4 +1,4 @@
-[1.0.30 lateral CG energy update](LATERAL_CG_ENERGY.md)
+[1.0.31 adaptive lateral CG energy update](ADAPTIVE_LATERAL_CG.md)
 
 ## 1.0.29: separate side energy models and balanced input authority
 

@@ -8,6 +8,7 @@
 #include "solver_audit.h"
 #include "upright_reference.h"
 #include "lateral_cg_energy.h"
+#include "adaptive_lateral_cg.h"
 
 class PsramLogger {
  public:
@@ -303,6 +304,7 @@ class PsramLogger {
   };
   // V4 records the qualified detector extremum and its following central-passage decision.`r`n  // Event-store overflow is diagnostic-only; motor control continues.
   struct EnergyControlAutonomousPeakEvent {
+    float cg_shift_mm = 0;
     uint16_t peak_index = 0;
     uint32_t peak_time_ms = 0;
     int8_t physical_peak_side = 0;
@@ -329,6 +331,7 @@ class PsramLogger {
     bool antiwindup_lower_hold = false;
   };
   struct EnergyControlAutonomousZeroCrossEvent {
+    float cg_shift_mm = 0;
     uint16_t event_index = 0;
     uint8_t event_kind = 0;  // 0=energy_control_zero_cross, 1=strong_start_kick.
     uint32_t zero_cross_time_ms = 0;
@@ -646,6 +649,7 @@ class PsramLogger {
   bool sealed() const { return sealed_; }
   const uint8_t* sampleBytes() const { return reinterpret_cast<const uint8_t*>(samples_); }
   static constexpr size_t kMetadataJsonReserveBytes = 768U * 1024U;
+  void recordAdaptiveCg(const lateral_cg::AdaptiveSnapshot& s) { run_adaptive_cg_=s; }
   void recordLateralCg(const lateral_cg::Record& r) { run_lateral_cg_ = r; }
   bool buildMetadataJson(PsramString& json) const;
   RwLogFileHeader buildHeader(uint32_t metadata_size) const;
@@ -697,6 +701,7 @@ private:
   uint32_t negative_probe_batch_seed_ = 0;
   upright_reference::Record run_upright_reference_;
   lateral_cg::Record run_lateral_cg_;
+  lateral_cg::AdaptiveSnapshot run_adaptive_cg_;
   float measurement_start_abs_deg_ = NAN;
   uint32_t autonomous_timing_compensation_us_ = 0;  // Immutable metadata for the saved run.
   uint16_t identification_event_count_ = 0;

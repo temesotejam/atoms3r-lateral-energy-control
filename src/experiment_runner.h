@@ -15,6 +15,7 @@
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
 #include "lateral_cg_energy.h"
+#include "adaptive_lateral_cg.h"
 #include "control_math_cache.h"
 #include "imu_manager.h"
 #include "log_types.h"
@@ -86,6 +87,7 @@ public:
   bool beginUprightReferenceCapture(bool equilibrium = false);
   bool setLateralCgMm(float shift_mm);
   const lateral_cg::Record& lateralCg() const { return lateral_cg_; }
+  lateral_cg::AdaptiveSnapshot adaptiveCg() const { return adaptive_cg_.snapshot(); }
   bool equilibriumCapturing() const { return equilibrium_capture_ && uprightReferenceCapturing(); }
   float controlPotential(float signed_deg) const;
   float controlAngle(float energy, int8_t side) const;
@@ -146,6 +148,8 @@ private:
   lateral_cg::Record lateral_cg_;
   bool equilibrium_capture_ = false;
   float run_cg_shift_mm_ = 0;
+  float pending_cg_shift_mm_ = 0;
+  lateral_cg::Adaptive adaptive_cg_;
   upright_reference::Capture upright_reference_capture_;
   float energy_control_autonomous_pending_target_deg_ = NAN;
   void beginFilters();

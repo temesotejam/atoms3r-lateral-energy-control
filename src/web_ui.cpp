@@ -280,9 +280,12 @@ void WebUi::status() {
   json += ",\"capturing\":" + String(s.upright_reference_capturing ? "true" : "false");
   json += ",\"capture_samples\":" + String(s.upright_reference_capture_samples) + "}";
   const bool cg_valid=lateral_cg::matches(s.lateral_cg,s.upright_reference.revision,s.upright_reference.pitch_deg);
-  const float cg_mm=cg_valid ? s.lateral_cg.shift_mm : 0.f;
+  const float cg_mm=s.adaptive_cg.enabled ? s.adaptive_cg.shift_mm : cg_valid ? s.lateral_cg.shift_mm : lateral_cg::kAdaptiveSeedMm;
   const lateral_energy::Geometry cg_geometry;
   json += ",\"lateral_cg\":{\"valid\":" + String(cg_valid ? "true" : "false") +
+      ",\"automatic\":true,\"pairs\":" + String(s.adaptive_cg.pairs) +
+      ",\"updates\":" + String(s.adaptive_cg.updates) +
+      ",\"common_bias_mj\":" + num(s.adaptive_cg.enabled ? s.adaptive_cg.common_bias_mj : lateral_cg::kAdaptiveSeedBiasMj) +
       ",\"shift_mm\":" + num(cg_mm) + ",\"source\":" + String(s.lateral_cg.source) +
       ",\"capturing\":" + String(s.equilibrium_capturing ? "true" : "false") +
       ",\"positive_target_mj\":" + num(1000.f*lateral_cg::potential(cg_geometry,8.f,cg_mm)) +

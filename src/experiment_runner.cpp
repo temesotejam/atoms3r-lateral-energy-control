@@ -1392,7 +1392,11 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   updateMekfComparisonRelativeAngles();
   // V46z comparison-zero end
   run_cg_shift_mm_ = wheelWorkMode() && lateral_cg::matches(lateral_cg_,upright_reference_.revision,
-      upright_reference_.pitch_deg) ? lateral_cg_.shift_mm : 0.f;
+      upright_reference_.pitch_deg) ? lateral_cg_.shift_mm : lateral_cg::kAdaptiveSeedMm;
+  if (wheelWorkMode()) {
+    adaptive_cg_.reset(run_cg_shift_mm_);
+    run_cg_shift_mm_=adaptive_cg_.snapshot().shift_mm;
+  }
   run_start_us_ = micros();
   logger_->startRun(status_.run_id, run_start_us_,
                     energy_control_autonomous_mode_ ? energy_control_autonomous_input_current_mA_ : status_.current_mA_setting,
@@ -1408,6 +1412,7 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
                       energy_control_autonomous_mode_ ? upright_reference_ : upright_reference::Record{},
                       negative_probe_batch_seed_);
   logger_->recordLateralCg(wheelWorkMode() ? lateral_cg_ : lateral_cg::Record{});
+  logger_->recordAdaptiveCg(wheelWorkMode() ? adaptive_cg_.snapshot() : lateral_cg::AdaptiveSnapshot{});
   last_log_us_ = 0;
   status_.state = ExperimentState::START_SYNC;
   status_.sync_event_id = 1;
@@ -2510,6 +2515,14 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   inverse_negative_extra_ms_ = 0;
   inverse_negative_pending_width_ms_ = 0;
   inverse_negative_pending_bias_j_ = 0.f;
+  adaptive_cg_=lateral_cg::Adaptive{};
+  if (wheelWorkMode()) {
+    const float initial=lateral_cg::matches(lateral_cg_,upright_reference_.revision,upright_reference_.pitch_deg) ?
+        lateral_cg_.shift_mm : lateral_cg::kAdaptiveSeedMm;
+    adaptive_cg_.reset(initial);
+    run_cg_shift_mm_=adaptive_cg_.snapshot().shift_mm;
+  } else run_cg_shift_mm_=0.f;
+  pending_cg_shift_mm_=0;
   work_negative_feedback_ = wheel_work_energy_control::NegativeFeedback{};
   for (auto& feedback : work_positive_feedback_) feedback=wheel_work_energy_control::PositiveFeedback{};
   work_positive_pending_=false;
@@ -2847,8 +2860,9 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       physical_side == energy_control_autonomous_pending_next_side_;
   event.pending_q_command_mA_s = event.pending_command_matched
       ? energy_control_autonomous_pending_q_command_mA_s_ : NAN;
-  event.target_energy_j = controlPotential(physical_side * event.target_peak_deg);
-  event.measured_energy_j = controlPotential(physical_side * event.peak_amplitude_deg);
+  event.cg_shift_mm=wheelWorkMode() ? (event.pending_command_matched ? pending_cg_shift_mm_ : run_cg_shift_mm_) : 0.f;
+  event.target_energy_j = lateral_cg::potential(lateral_energy_geometry_,physical_side * event.target_peak_deg,event.cg_shift_mm);
+  event.measured_energy_j = lateral_cg::potential(lateral_energy_geometry_,physical_side * event.peak_amplitude_deg,event.cg_shift_mm);
   if (roller_) {
     const uint32_t capture_us=micros();
     const auto telemetry=roller_->telemetrySnapshot();
@@ -3109,17 +3123,28 @@ uint16_t ExperimentRunner::selectFixedNegativeProbeWidth(
 void ExperimentRunner::observeWheelWorkPeak(
     const PsramLogger::EnergyControlAutonomousPeakEvent& event) {
   if (!wheelWorkMode()) return;
+  float raw=NAN;
+  bool learn=false;
   if (event.physical_peak_side>0 && work_positive_pending_) {
-    work_positive_feedback_[work_positive_pending_branch_].observe(
-        event.measured_energy_j*1000.f,work_positive_pending_raw_j_*1000.f);
-    return;
+    raw=work_positive_pending_raw_j_*1000.f;
+    learn=work_positive_pending_branch_==1;
+    if (!learn) work_positive_feedback_[0].observe(event.measured_energy_j*1000.f,raw);
+  } else if (work_negative_pending_ && event.physical_peak_side<0) {
+    raw=(energy_control_autonomous_pending_model_energy_j_-work_negative_pending_bias_j_)*1000.f;
+    work_negative_feedback_.observe(event.measured_energy_j*1000.f,raw,
+        event.target_energy_j*1000.f,energy_control_autonomous_last_peak_amplitude_deg_,
+        work_negative_pending_width_ms_);
+    learn=true;
   }
-  if (!work_negative_pending_ || event.physical_peak_side>=0) return;
-  // Compare to the raw fit, not its already corrected prediction.
-  work_negative_feedback_.observe(event.measured_energy_j*1000.f,
-      (energy_control_autonomous_pending_model_energy_j_-work_negative_pending_bias_j_)*1000.f,
-      event.target_energy_j*1000.f,energy_control_autonomous_last_peak_amplitude_deg_,
-      work_negative_pending_width_ms_);
+  if (learn && event.pending_command_matched &&
+      energy_control_autonomous_pending_wheel_valid_ && energy_control_autonomous_pending_wheel_age_us_<=30000) {
+    const bool updated=adaptive_cg_.observe(lateral_energy_geometry_,event.physical_peak_side,
+        event.peak_amplitude_deg,raw,event.peak_time_ms);
+    if (updated) work_positive_feedback_[0]=wheel_work_energy_control::PositiveFeedback{};
+    run_cg_shift_mm_=adaptive_cg_.snapshot().shift_mm;
+    logger_->recordAdaptiveCg(adaptive_cg_.snapshot());
+  }
+
 }
 
 void ExperimentRunner::captureWheelWorkDecision(
@@ -3134,10 +3159,10 @@ void ExperimentRunner::captureWheelWorkDecision(
   event.work_prediction_cross_condition=choice.cross_condition;
   if (event.physical_next_peak_side<0) {
     event.work_brake_cap_ms=work_negative_feedback_.capMs(event.previous_peak_amplitude_deg);
-    event.work_bias_samples=work_negative_feedback_.count();
+    event.work_bias_samples=static_cast<uint8_t>(std::fmin(255.f,static_cast<float>(adaptive_cg_.snapshot().pairs)));
   }
   if (event.physical_next_peak_side>0)
-    event.work_bias_samples=work_positive_feedback_[choice.branch==6 ? 1 : 0].count();
+    event.work_bias_samples=choice.branch==6 ? static_cast<uint8_t>(std::fmin(255.f,static_cast<float>(adaptive_cg_.snapshot().pairs))) : work_positive_feedback_[0].count();
   if (choice.valid && std::isfinite(choice.free_mj)) {
     event.passive_energy_j=choice.free_mj*.001f;
     event.free_next_peak_amplitude_deg=controlAngle(event.passive_energy_j,event.physical_next_peak_side);
@@ -3163,7 +3188,7 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
       !std::isfinite(target_mj) || target_mj<=0.f) return choice;
   const float initial_current_ma=static_cast<float>(side)*event.i0_estimated_mA;
   if (side>0) {
-    const float positive_bias_mj=work_positive_feedback_[supported ? 1 : 0].biasMj();
+    const float positive_bias_mj=supported ? adaptive_cg_.snapshot().common_bias_mj : work_positive_feedback_[0].biasMj();
     const lateral_energy::CurrentTable* tables[] = {
         &lateral_current_table_,&positive_current_probe_tables_[0],
         &positive_current_probe_tables_[1]};
@@ -3175,7 +3200,7 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
       energy_control_autonomous_last_peak_side_>0 &&
       energy_control_autonomous_last_peak_amplitude_deg_<7.f)) {
     const uint16_t cap=work_negative_feedback_.capMs(state.previous_peak_deg);
-    const float bias_mj=work_negative_feedback_.biasMj();
+    const float bias_mj=adaptive_cg_.snapshot().common_bias_mj;
     for (uint16_t width=0;width<=cap;width=(width==0 ? 10 : width+1))
       wheel_work_energy_control::consider(choice,300,width,NAN,
           wheel_work_energy_control::negative(state,width,bias_mj),target_mj);
@@ -3306,6 +3331,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.passive_energy_j = energy_bridge_enabled_
       ? lateral_energy::potential(lateral_energy_geometry_,bridge_free_angle)
       : lateral_energy::freeEnergy(energy_coeff,omega);
+  event.cg_shift_mm=wheelWorkMode() ? run_cg_shift_mm_ : 0.f;
   event.target_energy_j = wheelWorkMode() ? controlPotential(event.physical_next_peak_side * event.target_peak_deg) : lateral_target_energy_j_;
   event.free_next_peak_amplitude_deg = energy_bridge_enabled_ ? bridge_free_angle :
       lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
@@ -3388,8 +3414,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
     inverse_residual_j = fmaxf(-.00020f, fminf(.00020f, inverse_residual_j));
   }
   if (work_mode)
-    prediction_bias_j=event.physical_next_peak_side<0 ? work_negative_feedback_.biasMj()*.001f :
-        work_positive_feedback_[work_choice.branch==6 ? 1 : 0].biasMj()*.001f;
+    prediction_bias_j=(event.physical_next_peak_side<0 || work_choice.branch==6 ?
+        adaptive_cg_.snapshot().common_bias_mj : work_positive_feedback_[0].biasMj())*.001f;
   one_peak_energy_inverse::Choice inverse_choice;
   audit.solver_started=1; audit.solver_start_us=micros();
   auto decide_selected=[&](float bias) RW_SPEED_CODE {
@@ -3537,6 +3563,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   audit.stage=4;audit.solver_complete=1;audit.solver_end_us=micros();
   audit.solver_us=static_cast<uint32_t>(audit.solver_end_us-audit.solver_start_us);
   audit.selected_search_us=audit.solver_us;audit.fast_solver_us=audit.solver_us;
+  pending_cg_shift_mm_=work_mode ? run_cg_shift_mm_ : 0.f;
   energy_control_autonomous_pending_peak_ = true;
   inverse_negative_pending_width_ms_ = inverse_negative ? selected_width_ms : 0;
   inverse_negative_pending_bias_j_ = inverse_negative ? inverse_residual_j : 0.f;

@@ -41,6 +41,11 @@ vm.runInContext(fs.readFileSync('web/pose_comparison.js','utf8')+'\n'+
   await element('upright-reference-capture').onclick();
   assert.match(element('message').textContent,/本体に保存しました/);
   assert.equal(element('start').disabled,false);
+  status.lateral_cg={automatic:true,valid:false,shift_mm:-.206,pairs:0,updates:0,
+    positive_target_mj:.677,negative_target_mj:.790};
+  await vm.runInContext('refresh()',context);
+  assert.equal(element('work-start').disabled,false);
+  assert.match(element('cg-status').textContent,/自動補正/);
   assert.equal(element('cg-save').disabled,false);
   element('cg-shift').value='-0.5';await element('cg-save').onclick();
   assert.equal(status.lateral_cg.shift_mm,-.5);

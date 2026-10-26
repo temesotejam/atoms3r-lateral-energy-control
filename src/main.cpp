@@ -71,6 +71,7 @@ static void captureRunState(void*, RunControlSnapshot& out) {
   out.energy_bridge_enabled = runner.energyBridgeEnabled();
   out.upright_reference = runner.uprightReference();
   out.lateral_cg = runner.lateralCg();
+  out.adaptive_cg = runner.adaptiveCg();
   out.equilibrium_capturing = runner.equilibriumCapturing();
   out.upright_reference_capturing = runner.uprightReferenceCapturing();
   out.upright_reference_capture_samples = runner.uprightReferenceCaptureSamples();

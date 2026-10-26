@@ -1091,6 +1091,7 @@ def write_energy_control_v0_events(metadata: dict, out_dir: Path) -> int:
     return len(events)
 
 ENERGY_CONTROL_AUTONOMOUS_PEAK_COLUMNS = [
+    "cg_shift_mm",
     "peak_index", "peak_time_ms", "physical_peak_side", "peak_amplitude_deg",
     "target_peak_deg", "peak_error_deg", "phase", "integral_plus_mA_s",
     "integral_minus_mA_s", "first_peak", "pending_command_matched",
@@ -1098,6 +1099,7 @@ ENERGY_CONTROL_AUTONOMOUS_PEAK_COLUMNS = [
 ]
 
 ENERGY_CONTROL_AUTONOMOUS_ZERO_CROSS_COLUMNS = [
+    "cg_shift_mm",
     "event_index", "event_kind", "zero_cross_time_ms", "zero_cross_rate_dps",
     "zero_cross_abs_rate_dps", "previous_peak_time_ms", "previous_peak_side",
     "previous_peak_amplitude_deg", "physical_next_peak_side", "phase",
