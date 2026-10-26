@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.34-independent-energy-feedback",
+  "version": "1.0.35-target-angle-presets",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

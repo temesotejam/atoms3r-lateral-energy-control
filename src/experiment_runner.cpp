@@ -1155,8 +1155,8 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
       (!negative_probe_mode_ && energy_bridge_enabled_ && energy_control_autonomous_brake_max_ms_ != 0 &&
        !((energy_control_autonomous_brake_max_ms_ == 25 ||
           energy_control_autonomous_brake_max_ms_ == 40) &&
-         energy_control_autonomous_target_peak_deg_ == 8.0f &&
-         energy_control_autonomous_input_current_mA_ == 300 && !peak_adaptation_enabled_))) {
+         work_target_policy::packageAllowed(energy_control_autonomous_target_peak_deg_,
+             energy_control_autonomous_brake_max_ms_,energy_control_autonomous_input_current_mA_,peak_adaptation_enabled_)))) {
     status_.last_error = "negative_probe_settings_invalid"; return false;
   }
   g_v46_mekf_run_reinit = V46MekfRunReinitAccumulator{};
@@ -3142,7 +3142,7 @@ void ExperimentRunner::observeWheelWorkPeak(
     raw=(energy_control_autonomous_pending_model_energy_j_-work_negative_pending_bias_j_)*1000.f;
     work_negative_feedback_.observe(event.measured_energy_j*1000.f,raw,
         event.target_energy_j*1000.f,energy_control_autonomous_last_peak_amplitude_deg_,
-        work_negative_pending_width_ms_,true);
+        work_negative_pending_width_ms_,true,event.target_peak_deg);
     learn=work_negative_pending_supported_;
     if (learn) work_positive_feedback_[2].observe(lateral_energy_geometry_,-1,
         event.peak_amplitude_deg,raw);
@@ -3194,6 +3194,7 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
           event.pre_input_wheel_speed_valid,event.pre_input_wheel_speed_age_us),
       event.previous_peak_amplitude_deg};
   state.absolute_reference=true;
+  state.target_deg=event.target_peak_deg;
   const bool supported=wheel_work_energy_control::supported(state,side);
   if (state_supported) *state_supported=supported;
   if ((side<0 && wheel_work_energy_control::negativeBoundaryWeight(state)<=0.f) ||
@@ -3210,8 +3211,8 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
         initial_current_ma,tables,goals,target_mj,positive_bias_mj,work_positive_feedback_[0].biasMj(run_cg_shift_mm_,0.f));
   } else if (!(energy_control_autonomous_last_peak_valid_ &&
       energy_control_autonomous_last_peak_side_>0 &&
-      energy_control_autonomous_last_peak_amplitude_deg_<7.f)) {
-    const uint16_t cap=work_negative_feedback_.balancedCapMs(lateral_energy_geometry_,state.previous_peak_deg,run_cg_shift_mm_);
+      energy_control_autonomous_last_peak_amplitude_deg_<work_target_policy::reserveFloor(event.target_peak_deg))) {
+    const uint16_t cap=work_negative_feedback_.balancedCapMs(lateral_energy_geometry_,state.previous_peak_deg,run_cg_shift_mm_,event.target_peak_deg);
     const float bias_mj=work_positive_feedback_[2].biasMj(run_cg_shift_mm_,adaptive_cg_.snapshot().common_bias_mj);
     choice=wheel_work_energy_control::chooseNegativeBoundary(state,cap,target_mj,bias_mj);
   }

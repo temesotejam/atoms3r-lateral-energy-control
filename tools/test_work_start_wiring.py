@@ -10,4 +10,8 @@ assert 'work_start_policy::referenceAllowed(' in command
 assert 'server_->arg("energy_model")=="work_control"' in command
 assert command.count('"upright_reference_required"')==1
 assert 'experiment_package_settings_invalid_reload_page' in command
+assert 'work_target_policy::packageAllowed(target_deg,brake_max_ms,input_current_mA,peak_adaptation_enabled)' in command
+runner=Path('src/experiment_runner.cpp').read_text(encoding='utf-8')
+assert 'work_target_policy::packageAllowed(energy_control_autonomous_target_peak_deg_' in runner
+assert 'state.target_deg=event.target_peak_deg;' in runner
 print('actual status readiness and HTTP start route have no unconditional reference gate PASS')

@@ -13,9 +13,9 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p>機体の左右の中心線が鉛直になるように保持し、下のボタンを押してください。約2秒間の左右角の平均を保存します。重心の偏りで自然に傾く姿勢とは区別してください。測定開始・ログ消去・再起動では基準を変えません。</p>
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
-<p class="muted">仕事に基づく制御はMEKF絶対角0°を原点とし、＋8°・−8°を目標にします。この保存操作では原点を変更しません。保存姿勢は比較と従来方式で使用します。</p>
+<p class="muted">仕事に基づく制御は絶対角0°を原点とし、選んだ目標角を左右それぞれに適用します。この保存操作では原点を変更しません。保存姿勢は比較と従来方式で使用します。</p>
 <h2>左右の偏りを動作中に自動補正</h2>
-<p>「仕事に基づく制御」を開始すると、左右の実測ピークと仕事モデルの予測を比較し、等価な重心ずれと共通のエネルギー予測誤差を少しずつ更新します。＋8°と−8°の目標エネルギーに反映します。重心ずれの手動設定は不要です。表示するずれは損失やモデル誤差も含み、実際の重心位置そのものとは限りません。</p>
+<p>「仕事に基づく制御」を開始すると、左右の実測ピークと仕事モデルの予測を比較し、左右別のエネルギー予測と等価な重心ずれを更新します。選んだ目標角に対応する左右のエネルギー計算に反映します。重心ずれの手動設定は不要です。表示するずれは損失やモデル誤差も含み、実際の重心位置そのものとは限りません。</p>
 <p id="cg-status" role="status">自動補正の状態を確認中…</p>
 <details><summary>初期値を手動で指定する場合</summary>
 <p>通常は設定不要です。手動値は自動補正の初期値として使い、動作中は観測結果から更新します。＋の値は、画面の角度が＋に傾くほど重心が高くなる側へのずれです。</p>
@@ -29,9 +29,11 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 </details>
 <div id="work-energy-control">
   <h2>固定脚・ホイールの仕事を使う制御（30秒）</h2>
-  <p class="muted">1.0.34では、直立基準の保存なしで開始できます。目標はMEKF絶対角の＋8°・−8°です。左右それぞれの実測ピークからエネルギー予測を補正し、片側の学習待ちで両側の補正が止まることを防ぎます。絶対角基準に合わせ、負側の適用条件も見直しました。</p>
-  <p class="muted">脚の前後移動を固定し、目標8°で測ります。正側は必要なエネルギーから300・350・400 mAと通電時間を選びます。負側は入力中・入力後の仕事を含めて計算し、学習上限を25 msから5 msずつ広げます。40 msを超えて学習上限を広げるには正側7.8°以上を要求し、最大70 msです。実際の上限は正側の位置エネルギーと境界までの余裕に応じて調整します。7°未満では負側入力を見送ります。動作中の自動補正を続け、電圧8.12 Vまで対応します。</p>
-  <button id="work-start" type="button" disabled>仕事に基づく制御で30秒測定を開始</button>
+  <p class="muted">1.0.35では、絶対角0°を基準に目標±8°・±10°・±12°を選べます。直立基準の保存は不要です。左右それぞれの実測ピークからエネルギー予測を補正します。まず10°を試し、そのログを確認してから12°へ進めてください。</p>
+  <p class="muted">脚の前後移動を固定し、各ボタンで30秒測定します。正側は300・350・400 mA、通電時間は最大100 msです。負側は300 mAで、上限25 msから実測結果に応じて段階的に調整します。正側が目標より1°以上小さい場合は負側入力を抑えます。10°・12°は試験用で、8°で得た予測式の適用範囲を限定して広げています。入力上限で届かない場合はログで確認します。</p>
+  <button id="work-start" type="button" disabled>目標±8°で30秒測定</button>
+  <button id="work-start-10" type="button" disabled>目標±10°で30秒測定</button>
+  <button id="work-start-12" type="button" disabled>目標±12°で30秒測定</button>
 </div>
 <div id="negative-energy-control">
   <h2>固定脚・新しいエネルギー制御（15秒）</h2>
@@ -551,6 +553,8 @@ function controls() {
   $('start').disabled = !fresh || busy || transferRunning || !latest.ready || !latest.upright_reference?.valid || latest.running || latest.export_phase !== 'empty';
   $('inverse-start').disabled = $('start').disabled;
   $('work-start').disabled = !fresh || busy || transferRunning || !latest.ready || latest.running || latest.export_phase !== 'empty' || !!latest.upright_reference?.capturing;
+  $('work-start-10').disabled = $('work-start').disabled;
+  $('work-start-12').disabled = $('work-start').disabled;
   $('probe-batch').disabled = $('start').disabled;
   $('probe-extended').disabled = $('start').disabled;
   $('probe-positive-current').disabled = $('start').disabled;
@@ -627,7 +631,7 @@ function renderOffline() {
     ? '学習補正の設定はWeb復帰後に確認します。'
     : `開始要求：予測誤差の学習補正 ${requestedAdaptation ? '使用する' : '使用しない'}`;
   for (const id of ['pitch', 'current', 'right', 'left', 'fps']) $(id).textContent = '—';
-  $('guide').textContent = `本体で制御・観測・記録を行います。開始5秒＋測定${['bridge_probe_batch','bridge_probe_extended','bridge_probe_positive_current'].includes(requestedEnergyModel) ? 30 : 15}秒＋終了5秒が予定時間です。前後90°以上の傾斜でSTOPします。横倒しは姿勢STOPの対象にしません。表示時間はPC側の目安で、実際の進行・終了を確認した値ではありません。`;
+  $('guide').textContent = `本体で制御・観測・記録を行います。開始5秒＋測定${['work_control','bridge_probe_batch','bridge_probe_extended','bridge_probe_positive_current'].includes(requestedEnergyModel) ? 30 : 15}秒＋終了5秒が予定時間です。前後90°以上の傾斜でSTOPします。横倒しは姿勢STOPの対象にしません。表示時間はPC側の目安で、実際の進行・終了を確認した値ではありません。`;
   $('foot-status').textContent = '足角度の画面更新を停止。本体内の記録は継続します。';
   $('mekf-axes').textContent = '運転中の姿勢表示を停止しています。';
   controls();
@@ -721,7 +725,7 @@ function render(s) {
     ? s.energy_model === 'bridge_probe_positive_current' ? '今回の負側入力：300 mA・40 msに固定'
       : s.energy_model === 'bridge_probe_extended' ? '今回の負側入力：30・35・40 msを3条件ずつ順序を変更'
       : s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを5条件ずつ順序を変更'
-      : s.energy_model === 'work_control' ? '今回の負側入力：エネルギー差から0または10～70 msを選択。40 ms超は正側7.8°以上で段階的に許可'
+      : s.energy_model === 'work_control' ? `今回の負側入力：エネルギー差から0または10～70 msを選択。40 ms超は正側${format(s.target_deg-.2,1)}°以上で段階的に許可`
       : s.energy_model === 'bridge_inverse' ? '今回の負側入力：実測0〜25 ms、ピークを確認して最大30 ms'
       : s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';
@@ -741,8 +745,8 @@ function render(s) {
   const reference = s.upright_reference;
   const cg = s.lateral_cg;
   $('cg-status').textContent = cg?.capturing ? '自然な静止姿勢を測定中です。機体を支えず、動かさないでください。' :
-    cg?.automatic ? `自動補正 · 等価重心ずれ ${format(cg.shift_mm, 3)} mm · 観測${cg.pairs ?? 0}往復／更新${cg.updates ?? 0}回 · ＋8° ${format(cg.positive_target_mj, 3)} mJ／−8° ${format(cg.negative_target_mj, 3)} mJ` :
-    cg?.valid ? `重心ずれ ${format(cg.shift_mm, 3)} mmを適用 · ＋8°の目標 ${format(cg.positive_target_mj, 3)} mJ · −8°の目標 ${format(cg.negative_target_mj, 3)} mJ` :
+    cg?.automatic ? `自動補正 · 等価重心ずれ ${format(cg.shift_mm, 3)} mm · 観測${cg.pairs ?? 0}往復／更新${cg.updates ?? 0}回 · ＋${s.target_deg}° ${format(cg.positive_target_mj, 3)} mJ／−${s.target_deg}° ${format(cg.negative_target_mj, 3)} mJ` :
+    cg?.valid ? `重心ずれ ${format(cg.shift_mm, 3)} mmを適用 · ＋${s.target_deg}°の目標 ${format(cg.positive_target_mj, 3)} mJ · −${s.target_deg}°の目標 ${format(cg.negative_target_mj, 3)} mJ` :
       '絶対角基準の補正は未設定です。仕事に基づく制御では補正ゼロから自動更新します。';
   $('upright-reference-status').textContent = reference.capturing
     ? '基準を取得中です。約2秒間、今の姿勢で静止させてください。'
@@ -817,14 +821,14 @@ async function poll() {
   catch (error) { $('connection').textContent = '画面更新のエラー（自動再試行）'; }
   finally { setTimeout(poll, 800); }
 }
-async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
+async function startOfflineRun(isBatchPackage = false, forcedModel = null, workTarget = 8) {
   if (commandInFlight || offlineMode) return;
   const extendedPackage = forcedModel === 'bridge_probe_extended';
   const positiveCurrentPackage = forcedModel === 'bridge_probe_positive_current';
   const batchPackage = isBatchPackage || extendedPackage || positiveCurrentPackage;
   const workPackage = (forcedModel || $('energy-model').value) === 'work_control';
   const inversePackage = !isBatchPackage && (forcedModel || $('energy-model').value) === 'bridge_inverse';
-  const target = batchPackage || inversePackage || workPackage ? 8 : Number($('target').value);
+  const target = workPackage ? Number(workTarget) : batchPackage || inversePackage ? 8 : Number($('target').value);
   if (!targetChoices.includes(target)) {
     $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
   }
@@ -858,7 +862,7 @@ async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
   requestedEnergyModel = energyModel;
   const runLabel = positiveCurrentPackage ? '正側300・350・400 mAの一括実験' : extendedPackage ? '負側30・35・40 msの一括実験' : isBatchPackage ? '負側5条件の一括実験' :
     workPackage ? '固定脚・ホイール仕事に基づく制御' : inversePackage ? '固定脚・負側のエネルギー制御' : '左右揺動エネルギー制御';
-  commandInFlight = true; setOffline(batchPackage ? 50000 : 30000); $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
+  commandInFlight = true; setOffline(batchPackage || workPackage ? 50000 : 30000); $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}&energy_model=${energyModel}`, {method:'POST', kind:'text'});
     $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
@@ -1152,7 +1156,9 @@ async function capturePose(baseline) {
 }
 $('start').onclick = () => startOfflineRun();
 $('inverse-start').onclick = () => startOfflineRun(false, 'bridge_inverse');
-$('work-start').onclick = () => startOfflineRun(false, 'work_control');
+$('work-start').onclick = () => startOfflineRun(false, 'work_control', 8);
+$('work-start-10').onclick = () => startOfflineRun(false, 'work_control', 10);
+$('work-start-12').onclick = () => startOfflineRun(false, 'work_control', 12);
 $('probe-batch').onclick = () => startOfflineRun(true);
 $('probe-extended').onclick = () => startOfflineRun(false, 'bridge_probe_extended');
 $('probe-positive-current').onclick = () => startOfflineRun(false, 'bridge_probe_positive_current');

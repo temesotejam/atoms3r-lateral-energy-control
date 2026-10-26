@@ -85,7 +85,9 @@ vm.runInContext(source,context);
   await vm.runInContext('poll()',context);assert.equal(calls.length,1);
   assert.equal(vm.runInContext('offlineMode',context),true); // Never retry a possibly accepted START.
   // A reload of an already loaded page preserves the quiet countdown.
-  const restored=vm.createContext({...context,sessionStorage,document:{getElementById:element}});
+  const restoredElements=new Map();
+  const restoredElement=id=>{if(!restoredElements.has(id))restoredElements.set(id,{...element(id)});return restoredElements.get(id);};
+  const restored=vm.createContext({...context,sessionStorage,document:{getElementById:restoredElement}});
   vm.runInContext(source,restored);assert.equal(vm.runInContext('offlineMode',restored),true);
   // A status request already in flight at START must not clear the pause when
   // its old READY response arrives. Otherwise polls would burden the live AP.
@@ -162,6 +164,18 @@ vm.runInContext(source,context);
   calls=[];await vm.runInContext("startOfflineRun(false, 'work_control')",context);
   assert.deepEqual(calls,['/start-energy-control-autonomous?target_deg=8&input_peak_percent=0&input_current_mA=300&brake_max_ms=40&peak_adaptation=0&energy_model=work_control'],element('message').textContent);
   assert.equal(vm.runInContext('requestedEnergyModel',context),'work_control');
+  for (const target of [10,12]) {
+    vm.runInContext('clearOffline()',context);
+    Object.assign(status,{state:'READY_TO_MEASURE',ready:true,downloadable:false});
+    await vm.runInContext('refresh()',context);
+    assert.equal(element('work-start-'+target).disabled,false);
+    calls=[];await element('work-start-'+target).onclick();
+    assert.deepEqual(calls,[`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=0&input_current_mA=300&brake_max_ms=40&peak_adaptation=0&energy_model=work_control`],element('message').textContent+JSON.stringify(vm.runInContext('({offlineMode,commandInFlight,requestedTargetDeg})',context)));
+    assert.equal(vm.runInContext('requestedTargetDeg',context),target);
+  }
+  vm.runInContext('clearOffline()',context);
+  calls=[];await vm.runInContext("startOfflineRun(false,'work_control',9)",context);
+  assert.equal(calls.length,0);
   console.log('HTTP pause browser: no run polling, stale pre-START response, lost/rejected START, HTTP retry, FINISHED/ESTOP download and restored countdown PASS');
   console.log('Target UI: 8/10/12 request values, invalid selection, polling preservation, run lock, applied result and reboot PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});

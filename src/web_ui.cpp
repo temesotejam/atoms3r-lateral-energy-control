@@ -1,3 +1,4 @@
+#include "work_target_policy.h"
 #include "work_start_policy.h"
 #include "web_ui.h"
 #include "config.h"
@@ -215,7 +216,7 @@ void WebUi::command(RunControlWorker::Command cmd) {
         (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0 &&
          !((server_->arg("energy_model") == "bridge_inverse" && brake_max_ms == 25 ||
             server_->arg("energy_model") == "work_control" && brake_max_ms == 40) &&
-           target_deg == 8.0f && input_current_mA == 300 && !peak_adaptation_enabled)) ||
+           work_target_policy::packageAllowed(target_deg,brake_max_ms,input_current_mA,peak_adaptation_enabled))) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms))) {
       server_->send(400, "text/plain", "experiment_package_settings_invalid_reload_page"); return;
     }
@@ -287,8 +288,8 @@ void WebUi::status() {
       ",\"common_bias_mj\":" + num(s.adaptive_cg.enabled ? s.adaptive_cg.common_bias_mj : 0.f) +
       ",\"shift_mm\":" + num(cg_mm) + ",\"source\":" + String(s.lateral_cg.source) +
       ",\"capturing\":" + String(s.equilibrium_capturing ? "true" : "false") +
-      ",\"positive_target_mj\":" + num(1000.f*lateral_cg::potential(cg_geometry,8.f,cg_mm)) +
-      ",\"negative_target_mj\":" + num(1000.f*lateral_cg::potential(cg_geometry,-8.f,cg_mm)) + "}";
+      ",\"positive_target_mj\":" + num(1000.f*lateral_cg::potential(cg_geometry,s.target_deg,cg_mm)) +
+      ",\"negative_target_mj\":" + num(1000.f*lateral_cg::potential(cg_geometry,-s.target_deg,cg_mm)) + "}";
   json += ",\"motor_mA\":" + String(s.motor_cmd_mA) + ",\"actual_mA\":" + String(s.actual_current_mA);
   json += ",\"battery_mV\":" + String(s.battery_mV);
   json += ",\"imu_ok\":" + String(s.imu_ok ? "true" : "false") + ",\"roller_ok\":" + String(s.roller_ok ? "true" : "false");

@@ -3,12 +3,13 @@
 #include <cstdint>
 #include "lateral_energy_control.h"
 #include "lateral_cg_energy.h"
+#include "work_target_policy.h"
 
 // Empirical fixed-leg, one-peak energy models.  Coefficients were fitted to
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_absolute_side_feedback_20261026";
+constexpr char kRevision[] = "wheel_work_target_8_10_12_20261026";
 constexpr float kRadPerDeg = 0.017453292519943295f;
 constexpr uint16_t kNegativeMaxMs = 70;
 constexpr float kPositiveMinQ = 8.79588f;
@@ -25,6 +26,7 @@ struct State {
   bool wheel_fresh = false;
   float previous_peak_deg = NAN;
   bool absolute_reference = false;
+  float target_deg = 8.f;
 };
 struct Prediction {
   bool valid = false;
@@ -99,17 +101,17 @@ inline float boxWeight(float value,float low,float high,float low_margin,float h
   return ramp((value-low+low_margin)/low_margin)*ramp((high+high_margin-value)/high_margin);
 }
 inline float positiveWorkWeight(const State& s) {
-  if (!freshFinite(s) || s.battery_mv<7000.f || s.battery_mv>8120.f) return 0.f;
-  return boxWeight(s.rate_dps,48.3821f,72.7405f,4.f,4.f)*
+  if (!freshFinite(s) || !work_target_policy::valid(s.target_deg) || s.battery_mv<7000.f || s.battery_mv>8120.f) return 0.f;
+  return boxWeight(s.rate_dps,48.3821f,work_target_policy::rateCeiling(s.target_deg,1),4.f,4.f)*
       boxWeight(s.wheel_rpm,-1.f,400.f,10.f,40.f);
 }
 inline float negativeBoundaryWeight(const State& s) {
-  if (!freshFinite(s) || !std::isfinite(s.previous_peak_deg) ||
+  if (!freshFinite(s) || !work_target_policy::valid(s.target_deg) || !std::isfinite(s.previous_peak_deg) ||
       s.battery_mv<6210.f || s.battery_mv>8120.f) return 0.f;
   if (s.absolute_reference)
-    return boxWeight(s.rate_dps,57.2522f,76.2778f,2.f,2.f)*
+    return boxWeight(s.rate_dps,57.2522f,work_target_policy::rateCeiling(s.target_deg,-1),2.f,2.f)*
         boxWeight(s.wheel_rpm,-1.f,575.79f,1.f,25.f)*
-        boxWeight(s.previous_peak_deg,5.0288f,10.f,.3f,.3f);
+        boxWeight(s.previous_peak_deg,5.0288f,work_target_policy::previousCeiling(s.target_deg),.3f,.3f);
   return boxWeight(s.rate_dps,57.2522f,76.2778f,2.f,2.f)*
       boxWeight(s.wheel_rpm,4.28f,575.79f,4.28f,25.f)*
       boxWeight(s.previous_peak_deg,5.0288f,8.56178f,.3f,.3f);
@@ -148,7 +150,7 @@ inline Prediction positiveWorkRaw(const State& s,float q_mas,float bias_mj=0.f) 
   p.energy_mj=p.free_mj+.22502117220f*p.change_mj+bias_mj;
   p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
   p.branch=6;p.applied_bias_mj=bias_mj;
-  p.cross_condition=q_mas>kPositiveMaxQ || s.rate_dps>58.9332f ||
+  p.cross_condition=s.target_deg!=8.f || q_mas>kPositiveMaxQ || s.rate_dps>58.9332f ||
       s.wheel_rpm<213.22f || s.battery_mv<7280.f || s.battery_mv>7400.f;
   return p;
 }
@@ -174,6 +176,7 @@ inline Prediction positiveBridge(const lateral_energy::Geometry& geometry,
 
 inline Prediction positiveBoundary(const lateral_energy::Geometry& geometry,const State& s,
     float q_mas,float work_bias,float bridge_bias) {
+  if (!work_target_policy::valid(s.target_deg)) return Prediction{};
   const float weight=positiveWorkWeight(s);
   if (weight<=0.f) return positiveBridge(geometry,s,q_mas,bridge_bias);
   auto work=positiveWorkRaw(s,q_mas,work_bias);
@@ -211,7 +214,7 @@ inline Prediction negativeRaw(const State& s, uint16_t width_ms, float residual_
   p.energy_mj=p.free_mj+.44113787836f*p.change_mj+residual_mj;
   p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
   p.branch=4;p.applied_bias_mj=residual_mj;
-  p.cross_condition=width_ms>40 || s.battery_mv>8110.f || (width_ms>0 && s.battery_mv>8000.f) ||
+  p.cross_condition=s.target_deg!=8.f || width_ms>40 || s.battery_mv>8110.f || (width_ms>0 && s.battery_mv>8000.f) ||
       (width_ms>25 && !extendedNegativeSupported(s));
   return p;
 }
@@ -261,10 +264,10 @@ class NegativeFeedback {
     return previous_peak_deg>=7.8f ? cap_ms_ : previous_peak_deg>=7.5f ?
         (cap_ms_>40 ? 40 : cap_ms_) : 25;
   }
-  uint16_t balancedCapMs(const lateral_energy::Geometry& g,float previous_peak_deg,float cg_mm) const {
-    if (!std::isfinite(previous_peak_deg) || previous_peak_deg<7.f) return 0;
-    const float floor=lateral_cg::potential(g,7.f,cg_mm);
-    const float full=lateral_cg::potential(g,7.8f,cg_mm);
+  uint16_t balancedCapMs(const lateral_energy::Geometry& g,float previous_peak_deg,float cg_mm,float target_deg=8.f) const {
+    if (!work_target_policy::valid(target_deg) || !std::isfinite(previous_peak_deg) || previous_peak_deg<work_target_policy::reserveFloor(target_deg)) return 0;
+    const float floor=lateral_cg::potential(g,work_target_policy::reserveFloor(target_deg),cg_mm);
+    const float full=lateral_cg::potential(g,work_target_policy::reserveFull(target_deg),cg_mm);
     const float energy=lateral_cg::potential(g,previous_peak_deg,cg_mm);
     if (!std::isfinite(energy) || !(full>floor)) return 0;
     const float reserve=std::fmax(0.f,std::fmin(1.f,(energy-floor)/(full-floor)));
@@ -278,11 +281,11 @@ class NegativeFeedback {
     return std::fmax(-.12f,std::fmin(.12f,sum/count_));
   }
   __attribute__((noinline)) void observe(float actual_mj, float raw_prediction_mj,
-      float target_mj, float previous_peak_deg, uint16_t applied_width_ms, bool balanced=false) {
+      float target_mj, float previous_peak_deg, uint16_t applied_width_ms, bool balanced=false,float target_deg=8.f) {
     if (!std::isfinite(actual_mj) || !std::isfinite(raw_prediction_mj) ||
         !std::isfinite(target_mj) || !std::isfinite(previous_peak_deg) ||
-        applied_width_ms>kNegativeMaxMs) return;
-    if (previous_peak_deg<(balanced ? 7.f : 7.5f)) { cap_ms_=25; high_count_=0; return; }
+        applied_width_ms>kNegativeMaxMs || !work_target_policy::valid(target_deg)) return;
+    if (previous_peak_deg<(balanced ? work_target_policy::reserveFloor(target_deg) : 7.5f)) { cap_ms_=25; high_count_=0; return; }
     if (!balanced && previous_peak_deg<7.8f && cap_ms_>40) { cap_ms_=40; high_count_=0; }
     residuals_[next_]=actual_mj-raw_prediction_mj;
     next_=(next_+1)%3;
@@ -291,7 +294,7 @@ class NegativeFeedback {
     if (excess<-.03f) {
       cap_ms_=cap_ms_>25 ? cap_ms_-5 : 25; high_count_=0;
     } else if (excess>.03f && applied_width_ms>=cap_ms_ && cap_ms_<kNegativeMaxMs &&
-        (cap_ms_<40 || previous_peak_deg>=7.8f)) {
+        (cap_ms_<40 || previous_peak_deg>=work_target_policy::reserveFull(target_deg))) {
       if (++high_count_>=2) { cap_ms_+=5; high_count_=0; }
     } else high_count_=0;
   }
