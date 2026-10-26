@@ -177,8 +177,8 @@ int main(int argc,char** argv){
     work.startRun(3, 323456, 300, 100, 1000, false, 0, 800, 0, false,
         NAN, false, 0, false, true, 0.0f, 40, false, true, false, reference);
     lateral_cg::Record cg;
-    cg.magic=lateral_cg::kMagic;cg.revision=1;cg.upright_revision=reference.revision;
-    cg.upright_abs_deg=reference.pitch_deg;cg.source=1;cg.shift_mm=work_first ? .5f : -.5f;
+    cg.magic=lateral_cg::kMagic;cg.version=2;cg.revision=1;cg.upright_revision=1;
+    cg.upright_abs_deg=0.f;cg.source=1;cg.shift_mm=work_first ? .5f : -.5f;
     work.recordLateralCg(work_first ? lateral_cg::Record{} : cg);
     cg.shift_mm=1.5f; // The run retains its snapshot, independently of later edits.
     if (work_first) {

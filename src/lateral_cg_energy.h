@@ -11,7 +11,7 @@ struct Record {
   float shift_mm=0,upright_abs_deg=0,equilibrium_abs_deg=0;
 };
 inline bool valid(const Record& r) {
-  return r.magic==kMagic && r.version==1 && r.revision>0 &&
+  return r.magic==kMagic && (r.version==1 || r.version==2) && r.revision>0 &&
       r.upright_revision>0 && (r.source==1 || r.source==2) &&
       std::isfinite(r.shift_mm) && std::fabs(r.shift_mm)<=kMaxShiftMm &&
       std::isfinite(r.upright_abs_deg) && std::isfinite(r.equilibrium_abs_deg);
@@ -19,6 +19,9 @@ inline bool valid(const Record& r) {
 inline bool matches(const Record& r,uint32_t revision,float pitch) {
   return valid(r) && r.upright_revision==revision &&
       std::fabs(r.upright_abs_deg-pitch)<.0001f;
+}
+inline bool matchesAbsolute(const Record& r) {
+  return valid(r) && r.version==2 && r.upright_abs_deg==0.f;
 }
 // Positive shift raises the CG when the signed body angle increases.
 // All energies are J, referred to geometric upright, with U(0)=0.

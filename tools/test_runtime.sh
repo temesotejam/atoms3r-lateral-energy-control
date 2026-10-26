@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_absolute_reference.cpp -o /tmp/test_absolute_reference
+/tmp/test_absolute_reference
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_boundary_energy.cpp -o /tmp/test_boundary_energy
 /tmp/test_boundary_energy
 python3 tools/fit_adaptive_lateral_cg.py

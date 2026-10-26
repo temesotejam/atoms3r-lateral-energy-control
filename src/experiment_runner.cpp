@@ -1,3 +1,4 @@
+#include "control_angle_reference.h"
 #include "experiment_runner.h"
 #include "log_quantization.h"
 #include "log_sample_encoder.h"
@@ -120,7 +121,7 @@ void ExperimentRunner::begin(PsramLogger& logger, ImuManager& imu, Roller485Mana
 }
 
 bool ExperimentRunner::beginUprightReferenceCapture(bool equilibrium) {
-  if (equilibrium && !upright_reference::valid(upright_reference_)) return false;
+  // Equilibrium capture uses absolute pitch; saved upright is diagnostic only.
   if (running() || status_.pulse_active || status_.motor_cmd_mA != 0 ||
       upright_reference_capture_.pending() || !bias_ready_ ||
       (status_.state != ExperimentState::READY_TO_MEASURE &&
@@ -156,13 +157,13 @@ bool ExperimentRunner::pollUprightReferenceCapture(bool& ok, const char*& result
   if (ok && equilibrium_capture_) {
     float shift = 0;
     if (!lateral_cg::fromEquilibrium(lateral_energy_geometry_,
-        upright_reference_capture_.candidate().pitch_deg-upright_reference_.pitch_deg, shift)) {
+        upright_reference_capture_.candidate().pitch_deg, shift)) {
       ok=false;result="equilibrium_contact_not_identifiable";
     } else {
       lateral_cg::Record record;
-      record.magic=lateral_cg::kMagic;record.revision=lateral_cg_.revision+1;
-      record.upright_revision=upright_reference_.revision;
-      record.upright_abs_deg=upright_reference_.pitch_deg;record.shift_mm=shift;record.source=2;
+      record.magic=lateral_cg::kMagic;record.version=2;record.revision=lateral_cg_.revision+1;
+      record.upright_revision=1;
+      record.upright_abs_deg=0.f;record.shift_mm=shift;record.source=2;
       record.equilibrium_abs_deg=upright_reference_capture_.candidate().pitch_deg;
       ok=lateral_cg::save(record);
       if (ok) {
@@ -191,14 +192,14 @@ bool ExperimentRunner::pollUprightReferenceCapture(bool& ok, const char*& result
 
 bool ExperimentRunner::setLateralCgMm(float shift_mm) {
   if (running() || status_.pulse_active || status_.motor_cmd_mA != 0 ||
-      !upright_reference::valid(upright_reference_) || !std::isfinite(shift_mm) ||
+      !std::isfinite(shift_mm) ||
       std::fabs(shift_mm)>lateral_cg::kMaxShiftMm ||
       (status_.state != ExperimentState::READY_TO_MEASURE &&
        status_.state != ExperimentState::FINISHED && status_.state != ExperimentState::ESTOP)) return false;
   lateral_cg::Record r;
-  r.magic=lateral_cg::kMagic;r.revision=lateral_cg_.revision+1;
-  r.upright_revision=upright_reference_.revision;r.upright_abs_deg=upright_reference_.pitch_deg;
-  r.source=1;r.shift_mm=shift_mm;r.equilibrium_abs_deg=upright_reference_.pitch_deg;
+  r.magic=lateral_cg::kMagic;r.version=2;r.revision=lateral_cg_.revision+1;
+  r.upright_revision=1;r.upright_abs_deg=0.f;
+  r.source=1;r.shift_mm=shift_mm;r.equilibrium_abs_deg=0.f;
   if (!lateral_cg::save(r)) return false;
   lateral_cg_=r;
   if (status_.state==ExperimentState::READY_TO_MEASURE) status_.last_error="";
@@ -212,6 +213,10 @@ __attribute__((noinline)) float ExperimentRunner::controlAngle(float energy,int8
 }
 
 float ExperimentRunner::uprightPitchErrorDeg(const ImuReading& r) const {
+  if (wheelWorkMode()) {
+    const float norm=UprightPoseGuide::accelNormG(r);
+    return norm>.2f ? fabsf(asinf(fmaxf(-1.f,fminf(1.f,r.ax_g/norm)))*57.295779513f) : 180.f;
+  }
   return upright_reference::valid(upright_reference_)
       ? upright_reference::pitchError(r.ax_g, UprightPoseGuide::accelNormG(r), upright_reference_)
       : UprightPoseGuide::pitchErrorDeg(r);
@@ -683,8 +688,7 @@ void ExperimentRunner::updateDisplayedAngles(const ImuReading&) {
   // It has no time-based advance or latency projection.
   status_.pitch_mekf_detector_relative_deg = status_.pitch_mekf_measurement_relative_deg;
   if (energy_control_autonomous_mode_) status_.pitch_mekf_deg = status_.pitch_mekf_detector_relative_deg;
-  if (!running() && upright_reference::valid(upright_reference_))
-    status_.pitch_mekf_deg = upright_reference::relative(raw_mekf_pitch_abs_deg_, upright_reference_);
+  if (!running()) status_.pitch_mekf_deg = raw_mekf_pitch_abs_deg_;
 
 }
 
@@ -1134,7 +1138,7 @@ bool ExperimentRunner::startEnergyControlAutonomousCapture() {
   energy_control_autonomous_pulse_authorized_ = false;
   energy_control_v0_pulse_authorized_ = false;
   const ImuReading& autonomous_start_reading = imu_->reading();
-  if (!upright_reference::valid(upright_reference_) || upright_reference_capture_.pending()) {
+  if ((!wheelWorkMode() && !upright_reference::valid(upright_reference_)) || upright_reference_capture_.pending()) {
     status_.last_error = "upright_reference_required"; return false;
   }
   if (!isUprightStableSample(autonomous_start_reading)) {
@@ -1385,16 +1389,15 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   // V46z comparison-zero begin
   captureMekfComparisonZero(status_.mekf_start_sync_zero_abs_deg,
                             status_.mekf_start_sync_zero_sample_us);
-  status_.mekf_measurement_zero_abs_deg = energy_control_autonomous_mode_ ? upright_reference_.pitch_deg : NAN;
-  status_.mekf_trial_zero_abs_deg = energy_control_autonomous_mode_ ? upright_reference_.pitch_deg : NAN;
+  status_.mekf_measurement_zero_abs_deg = energy_control_autonomous_mode_ ? control_angle_reference::origin(wheelWorkMode(), upright_reference_.pitch_deg) : NAN;
+  status_.mekf_trial_zero_abs_deg = energy_control_autonomous_mode_ ? control_angle_reference::origin(wheelWorkMode(), upright_reference_.pitch_deg) : NAN;
   status_.mekf_measurement_zero_sample_us = 0;
   status_.mekf_trial_zero_sample_us = 0;
   updateMekfComparisonRelativeAngles();
   // V46z comparison-zero end
-  run_cg_shift_mm_ = wheelWorkMode() && lateral_cg::matches(lateral_cg_,upright_reference_.revision,
-      upright_reference_.pitch_deg) ? lateral_cg_.shift_mm : lateral_cg::kAdaptiveSeedMm;
+  run_cg_shift_mm_ = wheelWorkMode() && lateral_cg::matchesAbsolute(lateral_cg_) ? lateral_cg_.shift_mm : 0.f;
   if (wheelWorkMode()) {
-    adaptive_cg_.reset(run_cg_shift_mm_);
+    adaptive_cg_.reset(run_cg_shift_mm_,0.f);
     run_cg_shift_mm_=adaptive_cg_.snapshot().shift_mm;
   }
   run_start_us_ = micros();
@@ -1430,8 +1433,8 @@ void ExperimentRunner::beginMeasurementRun() {
   }
   // V46z comparison-zero begin
   if (energy_control_autonomous_mode_) {
-    // Preserve the operator's saved origin. The actual start attitude is
-    // recorded separately as a diagnostic and never becomes a control zero.
+    // Work control keeps absolute zero. Saved pose and actual start attitude
+    // are diagnostics and never redefine its control coordinate.
     logger_->recordMeasurementStartAngle(raw_mekf_pitch_abs_deg_);
   } else {
     captureMekfComparisonZero(status_.mekf_measurement_zero_abs_deg,
@@ -1450,7 +1453,7 @@ void ExperimentRunner::beginMeasurementRun() {
   // V46z comparison-zero end
   // V46aa control-zero capture begin
   if (energy_control_autonomous_mode_) {
-    status_.mekf_detector_zero_predicted_abs_deg = upright_reference_.pitch_deg;
+    status_.mekf_detector_zero_predicted_abs_deg = control_angle_reference::origin(wheelWorkMode(), upright_reference_.pitch_deg);
     status_.mekf_detector_zero_sample_us = 0; // Saved calibration, not a new sample origin.
     status_.pitch_mekf_detector_relative_deg = status_.pitch_mekf_measurement_relative_deg;
     status_.pitch_mekf_deg = status_.pitch_mekf_detector_relative_deg;
@@ -2517,9 +2520,8 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   inverse_negative_pending_bias_j_ = 0.f;
   adaptive_cg_=lateral_cg::Adaptive{};
   if (wheelWorkMode()) {
-    const float initial=lateral_cg::matches(lateral_cg_,upright_reference_.revision,upright_reference_.pitch_deg) ?
-        lateral_cg_.shift_mm : lateral_cg::kAdaptiveSeedMm;
-    adaptive_cg_.reset(initial);
+    const float initial=lateral_cg::matchesAbsolute(lateral_cg_) ? lateral_cg_.shift_mm : 0.f;
+    adaptive_cg_.reset(initial,0.f);
     run_cg_shift_mm_=adaptive_cg_.snapshot().shift_mm;
   } else run_cg_shift_mm_=0.f;
   pending_cg_shift_mm_=0;

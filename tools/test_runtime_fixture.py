@@ -70,7 +70,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.32-smooth-energy-boundary'
+assert metadata['firmware_revision']=='1.0.33-absolute-energy-reference'
 assert metadata['energy_model']=='angle_energy_bridge'
 assert metadata['energy_control_autonomous_revision']=='lateral_energy_angle_bridge_v8_20261015'
 assert metadata['energy_control_autonomous_negative_side_brake_width_max_ms']==0
@@ -81,7 +81,7 @@ assert metadata['upright_reference_revision'] == 3
 assert abs(metadata['upright_reference_abs_pitch_deg'] - 2.2) < 1e-6
 assert abs(metadata['measurement_start_abs_pitch_deg'] - 3.2) < 1e-6
 assert abs(metadata['measurement_start_upright_relative_deg'] - 1.0) < 1e-6
-assert 'no_measurement_start_rezero' in metadata['angle_reference_policy']
+assert 'no_work_rezero' in metadata['angle_reference_policy']
 assert metadata['peak_error_adaptation_enabled'] is False
 assert metadata['energy_request_audit_revision']=='unrestricted_inverse_v1_20261014'
 audit=metadata['energy_control_autonomous_zero_cross_events'][0]
@@ -255,6 +255,8 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
         work_data[110:110 + work_header['metadata_json_size']],
         parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
     assert work_metadata['energy_model'] == 'wheel_work_one_peak_control'
+    assert work_metadata['control_angle_origin_abs_deg'] == 0
+    assert work_metadata['work_absolute_reference_enabled'] is True
     assert work_metadata['autonomous_duration_ms'] == 30000
     assert work_metadata['adaptive_lateral_cg']['enabled'] == work_first
     if work_first:

@@ -17,9 +17,9 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
-      <h2>1.0.32：境界でのモデル・入力の急変を緩和</h2>
-      <p>正側の境界付近は予測エネルギーを滑らかにつなぎ、負側は範囲の縁で許容入力を段階的に絞ります。正側の位置エネルギーに応じて負側の上限を調整し、動作中の自動補正も続けます。制御の原点は保存した直立基準を維持しています。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/SMOOTH_ENERGY_BOUNDARY.md">変更内容と検証</a></p>
-      <p>重心ずれの手動設定は不要です。鉛直姿勢の直立基準を確認し、実機の「仕事に基づく制御で30秒測定を開始」を押してください。左右のピークと仕事モデルの予測から等価な重心ずれを更新し、左右別の目標エネルギーに反映します。損失やモデル誤差も含む推定値で、実際の重心位置そのものとは限りません。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/ADAPTIVE_LATERAL_CG.md">計算方法と検証</a></p>
+      <h2>1.0.33：MEKF絶対角を基準に左右±8°を制御</h2>
+      <p>仕事に基づく制御はMEKF絶対角0°を原点とし、左右＋8°・−8°を目標とします。直立基準の保存は不要です。エネルギー差から入力を選び、左右の偏りを補正ゼロから自動更新します。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/ABSOLUTE_ENERGY_REFERENCE.md">変更内容と検証</a></p>
+      <p>重心ずれの手動設定は不要です。機体を静止させ、実機の「仕事に基づく制御で30秒測定を開始」を押してください。左右のピークと仕事モデルの予測から等価な重心ずれを更新し、左右別の目標エネルギーに反映します。損失やモデル誤差も含む推定値で、実際の重心位置そのものとは限りません。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/ADAPTIVE_LATERAL_CG.md">計算方法と検証</a></p>
       <p>今回を含む8回・180件で正側の仕事と到達エネルギーを予測し、必要に応じて300・350・400 mAを選びます。左右別の予測誤差で補正し、負側は正側の揺れを確認しながら上限を25 msから5 msずつ広げます。40 msを超える入力は正側7.8°以上を条件とし、最大70 msです。実機の「仕事に基づく制御で30秒測定を開始」を使います。目標8°に必要なエネルギーとの差から入力を選びます。40 msを超える減速入力など、未実測の組合せはログで区別します。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/POOLED_NEGATIVE_WORK_CONTROL.md">制御式と検証結果</a></p>
     </section>
     <section class="panel important">

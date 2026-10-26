@@ -9,11 +9,11 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p class="muted" id="firmware-revision">本体プログラムの版を確認中…</p>
 <section class="card"><div class="grid"><div><div class="label">状態</div><div class="value" id="state">—</div></div><div><div class="label">残り時間</div><div class="value" id="remaining">—</div></div><div><div class="label">胴体の左右揺動 · MEKF</div><div class="value" id="pitch">—</div></div><div><div class="label">指令 / 実測電流</div><div class="value" style="font-size:1.5rem" id="current">—</div></div></div>
 <p id="guide">起動後は静止させてください。LEDが点灯したら左右のpitchを基準に合わせ、機体を静止させます。足のマーカー認識は測定開始に不要です。</p>
-<h2>制御に使う直立基準</h2>
+<h2>比較用の保存姿勢（従来制御用）</h2>
 <p>機体の左右の中心線が鉛直になるように保持し、下のボタンを押してください。約2秒間の左右角の平均を保存します。重心の偏りで自然に傾く姿勢とは区別してください。測定開始・ログ消去・再起動では基準を変えません。</p>
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
-<p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
+<p class="muted">仕事に基づく制御はMEKF絶対角0°を原点とし、＋8°・−8°を目標にします。この保存操作では原点を変更しません。保存姿勢は比較と従来方式で使用します。</p>
 <h2>左右の偏りを動作中に自動補正</h2>
 <p>「仕事に基づく制御」を開始すると、左右の実測ピークと仕事モデルの予測を比較し、等価な重心ずれと共通のエネルギー予測誤差を少しずつ更新します。＋8°と−8°の目標エネルギーに反映します。重心ずれの手動設定は不要です。表示するずれは損失やモデル誤差も含み、実際の重心位置そのものとは限りません。</p>
 <p id="cg-status" role="status">自動補正の状態を確認中…</p>
@@ -22,14 +22,14 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <label>重心ずれ（mm、−2～＋2） <input id="cg-shift" type="number" min="-2" max="2" step="0.01" placeholder="測定値" disabled></label>
 <button id="cg-save" type="button" disabled>重心ずれを保存</button>
 <details><summary>自然な静止姿勢から推定する</summary>
-<p>先に機体の鉛直姿勢を直立基準として保存してください。その後、機体を左右に支えず、ホイールを止めて自然に静止させ、下のボタンを押します。足裏の円弧上で釣り合う条件に限って推定します。中央の接地範囲内や固定具で支えている場合は、静止角だけでは重心ずれを特定できません。取得中は機体を動かさないでください。</p>
+<p>MEKF絶対角0°を機体の基準として扱います。機体を左右に支えず、ホイールを止めて自然に静止させ、下のボタンを押します。足裏の円弧上で釣り合う条件に限って推定します。中央の接地範囲内や固定具で支えている場合は、静止角だけでは重心ずれを特定できません。取得中は機体を動かさないでください。</p>
 <button id="cg-capture" type="button" disabled>自然な静止姿勢を2秒測って推定</button>
 </details>
-<p class="muted">手動初期値は直立基準を取り直すと無効になります。未指定の場合は今回のログから得た暫定初期値で自動補正を始めます。</p>
+<p class="muted">新しい手動初期値は絶対角基準で保存します。旧基準の手動値は引き継ぎません。未指定の場合は補正ゼロから自動更新します。</p>
 </details>
 <div id="work-energy-control">
   <h2>固定脚・ホイールの仕事を使う制御（30秒）</h2>
-  <p class="muted">1.0.32では、正側のモデルを境界付近で予測エネルギーにより滑らかにつなぎ、負側の適用範囲の縁では入力上限を徐々に絞ります。正側の振幅が一時的に下がった場合も、その位置エネルギーに応じて負側上限を調整します。目標角・制御の原点は保存した直立基準のままです。取り付け基準からの角度はログのMEKF絶対角で比較してください。</p>
+  <p class="muted">1.0.33では、角度表示・ピーク検出・入力タイミング・目標エネルギーをMEKF絶対角0°に統一します。目標は＋8°・−8°です。保存した直立姿勢を差し引かず、測定開始時も原点を取り直しません。左右の偏りは補正ゼロから動作中に更新します。</p>
   <p class="muted">脚の前後移動を固定し、目標8°で測ります。正側は必要なエネルギーから300・350・400 mAと通電時間を選びます。負側は入力中・入力後の仕事を含めて計算し、学習上限を25 msから5 msずつ広げます。40 msを超えて学習上限を広げるには正側7.8°以上を要求し、最大70 msです。実際の上限は正側の位置エネルギーと境界までの余裕に応じて調整します。7°未満では負側入力を見送ります。動作中の自動補正を続け、電圧8.12 Vまで対応します。</p>
   <button id="work-start" type="button" disabled>仕事に基づく制御で30秒測定を開始</button>
 </div>
@@ -82,7 +82,7 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p id="mekf-axes" class="muted">MEKFの更新を待っています。</p>
 <p>両足を地面に固定して、胴体と両足が直立した姿勢を基準にします。基準の後、胴体を前後の片方向へ約5°・10°・15°・20°と傾け、10°・直立へ戻す順に、設定範囲内で記録してください。各姿勢で約3秒間静止します。</p>
 <button id="pose-base" disabled>比較用の直立姿勢を取得</button><button id="pose-add" disabled>この姿勢を追加</button><button id="pose-cancel" disabled>姿勢取得を中止</button><button id="pose-save" disabled>比較JSONを保存</button><button id="pose-reset" disabled>保存後に比較をやり直す</button>
-<p class="muted">この姿勢比較は記録用です。制御に使う直立基準は、上の「今の姿勢を直立基準として保存」で変更します。</p>
+<p class="muted">この姿勢比較は記録用です。仕事に基づく制御の原点はMEKF絶対角0°に固定しています。</p>
 <p id="pose-status" role="status">胴体と両足を直立させ、基準を取得してください。</p>
 <div style="overflow-x:auto"><table><thead><tr><th>姿勢</th><th>胴体前後変化</th><th>右の差</th><th>左の差</th><th>確認</th></tr></thead><tbody id="pose-rows"></tbody></table></div>
 <p class="muted">「差」は基準からの足相対角の変化＋胴体前後角の変化です。足を固定した平面運動では0°が目安になります。左右傾斜が大きい場合は参考値とします。各姿勢の取得では角度換算係数を変更しません。現在は固定2姿勢から求めた係数を使用しています。最大12姿勢の画像と診断をまとめて保存します。再読み込みする前に比較JSONを保存してください。</p>
@@ -550,14 +550,14 @@ function controls() {
   const building = latest?.export_phase === 'building';
   $('start').disabled = !fresh || busy || transferRunning || !latest.ready || !latest.upright_reference?.valid || latest.running || latest.export_phase !== 'empty';
   $('inverse-start').disabled = $('start').disabled;
-  $('work-start').disabled = $('start').disabled;
+  $('work-start').disabled = !fresh || busy || transferRunning || !latest.ready || latest.running || latest.export_phase !== 'empty' || !!latest.upright_reference?.capturing;
   $('probe-batch').disabled = $('start').disabled;
   $('probe-extended').disabled = $('start').disabled;
   $('probe-positive-current').disabled = $('start').disabled;
   $('upright-reference-capture').disabled = !fresh || busy || transferRunning || building ||
     !latest.controller_fresh || !latest.imu_ok || latest.running || latest.pulse_active || latest.motor_mA !== 0 ||
     !['READY_TO_MEASURE', 'FINISHED', 'ESTOP'].includes(latest.state);
-  $('cg-save').disabled = $('upright-reference-capture').disabled || !latest?.upright_reference?.valid;
+  $('cg-save').disabled = $('upright-reference-capture').disabled;
   $('cg-capture').disabled = $('cg-save').disabled;
   $('cg-shift').disabled = $('cg-save').disabled;
   const dedicatedSelected = ['bridge_inverse','work_control'].includes($('energy-model').value);
@@ -743,15 +743,15 @@ function render(s) {
   $('cg-status').textContent = cg?.capturing ? '自然な静止姿勢を測定中です。機体を支えず、動かさないでください。' :
     cg?.automatic ? `自動補正 · 等価重心ずれ ${format(cg.shift_mm, 3)} mm · 観測${cg.pairs ?? 0}往復／更新${cg.updates ?? 0}回 · ＋8° ${format(cg.positive_target_mj, 3)} mJ／−8° ${format(cg.negative_target_mj, 3)} mJ` :
     cg?.valid ? `重心ずれ ${format(cg.shift_mm, 3)} mmを適用 · ＋8°の目標 ${format(cg.positive_target_mj, 3)} mJ · −8°の目標 ${format(cg.negative_target_mj, 3)} mJ` :
-      '重心ずれは未設定、または直立基準の変更で無効です。現在は左右対称の式です。';
+      '絶対角基準の補正は未設定です。仕事に基づく制御では補正ゼロから自動更新します。';
   $('upright-reference-status').textContent = reference.capturing
     ? '基準を取得中です。約2秒間、今の姿勢で静止させてください。'
     : reference.valid
-      ? `基準を保存済み（更新${reference.revision}回） · 基準からの左右角 ${format(reference.relative_pitch_deg)}° · 基準のMEKF角 ${format(reference.abs_pitch_deg)}°`
-      : '基準は未保存です。機体を直立させ、今の姿勢を基準として保存してください。';
-  if (s.running) $('guide').textContent = '測定中。画面は更新されます。足角度は制御入力に使用しません。';
+      ? `比較用の姿勢を保存済み（更新${reference.revision}回） · 保存姿勢との差 ${format(reference.relative_pitch_deg)}° · 保存時のMEKF角 ${format(reference.abs_pitch_deg)}°。仕事制御の原点は絶対角0°です。`
+      : '比較用の姿勢は未保存です。仕事に基づく制御の開始には保存不要です。';
+  if (!s.running && s.ready && !reference.capturing) $('guide').textContent = '仕事に基づく制御はMEKF絶対角0°が基準です。直立基準の保存は不要です。機体を静止させて開始してください。';
+  else if (s.running) $('guide').textContent = '測定中。画面は更新されます。足角度は制御入力に使用しません。';
   else if (reference.capturing) $('guide').textContent = '基準を取得しています。機体を動かさずお待ちください。';
-  else if (!reference.valid) $('guide').textContent = '準備ができたら、直立姿勢を保って基準を保存してください。測定開始時には原点を取り直しません。';
   else if (s.downloadable) $('guide').textContent = 'ログを保存してください。次の測定には「ログを消去・次の測定へ」を使います。';
   else if (s.ready) $('guide').textContent = f.zero_ready && f.right_valid && f.left_valid && !stale
     ? '直立姿勢を保ち、測定を開始してください。'
@@ -828,7 +828,7 @@ async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
   if (!targetChoices.includes(target)) {
     $('message').textContent = '目標角度を8°・10°・12°から選択してください。'; return;
   }
-  const angleText = batchPackage ? '0' : $('input-percent').value.trim();
+  const angleText = batchPackage || workPackage ? '0' : $('input-percent').value.trim();
   const inputPercent = Number(angleText);
   if (!angleText || !validInputPercent(inputPercent)) {
     $('message').textContent = 'ZEROクロス設定を確認してください。'; return;
@@ -893,7 +893,7 @@ function referenceResultMessage(result) {
     lateral_cg_save_failed:'重心ずれを保存できませんでした。停止状態と直立基準を確認してください。',
     lateral_cg_shift_invalid:'重心ずれは−2～＋2 mmの数値で入力してください。',
     equilibrium_contact_not_identifiable:'この静止角からは重心ずれを特定できません。中央の接地範囲内では静止角だけで求められないため、測定した重心ずれをmmで入力してください。元の設定を保っています。',
-    upright_reference_saved:'今の姿勢を直立基準として本体に保存しました。以後の測定でもこの基準を使います。',
+    upright_reference_saved:'比較用の姿勢を本体に保存しました。仕事に基づく制御の原点はMEKF絶対角0°のままです。',
     upright_reference_requires_stopped:'測定を停止してから基準を取得してください。',
     upright_reference_hold_still:'静止を確認できませんでした。元の基準を保っています。機体を静止させてやり直してください。',
     upright_reference_pose_moved:'取得中に角度が変わりました。元の基準を保っています。姿勢を保ってやり直してください。',

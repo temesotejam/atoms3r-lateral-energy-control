@@ -575,9 +575,11 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"normal_autonomous_motor_output_sign\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_NORMAL_OUTPUT_SIGN) + ",";
   json += "\"motor_direction_semantics\":\"pulse_direction_and_q_command_direction_are_body_motion_logical;normal_autonomous_output_uses_mount_polarity_times_trial_sign;start_kick_unchanged;motor_cmd_mA_is_signed_current_sent_to_Roller485;roller_actual_current_mA_is_driver_readback\",";
   json += "\"energy_control_autonomous_startup_pump\":false,";
-  json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);saved_operator_upright_reference;no_delay_projection;no_output_scaling\",";
+  json += "\"energy_control_autonomous_peak_coordinate\":\"A=abs(pitch_mekf_measurement_relative_deg_at_posterior_extremum);work_mode_zero_is_MEKF_absolute_0;other_autonomous_saved_upright;no_delay_projection;no_output_scaling\",";
   json += "\"energy_control_autonomous_rate_coordinate\":\"(gy_dps-mekf_bias_y_dps)*mekf_gyro_y_scale;live_MEKF_bias;historical_Q1_rate_support_rescaled\",";
-  json += "\"energy_control_autonomous_model_coordinate_status\":\"" + String(inverse_mode
+  json += "\"energy_control_autonomous_model_coordinate_status\":\"" + String(work_mode
+      ? "historical_relative_energy_regressions_as_initial_models_at_MEKF_absolute_zero;hardware_validation_pending"
+      : inverse_mode
       ? "negative_side_fit_relative_to_saved_upright;fit_reference_abs_1.932539deg_not_runtime_predictor;positive_side_historical_bridge_coordinate_validation_pending"
       : energy_bridge_enabled_
       ? "04731_measurement_start_relative_fit_reused_with_saved_upright_reference;coordinate_shift_and_hardware_validation_pending"
@@ -681,10 +683,13 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   else json += "null";
   json += ",";
   json += "\"e2_shadow_role\":\"offline_diagnostic_only;not_called_by_Q1_or_its_validity_logic\",";
-  json += "\"angle_reference_policy\":\"autonomous_saved_operator_upright_reference_frozen_for_run;no_measurement_start_rezero;legacy_modes_keep_measurement_start_zero\",";
-  json += "\"comparison_zero_source\":\"autonomous=NVS_two_second_stationary_MEKF_average;legacy=posterior_snapshot;reference_subtraction_does_not_reset_MEKF_state\",";
+  json += "\"control_angle_origin_abs_deg\":" + jsonFloatOrNull(work_mode ? 0.f : run_upright_reference_.pitch_deg,6) + ",";
+  json += "\"work_absolute_reference_enabled\":" + String(work_mode ? "true" : "false") + ",";
+  json += "\"work_reference_validation\":\"historical_relative_energy_regressions_reused_as_initial_models;absolute_zero_cross_state_shift_requires_hardware_validation;neutral_adaptive_seed\",";
+  json += "\"angle_reference_policy\":\"work_mode_MEKF_absolute_zero;other_autonomous_saved_upright;legacy_measurement_start;no_work_rezero\",";
+  json += "\"comparison_zero_source\":\"work=MEKF_absolute_0;other_autonomous=NVS_pose;legacy=posterior_snapshot;reference_subtraction_does_not_reset_MEKF_state\",";
   const bool cg_active=energy_bridge_enabled_ && !negative_probe_mode_ && autonomous_brake_max_ms_==40 &&
-      lateral_cg::matches(run_lateral_cg_,run_upright_reference_.revision,run_upright_reference_.pitch_deg);
+      lateral_cg::matchesAbsolute(run_lateral_cg_);
   const float cg_mm=run_adaptive_cg_.enabled ? run_adaptive_cg_.shift_mm : cg_active ? run_lateral_cg_.shift_mm : 0.f;
   json += "\"adaptive_lateral_cg\":{\"enabled\":" + String(run_adaptive_cg_.enabled ? "true" : "false") +
       ",\"initial_mm\":" + jsonFloatOrNull(run_adaptive_cg_.initial_mm,6) +
@@ -719,10 +724,10 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"mekf_coordinate_mapping\":\"Ry180_body_frame:accel=(-ax,+ay,-az);gyro=(-gx,+gy_scaled,-gz);reported_pitch=physical_video_sign\",";
   json += "\"mekf_gyro_y_scale\":" + String(Config::MEKF_GYRO_Y_SCALE, 6) + ",";
   json += "\"mekf_gyro_y_scale_role\":\"pre_prediction_sensor_calibration_not_output_angle_scaling\",";
-  json += "\"mekf_control_angle_reference\":\"autonomous:MEKF_posterior_abs_minus_saved_upright;measurement_relative_and_detector_relative_columns_share_this_fixed_reference;no_timing_projection;legacy_modes_unchanged\",";
+  json += "\"mekf_control_angle_reference\":\"work:MEKF_posterior_absolute_zero;other_autonomous:abs_minus_saved_upright;measurement_and_detector_share_reference;no_timing_projection;legacy_modes_unchanged\",";
   json += "\"mekf_abs_angle_reference\":\"continuous_gravity_frame_no_per_run_zero_subtraction;preferred_for_absolute_estimator_diagnostics\",";
   json += "\"mekf_detector_relative_reference\":\"posterior_measurement_relative_angle_without_timing_projection\",";
-  json += "\"mekf_detector_zero_role\":\"saved_operator_upright_reference_shared_by_amplitude_energy_timing_angle_stop;no_per_run_rezero\",";
+  json += "\"mekf_detector_zero_role\":\"work_MEKF_absolute_0_shared_by_amplitude_energy_timing_angle_stop;other_autonomous_saved_pose;no_per_run_rezero\",";
   json += "\"autonomous_control_prediction_enabled\":" + String(energy_control_autonomous_mode_ && autonomous_timing_compensation_us_ > 0 ? "true" : "false") + ",";
   json += "\"autonomous_control_prediction_type\":\"none_angle_threshold_only\",";
   json += "\"autonomous_timing_compensation_selectable\":false,";

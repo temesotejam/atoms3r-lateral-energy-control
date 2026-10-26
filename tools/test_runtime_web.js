@@ -96,7 +96,7 @@ vm.runInContext(code,context);
   packet[18]^=1;assert.throws(()=>vm.runInContext('validateChunk(packet,4096,3)',context),/CRC/);
   valid.foot.zero_ready=false;valid.foot.zero_reason='position_mismatch';valid.ready=true;
   await vm.runInContext('refresh()',context);
-  assert.match(element('guide').textContent,/測定を開始できます/);
+  assert.match(element('guide').textContent,/MEKF絶対角0°/);
   assert.strictEqual(element('start').disabled,false);
   valid.foot.available=false;valid.foot.frame_valid=false;valid.foot.age_ms=null;
   await vm.runInContext('refresh()',context);

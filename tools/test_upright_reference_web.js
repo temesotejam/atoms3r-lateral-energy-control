@@ -37,6 +37,7 @@ vm.runInContext(fs.readFileSync('web/pose_comparison.js','utf8')+'\n'+
 (async()=>{
   await vm.runInContext('refresh()',context);
   assert.equal(element('start').disabled,true);
+  assert.equal(element('work-start').disabled,false);
   assert.equal(element('upright-reference-capture').disabled,false);
   await element('upright-reference-capture').onclick();
   assert.match(element('message').textContent,/本体に保存しました/);
