@@ -14,6 +14,7 @@
 #include "wheel_work_energy_control.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
+#include "lateral_cg_energy.h"
 #include "control_math_cache.h"
 #include "imu_manager.h"
 #include "log_types.h"
@@ -82,7 +83,12 @@ public:
   }
   bool anyNegativeProbeBatchMode() const { return negativeProbeBatchMode() || negativeProbeExtendedMode(); }
   bool anyProbeBatchMode() const { return anyNegativeProbeBatchMode() || positiveCurrentBatchMode(); }
-  bool beginUprightReferenceCapture();
+  bool beginUprightReferenceCapture(bool equilibrium = false);
+  bool setLateralCgMm(float shift_mm);
+  const lateral_cg::Record& lateralCg() const { return lateral_cg_; }
+  bool equilibriumCapturing() const { return equilibrium_capture_ && uprightReferenceCapturing(); }
+  float controlPotential(float signed_deg) const;
+  float controlAngle(float energy, int8_t side) const;
   bool pollUprightReferenceCapture(bool& ok, const char*& result);
   const upright_reference::Record& uprightReference() const { return upright_reference_; }
   bool uprightReferenceCapturing() const { return upright_reference_capture_.pending(); }
@@ -137,6 +143,9 @@ private:
   uint32_t last_logged_position_sequence_ = 0;
   uint32_t last_logged_command_sequence_ = 0;
   upright_reference::Record upright_reference_;
+  lateral_cg::Record lateral_cg_;
+  bool equilibrium_capture_ = false;
+  float run_cg_shift_mm_ = 0;
   upright_reference::Capture upright_reference_capture_;
   float energy_control_autonomous_pending_target_deg_ = NAN;
   void beginFilters();

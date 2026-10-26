@@ -10,10 +10,20 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <section class="card"><div class="grid"><div><div class="label">状態</div><div class="value" id="state">—</div></div><div><div class="label">残り時間</div><div class="value" id="remaining">—</div></div><div><div class="label">胴体の左右揺動 · MEKF</div><div class="value" id="pitch">—</div></div><div><div class="label">指令 / 実測電流</div><div class="value" style="font-size:1.5rem" id="current">—</div></div></div>
 <p id="guide">起動後は静止させてください。LEDが点灯したら左右のpitchを基準に合わせ、機体を静止させます。足のマーカー認識は測定開始に不要です。</p>
 <h2>制御に使う直立基準</h2>
-<p>機体を基準にしたい姿勢で静止させ、下のボタンを押してください。約2秒間その姿勢を保つと、左右角の平均を本体に保存します。測定開始・ログ消去・再起動でも基準を保ち、停止中にこのボタンを押したときだけ更新します。</p>
+<p>機体の左右の中心線が鉛直になるように保持し、下のボタンを押してください。約2秒間の左右角の平均を保存します。重心の偏りで自然に傾く姿勢とは区別してください。測定開始・ログ消去・再起動では基準を変えません。</p>
 <button id="upright-reference-capture" disabled>今の姿勢を直立基準として保存</button>
 <p id="upright-reference-status" role="status">保存した基準を確認中…</p>
 <p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
+<h2>左右の重心ずれ</h2>
+<p>機体の中心からの重心ずれを保存すると、＋8°と−8°に必要な位置エネルギーを別々に計算します。＋の値は、画面の角度が＋に傾くほど重心が高くなる側へのずれです。重心ずれが不明な場合は、ピーク角の中点を代入しないでください。</p>
+<label>重心ずれ（mm、−2～＋2） <input id="cg-shift" type="number" min="-2" max="2" step="0.01" placeholder="測定値" disabled></label>
+<button id="cg-save" type="button" disabled>重心ずれを保存</button>
+<details><summary>自然な静止姿勢から推定する</summary>
+<p>先に機体の鉛直姿勢を直立基準として保存してください。その後、機体を左右に支えず、ホイールを止めて自然に静止させ、下のボタンを押します。足裏の円弧上で釣り合う条件に限って推定します。中央の接地範囲内や固定具で支えている場合は、静止角だけでは重心ずれを特定できません。取得中は機体を動かさないでください。</p>
+<button id="cg-capture" type="button" disabled>自然な静止姿勢を2秒測って推定</button>
+</details>
+<p id="cg-status" role="status">重心ずれの設定を確認中…</p>
+<p class="muted">この補正は「仕事に基づく制御」に適用します。直立基準を取り直した場合は重心ずれも再設定してください。未設定時は左右対称の式を使います。</p>
 <div id="work-energy-control">
   <h2>固定脚・ホイールの仕事を使う制御（30秒）</h2>
   <p class="muted">脚の前後移動を固定し、目標8°で測ります。正側は必要なエネルギーから300・350・400 mAと通電時間を選びます。負側は入力中・入力後の仕事を含めて計算し、上限を25 msから5 msずつ広げます。40 msを超える入力は正側の揺れが7.8°以上の場合に限り、最大70 msです。各段階で実測ピークを確認し、左右別のエネルギー予測誤差を次回に反映します。正側が小さくなると上限を下げ、7°未満では負側入力を見送ります。電圧8.12 Vまで対応します。</p>
@@ -543,6 +553,9 @@ function controls() {
   $('upright-reference-capture').disabled = !fresh || busy || transferRunning || building ||
     !latest.controller_fresh || !latest.imu_ok || latest.running || latest.pulse_active || latest.motor_mA !== 0 ||
     !['READY_TO_MEASURE', 'FINISHED', 'ESTOP'].includes(latest.state);
+  $('cg-save').disabled = $('upright-reference-capture').disabled || !latest?.upright_reference?.valid;
+  $('cg-capture').disabled = $('cg-save').disabled;
+  $('cg-shift').disabled = $('cg-save').disabled;
   const dedicatedSelected = ['bridge_inverse','work_control'].includes($('energy-model').value);
   $('target').disabled = $('start').disabled || dedicatedSelected;
   $('input-percent').disabled = $('start').disabled;
@@ -722,6 +735,10 @@ function render(s) {
   $('foot-status').textContent = `足角度（任意） · ${f.zero_ready ? 'ゼロ点確定' : 'ゼロ点未確定（' + (f.zero_samples ?? 0) + '枚）'} · 記録${f.frames ?? 0}枚 · 画像取得失敗${f.failures ?? 0}回` +
     footIssues(f, stale, terminal);
   const reference = s.upright_reference;
+  const cg = s.lateral_cg;
+  $('cg-status').textContent = cg?.capturing ? '自然な静止姿勢を測定中です。機体を支えず、動かさないでください。' :
+    cg?.valid ? `重心ずれ ${format(cg.shift_mm, 3)} mmを適用 · ＋8°の目標 ${format(cg.positive_target_mj, 3)} mJ · −8°の目標 ${format(cg.negative_target_mj, 3)} mJ` :
+      '重心ずれは未設定、または直立基準の変更で無効です。現在は左右対称の式です。';
   $('upright-reference-status').textContent = reference.capturing
     ? '基準を取得中です。約2秒間、今の姿勢で静止させてください。'
     : reference.valid
@@ -846,7 +863,7 @@ async function startOfflineRun(isBatchPackage = false, forcedModel = null) {
   } finally { commandInFlight = false; controls(); }
 }
 async function command(path) {
-  const referenceCapture = path === '/upright-reference/capture';
+  const referenceCapture = path === '/upright-reference/capture' || path.startsWith('/lateral-cg/');
   commandInFlight = true; controls(); $('message').textContent = referenceCapture
     ? '今の姿勢を約2秒間保ってください。基準を取得して保存します。' : '要求を送信中…';
   const before = latest?.command?.submitted ?? 0;
@@ -867,6 +884,10 @@ async function command(path) {
 }
 function referenceResultMessage(result) {
   const messages = {
+    lateral_cg_saved:'重心ずれを本体に保存しました。仕事に基づく制御では左右別の目標エネルギーを使います。',
+    lateral_cg_save_failed:'重心ずれを保存できませんでした。停止状態と直立基準を確認してください。',
+    lateral_cg_shift_invalid:'重心ずれは−2～＋2 mmの数値で入力してください。',
+    equilibrium_contact_not_identifiable:'この静止角からは重心ずれを特定できません。中央の接地範囲内では静止角だけで求められないため、測定した重心ずれをmmで入力してください。元の設定を保っています。',
     upright_reference_saved:'今の姿勢を直立基準として本体に保存しました。以後の測定でもこの基準を使います。',
     upright_reference_requires_stopped:'測定を停止してから基準を取得してください。',
     upright_reference_hold_still:'静止を確認できませんでした。元の基準を保っています。機体を静止させてやり直してください。',
@@ -1138,6 +1159,14 @@ $('energy-model').onchange = () => {
   controls();
 };
 $('upright-reference-capture').onclick = () => command('/upright-reference/capture');
+$('cg-capture').onclick = () => command('/lateral-cg/capture');
+$('cg-save').onclick = () => {
+  const raw = $('cg-shift').value.trim(), mm = Number(raw);
+  if (!raw || !Number.isFinite(mm) || Math.abs(mm) > 2) {
+    $('message').textContent = referenceResultMessage('lateral_cg_shift_invalid'); return;
+  }
+  return command('/lateral-cg/set?shift_mm=' + encodeURIComponent(raw));
+};
 if ($('stop')) $('stop').onclick = () => { poseCancelled = true; return command('/stop'); };
 if ($('reconnect')) $('reconnect').onclick = () => refresh(true);
 if ($('usb-diag')) $('usb-diag').onchange = async () => {

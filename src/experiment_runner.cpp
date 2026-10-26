@@ -109,6 +109,7 @@ void ExperimentRunner::begin(PsramLogger& logger, ImuManager& imu, Roller485Mana
   imu_ = &imu;
   roller_ = &roller;
   upright_reference::load(upright_reference_);
+  lateral_cg::load(lateral_cg_);
   boot_start_ms_ = millis();
   calib_start_ms_ = boot_start_ms_;
   beginFilters();
@@ -118,7 +119,8 @@ void ExperimentRunner::begin(PsramLogger& logger, ImuManager& imu, Roller485Mana
   status_.state = ExperimentState::STARTUP_GYRO_CALIB;
 }
 
-bool ExperimentRunner::beginUprightReferenceCapture() {
+bool ExperimentRunner::beginUprightReferenceCapture(bool equilibrium) {
+  if (equilibrium && !upright_reference::valid(upright_reference_)) return false;
   if (running() || status_.pulse_active || status_.motor_cmd_mA != 0 ||
       upright_reference_capture_.pending() || !bias_ready_ ||
       (status_.state != ExperimentState::READY_TO_MEASURE &&
@@ -128,6 +130,7 @@ bool ExperimentRunner::beginUprightReferenceCapture() {
     return false;
   }
   stopMotor();
+  equilibrium_capture_ = equilibrium;
   upright_reference_capture_.begin(micros(), upright_reference_.revision);
   return true;
 }
@@ -150,7 +153,25 @@ bool ExperimentRunner::pollUprightReferenceCapture(bool& ok, const char*& result
   if (upright_reference_capture_.pending()) return false;
   ok = upright_reference_capture_.state() == State::Ready;
   result = upright_reference_capture_.error();
-  if (ok) {
+  if (ok && equilibrium_capture_) {
+    float shift = 0;
+    if (!lateral_cg::fromEquilibrium(lateral_energy_geometry_,
+        upright_reference_capture_.candidate().pitch_deg-upright_reference_.pitch_deg, shift)) {
+      ok=false;result="equilibrium_contact_not_identifiable";
+    } else {
+      lateral_cg::Record record;
+      record.magic=lateral_cg::kMagic;record.revision=lateral_cg_.revision+1;
+      record.upright_revision=upright_reference_.revision;
+      record.upright_abs_deg=upright_reference_.pitch_deg;record.shift_mm=shift;record.source=2;
+      record.equilibrium_abs_deg=upright_reference_capture_.candidate().pitch_deg;
+      ok=lateral_cg::save(record);
+      if (ok) {
+        lateral_cg_=record;
+        if (status_.state==ExperimentState::READY_TO_MEASURE) status_.last_error="";
+      }
+      result=ok ? "lateral_cg_saved" : "lateral_cg_save_failed";
+    }
+  } else if (ok) {
     // The controller owner writes flash only while stopped. One blob is
     // committed and read back before the live reference is replaced.
     ok = upright_reference::save(upright_reference_capture_.candidate());
@@ -164,7 +185,30 @@ bool ExperimentRunner::pollUprightReferenceCapture(bool& ok, const char*& result
   // terminal error, especially ESTOP, until its log has been downloaded.
   if (!ok && status_.state == ExperimentState::READY_TO_MEASURE) status_.last_error = result;
   upright_reference_capture_ = upright_reference::Capture{};
+  equilibrium_capture_ = false;
   return true;
+}
+
+bool ExperimentRunner::setLateralCgMm(float shift_mm) {
+  if (running() || status_.pulse_active || status_.motor_cmd_mA != 0 ||
+      !upright_reference::valid(upright_reference_) || !std::isfinite(shift_mm) ||
+      std::fabs(shift_mm)>lateral_cg::kMaxShiftMm ||
+      (status_.state != ExperimentState::READY_TO_MEASURE &&
+       status_.state != ExperimentState::FINISHED && status_.state != ExperimentState::ESTOP)) return false;
+  lateral_cg::Record r;
+  r.magic=lateral_cg::kMagic;r.revision=lateral_cg_.revision+1;
+  r.upright_revision=upright_reference_.revision;r.upright_abs_deg=upright_reference_.pitch_deg;
+  r.source=1;r.shift_mm=shift_mm;r.equilibrium_abs_deg=upright_reference_.pitch_deg;
+  if (!lateral_cg::save(r)) return false;
+  lateral_cg_=r;
+  if (status_.state==ExperimentState::READY_TO_MEASURE) status_.last_error="";
+  return true;
+}
+__attribute__((noinline)) float ExperimentRunner::controlPotential(float signed_deg) const {
+  return lateral_cg::potential(lateral_energy_geometry_,signed_deg,wheelWorkMode() ? run_cg_shift_mm_ : 0.f);
+}
+__attribute__((noinline)) float ExperimentRunner::controlAngle(float energy,int8_t side) const {
+  return lateral_cg::angle(lateral_energy_geometry_,energy,side,wheelWorkMode() ? run_cg_shift_mm_ : 0.f);
 }
 
 float ExperimentRunner::uprightPitchErrorDeg(const ImuReading& r) const {
@@ -1347,6 +1391,8 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   status_.mekf_trial_zero_sample_us = 0;
   updateMekfComparisonRelativeAngles();
   // V46z comparison-zero end
+  run_cg_shift_mm_ = wheelWorkMode() && lateral_cg::matches(lateral_cg_,upright_reference_.revision,
+      upright_reference_.pitch_deg) ? lateral_cg_.shift_mm : 0.f;
   run_start_us_ = micros();
   logger_->startRun(status_.run_id, run_start_us_,
                     energy_control_autonomous_mode_ ? energy_control_autonomous_input_current_mA_ : status_.current_mA_setting,
@@ -1361,6 +1407,7 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
                       energy_bridge_enabled_, negative_probe_mode_,
                       energy_control_autonomous_mode_ ? upright_reference_ : upright_reference::Record{},
                       negative_probe_batch_seed_);
+  logger_->recordLateralCg(wheelWorkMode() ? lateral_cg_ : lateral_cg::Record{});
   last_log_us_ = 0;
   status_.state = ExperimentState::START_SYNC;
   status_.sync_event_id = 1;
@@ -2800,8 +2847,8 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       physical_side == energy_control_autonomous_pending_next_side_;
   event.pending_q_command_mA_s = event.pending_command_matched
       ? energy_control_autonomous_pending_q_command_mA_s_ : NAN;
-  event.target_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.target_peak_deg);
-  event.measured_energy_j = lateral_energy::potential(lateral_energy_geometry_, event.peak_amplitude_deg);
+  event.target_energy_j = controlPotential(physical_side * event.target_peak_deg);
+  event.measured_energy_j = controlPotential(physical_side * event.peak_amplitude_deg);
   if (roller_) {
     const uint32_t capture_us=micros();
     const auto telemetry=roller_->telemetrySnapshot();
@@ -3093,7 +3140,7 @@ void ExperimentRunner::captureWheelWorkDecision(
     event.work_bias_samples=work_positive_feedback_[choice.branch==6 ? 1 : 0].count();
   if (choice.valid && std::isfinite(choice.free_mj)) {
     event.passive_energy_j=choice.free_mj*.001f;
-    event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
+    event.free_next_peak_amplitude_deg=controlAngle(event.passive_energy_j,event.physical_next_peak_side);
   }
 }
 
@@ -3259,7 +3306,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.passive_energy_j = energy_bridge_enabled_
       ? lateral_energy::potential(lateral_energy_geometry_,bridge_free_angle)
       : lateral_energy::freeEnergy(energy_coeff,omega);
-  event.target_energy_j = lateral_target_energy_j_;
+  event.target_energy_j = wheelWorkMode() ? controlPotential(event.physical_next_peak_side * event.target_peak_deg) : lateral_target_energy_j_;
   event.free_next_peak_amplitude_deg = energy_bridge_enabled_ ? bridge_free_angle :
       lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
   const auto bridge_coeff=lateral_energy::bridgeCoefficients(event.physical_next_peak_side);
@@ -3407,7 +3454,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   if (inverse_negative && decision.valid) {
     prediction_bias_j=inverse_residual_j;
     event.passive_energy_j=decision.free_j;
-    event.free_next_peak_amplitude_deg=lateral_energy::angle(lateral_energy_geometry_,decision.free_j);
+    event.free_next_peak_amplitude_deg=controlAngle(decision.free_j,event.physical_next_peak_side);
     event.rate_support_diagnostic=true;
   }
   if (!decision.valid || !std::isfinite(event.free_next_peak_amplitude_deg)) {
@@ -3466,15 +3513,14 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   event.work_omega_q_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_omega_q;
   event.work_q2_coefficient=energy_bridge_enabled_ ? NAN : energy_coeff.work_q2;
   event.energy_model_extrapolated=fixed_negative_probe || decision.extrapolated ||
-      (work_mode ? (!work_choice.valid || work_choice.cross_condition) : selected_current_mA!=300);
+      (work_mode ? (!work_choice.valid || work_choice.cross_condition || run_cg_shift_mm_!=0.f) : selected_current_mA!=300);
   event.q_command_mA_s=selected_q_mA_s;event.q_effective_pred_mA_s=selected_q_mA_s;
   event.predicted_energy_j=fixed_negative_probe ? NAN : decision.predicted_j;
   event.predicted_next_peak_amplitude_deg=fixed_negative_probe ? NAN :
-      lateral_energy::angle(lateral_energy_geometry_,decision.predicted_j);
+      controlAngle(decision.predicted_j,event.physical_next_peak_side);
   event.predicted_observed_energy_j = fixed_negative_probe ? NAN :
       fmaxf(0.f, decision.predicted_j + ((inverse_negative || (work_mode && work_choice.valid)) ? 0.f : prediction_bias_j));
-  event.predicted_observed_next_peak_deg = lateral_energy::angle(
-      lateral_energy_geometry_, event.predicted_observed_energy_j);
+  event.predicted_observed_next_peak_deg = controlAngle(event.predicted_observed_energy_j,event.physical_next_peak_side);
   event.solver_required_width_ms=static_cast<float>(selected_width_ms);
   event.solver_selected_integer_width_ms=selected_width_ms;
   // Audit fields are retained for old log readers; current energy-unit fields

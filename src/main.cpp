@@ -70,6 +70,8 @@ static void captureRunState(void*, RunControlSnapshot& out) {
   out.peak_adaptation_enabled = runner.peakAdaptationEnabled();
   out.energy_bridge_enabled = runner.energyBridgeEnabled();
   out.upright_reference = runner.uprightReference();
+  out.lateral_cg = runner.lateralCg();
+  out.equilibrium_capturing = runner.equilibriumCapturing();
   out.upright_reference_capturing = runner.uprightReferenceCapturing();
   out.upright_reference_capture_samples = runner.uprightReferenceCaptureSamples();
   if (upright_reference::valid(out.upright_reference))
@@ -168,9 +170,14 @@ static bool controlStep(void*) {
   } else if (command == RunControlWorker::Command::Clear) {
     runner.clearFinishedOrEstop(); feet.clearRun(); log_epoch_us = measurement_epoch_us = 0;
     run_control.completeCommand(true, "cleared");
-  } else if (command == RunControlWorker::Command::CaptureUprightReference) {
-    reference_command_active = runner.beginUprightReferenceCapture();
+  } else if (command == RunControlWorker::Command::CaptureUprightReference ||
+             command == RunControlWorker::Command::CaptureEquilibrium) {
+    reference_command_active = runner.beginUprightReferenceCapture(command == RunControlWorker::Command::CaptureEquilibrium);
     if (!reference_command_active) run_control.completeCommand(false, "upright_reference_requires_stopped");
+  }
+  if (command == RunControlWorker::Command::SetLateralCg) {
+    const bool ok=runner.setLateralCgMm(start_target_deg);
+    run_control.completeCommand(ok,ok ? "lateral_cg_saved" : "lateral_cg_save_failed");
   }
   const bool measurement = runner.status().state == ExperimentState::RUNNING_BATCH_SWEEP;
   control_latency::setActive(measurement);

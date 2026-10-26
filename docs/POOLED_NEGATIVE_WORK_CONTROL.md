@@ -1,3 +1,5 @@
+[1.0.30 lateral CG energy update](LATERAL_CG_ENERGY.md)
+
 ## 1.0.29: separate side energy models and balanced input authority
 
 ### What the latest run showed

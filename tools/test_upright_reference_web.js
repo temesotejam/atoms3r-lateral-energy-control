@@ -8,10 +8,16 @@ const status={state:'READY_TO_MEASURE',ready:true,running:false,downloadable:fal
   brake_max_ms:50,peak_adaptation_enabled:false,target_deg:8,boot_id:1,
   command:{pending:false,submitted:0,completed:0,result:''},foot:{},upright:{},
   upright_reference:{valid:false,capturing:false,abs_pitch_deg:null,relative_pitch_deg:null,revision:0}};
-let polls=0,fail=false;
+let polls=0,fail=false,cgCommand=false;
 const context=vm.createContext({document:{getElementById:element},Date,setTimeout,clearTimeout,AbortController,
   Map,DataView,Uint8Array,TextDecoder,fetch:async(path)=>{
+    if(path.startsWith('/lateral-cg/')) {
+      assert.equal(status.running,false);cgCommand=true;
+      ++status.command.submitted;status.command.pending=true;polls=0;
+      return {ok:true,text:async()=>'command_queued'};
+    }
     if(path==='/upright-reference/capture') {
+      cgCommand=false;
       assert.equal(element('start').disabled,true);
       ++status.command.submitted; status.command.pending=true; status.upright_reference.capturing=true;
       polls=0; return {ok:true,text:async()=>'command_queued'};
@@ -19,7 +25,8 @@ const context=vm.createContext({document:{getElementById:element},Date,setTimeou
     assert.equal(path,'/status.json');
     if(status.command.pending && ++polls===2) {
       status.command.pending=false; status.command.completed=status.command.submitted;
-      status.command.ok=!fail; status.command.result=fail?'upright_reference_pose_moved':'upright_reference_saved';
+      status.command.ok=!fail; status.command.result=cgCommand ? 'lateral_cg_saved' : fail?'upright_reference_pose_moved':'upright_reference_saved';
+      if(cgCommand)status.lateral_cg={valid:true,shift_mm:-.5,positive_target_mj:.597,negative_target_mj:.870};
       status.upright_reference.capturing=false;
       if(!fail)Object.assign(status.upright_reference,{valid:true,abs_pitch_deg:2.2,relative_pitch_deg:0,revision:1});
     }
@@ -34,11 +41,18 @@ vm.runInContext(fs.readFileSync('web/pose_comparison.js','utf8')+'\n'+
   await element('upright-reference-capture').onclick();
   assert.match(element('message').textContent,/本体に保存しました/);
   assert.equal(element('start').disabled,false);
+  assert.equal(element('cg-save').disabled,false);
+  element('cg-shift').value='-0.5';await element('cg-save').onclick();
+  assert.equal(status.lateral_cg.shift_mm,-.5);
+  assert.match(element('cg-status').textContent,/-0.500/);
+  element('cg-shift').value='3';const submitted=status.command.submitted;
+  await element('cg-save').onclick();assert.equal(status.command.submitted,submitted);
   fail=true;await element('upright-reference-capture').onclick();
   assert.match(element('message').textContent,/元の基準を保っています/);
   assert.equal(status.upright_reference.abs_pitch_deg,2.2);
   status.running=true;await vm.runInContext('refresh()',context);
   assert.equal(element('upright-reference-capture').disabled,true);
+  assert.equal(element('cg-save').disabled,true);assert.equal(element('cg-capture').disabled,true);
   status.running=false;status.command.pending=true;polls=0;await vm.runInContext('refresh()',context);
   assert.equal(element('upright-reference-capture').disabled,true);
   status.command.pending=false;status.imu_ok=false;await vm.runInContext('refresh()',context);

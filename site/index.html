@@ -17,7 +17,8 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
-      <h2>1.0.29：左右別のエネルギー予測と入力の選択範囲を更新</h2>
+      <h2>1.0.30：重心の左右ずれを位置エネルギーに反映</h2>
+      <p>機体の鉛直姿勢を直立基準として保存し、実機画面の「左右の重心ずれ」を設定してください。＋8°と−8°の目標、実測ピークのエネルギー、予測角への換算に同じ重心ずれの式を使い、必要な仕事から電流と時間を選びます。未設定時は左右対称です。直立基準を取り直すと重心ずれの再設定が必要です。自然な静止角からの推定は、足裏の円弧上で釣り合う条件に限ります。</p>
       <p>今回を含む8回・180件で正側の仕事と到達エネルギーを予測し、必要に応じて300・350・400 mAを選びます。左右別の予測誤差で補正し、負側は正側の揺れを確認しながら上限を25 msから5 msずつ広げます。40 msを超える入力は正側7.8°以上を条件とし、最大70 msです。実機の「仕事に基づく制御で30秒測定を開始」を使います。目標8°に必要なエネルギーとの差から入力を選びます。40 msを超える減速入力など、未実測の組合せはログで区別します。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/POOLED_NEGATIVE_WORK_CONTROL.md">制御式と検証結果</a></p>
     </section>
     <section class="panel important">

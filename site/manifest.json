@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.29-balanced-energy-inputs",
+  "version": "1.0.30-lateral-cg-energy",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

@@ -232,6 +232,7 @@ void PsramLogger::startRun(uint16_t run_id, uint64_t run_start_us, int16_t curre
   negative_probe_mode_ = negative_probe_mode;
   negative_probe_batch_seed_ = negative_probe_batch_seed;
   run_upright_reference_ = upright_reference;
+  run_lateral_cg_ = lateral_cg::Record{};
   measurement_start_abs_deg_ = NAN;
   identification_event_count_ = 0;
   calibration_peak_event_count_ = 0;
@@ -674,6 +675,19 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"e2_shadow_role\":\"offline_diagnostic_only;not_called_by_Q1_or_its_validity_logic\",";
   json += "\"angle_reference_policy\":\"autonomous_saved_operator_upright_reference_frozen_for_run;no_measurement_start_rezero;legacy_modes_keep_measurement_start_zero\",";
   json += "\"comparison_zero_source\":\"autonomous=NVS_two_second_stationary_MEKF_average;legacy=posterior_snapshot;reference_subtraction_does_not_reset_MEKF_state\",";
+  const bool cg_active=energy_bridge_enabled_ && !negative_probe_mode_ && autonomous_brake_max_ms_==40 &&
+      lateral_cg::matches(run_lateral_cg_,run_upright_reference_.revision,run_upright_reference_.pitch_deg);
+  const float cg_mm=cg_active ? run_lateral_cg_.shift_mm : 0.f;
+  const lateral_energy::Geometry cg_geometry;
+  json += "\"lateral_cg\":{\"valid\":" + String(cg_active ? "true" : "false") +
+      ",\"shift_mm\":" + jsonFloatOrNull(cg_mm,6) +
+      ",\"positive_target_j\":" + jsonFloatOrNull(lateral_cg::potential(cg_geometry,control_target_cdeg_/100.f,cg_mm),9) +
+      ",\"negative_target_j\":" + jsonFloatOrNull(lateral_cg::potential(cg_geometry,-control_target_cdeg_/100.f,cg_mm),9) +
+      ",\"source\":" + String(run_lateral_cg_.source) +
+      ",\"revision\":" + String(run_lateral_cg_.revision) +
+      ",\"upright_revision\":" + String(run_lateral_cg_.upright_revision) +
+      ",\"equilibrium_abs_deg\":" + jsonFloatOrNull(run_lateral_cg_.equilibrium_abs_deg,6) +
+      ",\"potential\":\"U0(theta)+m*g*dx*sin(theta);geometric_upright_zero\"},";
   json += "\"upright_reference_revision\":" + String(run_upright_reference_.revision) + ",";
   json += "\"upright_reference_valid\":" + String(upright_reference::valid(run_upright_reference_) ? "true" : "false") + ",";
   json += "\"upright_reference_abs_pitch_deg\":" + jsonFloatOrNull(upright_reference::valid(run_upright_reference_) ? run_upright_reference_.pitch_deg : NAN, 6) + ",";

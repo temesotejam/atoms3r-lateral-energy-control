@@ -65,6 +65,14 @@ int main(){
   assert(!w.request(RunControlWorker::Command::Start,8,0.0f,500,15,false,true,true));
   assert(!w.request(RunControlWorker::Command::Start,8,0.0f,300,15,true,true,true));
   assert(!w.request(RunControlWorker::Command::Start,8,0.0f,300,15,false,false,true));
+  assert(!w.request(RunControlWorker::Command::SetLateralCg,NAN));
+  assert(!w.request(RunControlWorker::Command::SetLateralCg,2.01f));
+  assert(w.request(RunControlWorker::Command::SetLateralCg,-.5f));
+  float cg_shift=0;
+  assert(w.takeCommand(&cg_shift)==RunControlWorker::Command::SetLateralCg && cg_shift==-.5f);
+  assert(!w.request(RunControlWorker::Command::CaptureEquilibrium));
+  w.completeCommand(true,"lateral_cg_saved");
+  w.oneStep();
   assert(w.request(RunControlWorker::Command::CaptureUprightReference));
   assert(w.takeCommand()==RunControlWorker::Command::CaptureUprightReference);
   assert(w.commandState().pending);

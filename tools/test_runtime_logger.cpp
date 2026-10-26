@@ -176,6 +176,11 @@ int main(int argc,char** argv){
     assert(work.begin());
     work.startRun(3, 323456, 300, 100, 1000, false, 0, 800, 0, false,
         NAN, false, 0, false, true, 0.0f, 40, false, true, false, reference);
+    lateral_cg::Record cg;
+    cg.magic=lateral_cg::kMagic;cg.revision=1;cg.upright_revision=reference.revision;
+    cg.upright_abs_deg=reference.pitch_deg;cg.source=1;cg.shift_mm=work_first ? .5f : -.5f;
+    work.recordLateralCg(cg);
+    cg.shift_mm=1.5f; // The run retains its snapshot, independently of later edits.
     assert(work.addSample(row));
     for (unsigned i = 0; i < 256; ++i) {
       PsramLogger::EnergyControlAutonomousZeroCrossEvent z{};
@@ -200,6 +205,8 @@ int main(int argc,char** argv){
         << " error=" << result.error << "\n";
     assert(result.phase == ImmutableExport::Phase::Ready);
     const std::string metadata = work_export.metadata_.c_str();
+    assert(metadata.find("\"lateral_cg\":{\"valid\":true") != std::string::npos);
+    assert(metadata.find(work_first ? "\"shift_mm\":0.500000" : "\"shift_mm\":-0.500000") != std::string::npos);
     assert(metadata.find("\"autonomous_duration_ms\":30000") != std::string::npos);
     assert(metadata.find("separate_bridge_and_work_last_3_matched_peaks") != std::string::npos);
     assert(metadata.find("\"energy_control_autonomous_zero_cross_event_rendered_count\":256") != std::string::npos);

@@ -43,6 +43,8 @@ void WebUi::begin(BoundedWriteWebServer& s, RunControlWorker& control, FootObser
   s.on("/vision/chunk", HTTP_GET, [this]() { previewChunk(); });
   s.on("/start-energy-control-autonomous", HTTP_POST, [this]() { command(RunControlWorker::Command::Start); });
   s.on("/clear", HTTP_POST, [this]() { command(RunControlWorker::Command::Clear); });
+  s.on("/lateral-cg/capture", HTTP_POST, [this]() { command(RunControlWorker::Command::CaptureEquilibrium); });
+  s.on("/lateral-cg/set", HTTP_POST, [this]() { command(RunControlWorker::Command::SetLateralCg); });
   s.on("/upright-reference/capture", HTTP_POST, [this]() { command(RunControlWorker::Command::CaptureUprightReference); });
   s.on("/stop", HTTP_POST, [this]() {
     RuntimeDiag::Scope diagnostic(RuntimeDiag::Lane::Http, RuntimeDiag::Phase::HttpCommand);
@@ -141,11 +143,25 @@ void WebUi::command(RunControlWorker::Command cmd) {
   if (cmd == RunControlWorker::Command::Start && !upright_reference::valid(st.upright_reference)) {
     server_->send(409, "text/plain", "upright_reference_required"); return;
   }
-  if (cmd == RunControlWorker::Command::CaptureUprightReference &&
+  if ((cmd == RunControlWorker::Command::CaptureUprightReference ||
+       cmd == RunControlWorker::Command::CaptureEquilibrium || cmd == RunControlWorker::Command::SetLateralCg) &&
       (!st.imu_ok || !st.heartbeat_us || static_cast<uint32_t>(micros() - st.heartbeat_us) >= 500000 ||
        st.pulse_active || st.motor_cmd_mA != 0 ||
        (String(st.state_name) != "READY_TO_MEASURE" && String(st.state_name) != "FINISHED" && String(st.state_name) != "ESTOP"))) {
     server_->send(409, "text/plain", "upright_reference_requires_stopped"); return;
+  }
+  if ((cmd == RunControlWorker::Command::CaptureEquilibrium || cmd == RunControlWorker::Command::SetLateralCg) &&
+      !upright_reference::valid(st.upright_reference)) {
+    server_->send(409,"text/plain","upright_reference_required");return;
+  }
+  if (cmd == RunControlWorker::Command::SetLateralCg) {
+    const String text=server_->arg("shift_mm");char* end=nullptr;
+    const float mm=strtof(text.c_str(),&end);
+    if (text.length()==0 || end==text.c_str() || *end || !std::isfinite(mm) || std::fabs(mm)>lateral_cg::kMaxShiftMm) {
+      server_->send(400,"text/plain","lateral_cg_shift_invalid");return;
+    }
+    const bool ok=control_->request(cmd,mm);
+    server_->send(ok ? 202 : 409,"text/plain",ok ? "command_queued" : "command_busy");return;
   }
   if (cmd == RunControlWorker::Command::Clear && !export_->reset()) {
     server_->send(409, "text/plain", "export_preparing"); return;
@@ -263,6 +279,14 @@ void WebUi::status() {
   json += ",\"spread_deg\":" + num(s.upright_reference.spread_deg);
   json += ",\"capturing\":" + String(s.upright_reference_capturing ? "true" : "false");
   json += ",\"capture_samples\":" + String(s.upright_reference_capture_samples) + "}";
+  const bool cg_valid=lateral_cg::matches(s.lateral_cg,s.upright_reference.revision,s.upright_reference.pitch_deg);
+  const float cg_mm=cg_valid ? s.lateral_cg.shift_mm : 0.f;
+  const lateral_energy::Geometry cg_geometry;
+  json += ",\"lateral_cg\":{\"valid\":" + String(cg_valid ? "true" : "false") +
+      ",\"shift_mm\":" + num(cg_mm) + ",\"source\":" + String(s.lateral_cg.source) +
+      ",\"capturing\":" + String(s.equilibrium_capturing ? "true" : "false") +
+      ",\"positive_target_mj\":" + num(1000.f*lateral_cg::potential(cg_geometry,8.f,cg_mm)) +
+      ",\"negative_target_mj\":" + num(1000.f*lateral_cg::potential(cg_geometry,-8.f,cg_mm)) + "}";
   json += ",\"motor_mA\":" + String(s.motor_cmd_mA) + ",\"actual_mA\":" + String(s.actual_current_mA);
   json += ",\"battery_mV\":" + String(s.battery_mV);
   json += ",\"imu_ok\":" + String(s.imu_ok ? "true" : "false") + ",\"roller_ok\":" + String(s.roller_ok ? "true" : "false");

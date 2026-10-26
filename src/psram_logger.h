@@ -7,6 +7,7 @@
 #include "log_types.h"
 #include "solver_audit.h"
 #include "upright_reference.h"
+#include "lateral_cg_energy.h"
 
 class PsramLogger {
  public:
@@ -645,6 +646,7 @@ class PsramLogger {
   bool sealed() const { return sealed_; }
   const uint8_t* sampleBytes() const { return reinterpret_cast<const uint8_t*>(samples_); }
   static constexpr size_t kMetadataJsonReserveBytes = 768U * 1024U;
+  void recordLateralCg(const lateral_cg::Record& r) { run_lateral_cg_ = r; }
   bool buildMetadataJson(PsramString& json) const;
   RwLogFileHeader buildHeader(uint32_t metadata_size) const;
   static size_t eventStorageBytes() { return sizeof(EventStorage); }
@@ -694,6 +696,7 @@ private:
   bool negative_probe_mode_ = false;
   uint32_t negative_probe_batch_seed_ = 0;
   upright_reference::Record run_upright_reference_;
+  lateral_cg::Record run_lateral_cg_;
   float measurement_start_abs_deg_ = NAN;
   uint32_t autonomous_timing_compensation_us_ = 0;  // Immutable metadata for the saved run.
   uint16_t identification_event_count_ = 0;

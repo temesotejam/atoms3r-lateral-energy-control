@@ -15,6 +15,7 @@
 #include "autonomous_input_current.h"
 #include "autonomous_brake_limit.h"
 #include "upright_reference.h"
+#include "lateral_cg_energy.h"
 
 // One permanent controller owner, including idle and calibration. HTTP sends
 // commands and consumes POD snapshots; it never calls the live runner/IMU.
@@ -33,6 +34,8 @@ struct RunControlSnapshot {
   bool energy_bridge_enabled = true;
   bool negative_probe_mode = false;
   upright_reference::Record upright_reference;
+  lateral_cg::Record lateral_cg;
+  bool equilibrium_capturing = false;
   bool upright_reference_capturing = false;
   uint32_t upright_reference_capture_samples = 0;
   MekfAttitudeSnapshot mekf_attitude;
@@ -56,7 +59,7 @@ class RunControlWorker {
  public:
   static constexpr uint8_t kCore = 1;
   static constexpr uint8_t kPriority = 4;
-  enum class Command : uint8_t { None, Start, Clear, CaptureUprightReference };
+  enum class Command : uint8_t { None, Start, Clear, CaptureUprightReference, CaptureEquilibrium, SetLateralCg };
   struct CommandState {
     uint32_t submitted = 0, completed = 0;
     bool pending = false, ok = false;
@@ -126,6 +129,8 @@ class RunControlWorker {
           !((brake_max_ms == 25 || brake_max_ms == 40) && target_deg == 8.0f && input_current_mA == 300 &&
             !peak_adaptation_enabled)) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms)))) return false;
+    if (command == Command::SetLateralCg && (!std::isfinite(target_deg) ||
+        std::fabs(target_deg)>lateral_cg::kMaxShiftMm)) return false;
     portENTER_CRITICAL(&mux_);
     const bool accepted = !command_state_.pending && !snapshot_.running && !stop_requested_;
     if (accepted) {

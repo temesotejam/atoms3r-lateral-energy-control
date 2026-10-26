@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_lateral_cg.cpp src/lateral_cg_store.cpp -o /tmp/test_lateral_cg
+/tmp/test_lateral_cg
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_negative_probe_batch.cpp -o /tmp/test_negative_probe_batch
 /tmp/test_negative_probe_batch
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_positive_current_batch.cpp -o /tmp/test_positive_current_batch
