@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.32-smooth-energy-boundary",
+  "version": "1.0.33-absolute-energy-reference",
   "builds": [
     {
       "chipFamily": "ESP32-S3",
