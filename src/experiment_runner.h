@@ -491,11 +491,13 @@ private:
   uint16_t inverse_negative_pending_width_ms_ = 0;
   float inverse_negative_pending_bias_j_ = 0.f;
   wheel_work_energy_control::NegativeFeedback work_negative_feedback_;
-  wheel_work_energy_control::SideEnergyFeedback work_positive_feedback_[3]; // bridge, work, negative
+  wheel_work_energy_control::NegativeAssistFeedback work_negative_assist_feedback_;
+  wheel_work_energy_control::SideEnergyFeedback work_positive_feedback_[4]; // bridge, work, negative brake/coast, negative assist
   bool work_positive_pending_ = false;
   uint8_t work_positive_pending_branch_ = 0;
   float work_positive_pending_raw_j_ = NAN;
   bool work_negative_pending_ = false;
+  bool work_negative_pending_assist_ = false;
   bool work_negative_pending_supported_ = false;
   uint16_t work_negative_pending_width_ms_ = 0;
   float work_negative_pending_bias_j_ = 0.f;

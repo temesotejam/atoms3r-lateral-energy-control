@@ -29,8 +29,8 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 </details>
 <div id="work-energy-control">
   <h2>固定脚・ホイールの仕事を使う制御（30秒）</h2>
-  <p class="muted">1.0.36では、絶対角0°を基準に目標±8°・±10°・±12°を選べます。直立基準の保存は不要です。左右それぞれの実測ピークからエネルギー予測を補正します。まず10°を試し、そのログを確認してから12°へ進めてください。</p>
-  <p class="muted">脚の前後移動を固定し、各ボタンで30秒測定します。正側は300・350・400 mA、通電時間は最大100 msです。負側は300 mAで、上限25 msから実測結果に応じて段階的に調整します。正側が目標より1°以上小さい場合は負側入力を抑えます。10°・12°は試験用で、8°で得た予測式の適用範囲を限定して広げています。入力上限で届かない場合はログで確認します。</p>
+  <p class="muted">1.0.37では、絶対角0°を基準に目標±8°・±10°・±12°を選べます。直立基準の保存は不要です。左右それぞれの実測ピークからエネルギー予測を補正します。まず10°を試し、そのログを確認してから12°へ進めてください。</p>
+  <p class="muted">脚の前後移動を固定し、各ボタンで30秒測定します。正側は300・350・400 mA、最大100 msです。10°・12°の負側は、不足が実測でも続いた場合にエネルギーを加える補助入力を使います。補助入力は300 mA・上限25 msから段階的に最大100 ms、ブレーキは最大70 msです。補助入力の効き方は正側の仕事モデルから仮定した試験用で、負側での精度は未確認です。8°は従来の入力選択を使います。</p>
   <button id="work-start" type="button" disabled>目標±8°で30秒測定</button>
   <button id="work-start-10" type="button" disabled>目標±10°で30秒測定</button>
   <button id="work-start-12" type="button" disabled>目標±12°で30秒測定</button>
@@ -725,7 +725,7 @@ function render(s) {
     ? s.energy_model === 'bridge_probe_positive_current' ? '今回の負側入力：300 mA・40 msに固定'
       : s.energy_model === 'bridge_probe_extended' ? '今回の負側入力：30・35・40 msを3条件ずつ順序を変更'
       : s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを5条件ずつ順序を変更'
-      : s.energy_model === 'work_control' ? `今回の負側入力：エネルギー差から0または10～70 msを選択。40 ms超は正側${format(s.target_deg-.2,1)}°以上で段階的に許可`
+      : s.energy_model === 'work_control' ? (s.target_deg>8 ? '今回の負側入力：エネルギー差から無入力・ブレーキ・不足時の補助入力を選択。補助入力は実測結果に応じて25 msから段階的に拡張' : `今回の負側入力：エネルギー差から0または10～70 msを選択。40 ms超は正側${format(s.target_deg-.2,1)}°以上で段階的に許可`)
       : s.energy_model === 'bridge_inverse' ? '今回の負側入力：実測0〜25 ms、ピークを確認して最大30 ms'
       : s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';

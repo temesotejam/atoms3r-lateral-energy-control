@@ -9,7 +9,7 @@
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_target_8_10_12_20261026";
+constexpr char kRevision[] = "wheel_work_negative_assist_20261026";
 constexpr float kRadPerDeg = 0.017453292519943295f;
 constexpr uint16_t kNegativeMaxMs = 70;
 constexpr float kPositiveMinQ = 8.79588f;
@@ -42,6 +42,7 @@ struct Choice {
   bool target_below_reachable = false;
   bool target_above_reachable = false;
   uint16_t allowed_cap_ms=0;
+  int8_t command_sign=1; // Relative to body motion: +1 adds, -1 brakes.
   int16_t current_ma = 0;
   uint16_t width_ms = 0;
   float q_mas = NAN;
@@ -355,6 +356,68 @@ inline Choice chooseNegativeBoundary(const State& state,uint16_t cap_ms,float ta
   c.allowed_cap_ms=static_cast<uint16_t>(std::floor(std::fmin<float>(kNegativeMaxMs,cap_ms)*weight+1e-5f));
   for(uint16_t ms=0;ms<=c.allowed_cap_ms;ms=ms==0 ? 10 : ms+1)
     consider(c,300,ms,NAN,negativeBoundary(state,ms,bias_mj),target_mj);
+  c.command_sign=-1;
+  finish(c,target_mj);return c;
+}
+
+// Experimental excitation at the negative crossing. The coast term is the
+// negative-side model; the incremental energy gain is seeded from the positive
+// whole-pulse/post-pulse work fit. This transfer is NOT a measured negative gain.
+inline Prediction negativeAssistRaw(const State& s,float q_mas,float coast_bias,float assist_bias=NAN) {
+  auto p=negativeBoundary(s,0,coast_bias);
+  if (!p.valid || !std::isfinite(q_mas) || q_mas<0.f || q_mas>25.f) return Prediction{};
+  const float qomega=q_mas*s.rate_dps*kRadPerDeg;
+  if(!std::isfinite(assist_bias)) assist_bias=coast_bias;
+  const float blend=ramp(q_mas/5.f);
+  const float extra_bias=blend*(assist_bias-coast_bias);
+  const float added_work=.06189960458f*qomega;
+  p.on_mj=.09858037463f*qomega;
+  p.after_mj+=added_work-p.on_mj;
+  p.work_mj+=added_work;p.change_mj=added_work;
+  p.energy_mj+=.22502117220f*added_work+extra_bias;
+  p.applied_bias_mj=coast_bias+extra_bias;
+  p.branch=9;p.cross_condition=true;
+  return p;
+}
+
+class NegativeAssistFeedback {
+ public:
+  bool allowed() const { return armed_; }
+  uint16_t capMs() const { return cap_ms_; }
+  void observe(float amplitude,float target,bool assisted,uint16_t applied_width) {
+    if (!std::isfinite(amplitude) || !work_target_policy::valid(target) || amplitude<6.f || amplitude>13.f) return;
+    if (amplitude<target-.3f) { if(low_count_<2) ++low_count_; }
+    else low_count_=0;
+    if(low_count_>=2) armed_=true;
+    if(assisted && amplitude<target-.3f && applied_width>=cap_ms_) {
+      if(++limited_count_>=2) { cap_ms_=cap_ms_<100 ? cap_ms_+5 : 100;limited_count_=0; }
+    } else limited_count_=0;
+    if(assisted && amplitude>target+.3f) { cap_ms_=cap_ms_>25 ? cap_ms_-5 : 25;limited_count_=0; }
+  }
+ private:
+  uint16_t cap_ms_=25;
+  uint8_t low_count_=0,limited_count_=0;
+  bool armed_=false;
+};
+
+inline Choice chooseNegativeBidirectional(const State& s,uint16_t brake_cap,
+    const NegativeAssistFeedback& feedback,const lateral_energy::CurrentTable& table,
+    float initial_current,float goal_current,float target_mj,float brake_bias,float assist_bias) {
+  auto c=chooseNegativeBoundary(s,brake_cap,target_mj,brake_bias);
+  const auto coast=negativeBoundary(s,0,brake_bias);
+  if(s.target_deg==8.f || !c.valid || !coast.valid || !feedback.allowed() ||
+      target_mj<=coast.energy_mj+.03f || s.battery_mv<7000.f) return c;
+  // Compare an unchanged coast candidate to assist candidates in the SAME
+  // energy coordinate. A mode-specific correction is learned separately.
+  const uint16_t assist_cap=static_cast<uint16_t>(std::floor(feedback.capMs()*negativeBoundaryWeight(s)));
+  for(uint16_t ms=10;ms<=assist_cap;++ms) {
+    const float q=lateral_energy::charge(table,ms,initial_current,goal_current);
+    const auto p=negativeAssistRaw(s,q,brake_bias,assist_bias);
+    const uint16_t old_width=c.width_ms;const uint8_t old_branch=c.branch;
+    consider(c,300,ms,q,p,target_mj);
+    if(c.branch==9 && (old_branch!=9 || c.width_ms!=old_width)) c.command_sign=1;
+  }
+  if(c.branch==9) c.allowed_cap_ms=assist_cap;
   finish(c,target_mj);return c;
 }
 }  // namespace wheel_work_energy_control

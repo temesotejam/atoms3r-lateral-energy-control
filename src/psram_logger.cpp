@@ -485,13 +485,14 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     json += "\"wheel_work_model_revision\":\"" + String(wheel_work_energy_control::kRevision) + "\",";
     json += "\"wheel_work_model_scope\":\"fixed_leg;fit_target_8deg;runtime_targets_8_10_12deg;positive_8runs_180events_300_350_400mA_Q_0_to_15.33208mAs_candidate_limit_25mAs;negative_pooled_31runs_670events_300mA_measured_to_40ms_gated_extrapolation_to_70ms;full_charge_coast_69890231_calibration;positive_guard_band_energy_blend;negative_guard_band_tapered_cap;outside_outer_guard_coasts\",";
     json += "\"wheel_work_broad_negative_support\":\"rate_57.2522_to_76.2778dps;wheel_4.28_to_575.79rpm;battery_6210_to_8120mV;previous_peak_5.0288_to_8.56178deg;marginal_ranges_not_full_joint_coverage;opposite_peak_below_7deg_skips_braking\",";
-    json += "\"wheel_work_negative_feedback\":\"CG_reexpressed_side_energy_bias;independent_last_3_matched_negative_peaks_after_2;clamp_0.5mJ;no_double_common_bias;learned_cap_25_to_70ms;positive_energy_reserve_target_minus1_to_target_minus0.2deg_tapers_cap;below_target_minus1_skips\",";
+    json += "\"wheel_work_negative_feedback\":\"CG_reexpressed_side_energy_bias;independent_last_3_matched_negative_peaks_after_2;clamp_0.5mJ_times_max1_Utarget_over_U8;no_double_common_bias;learned_cap_25_to_70ms;positive_energy_reserve_target_minus1_to_target_minus0.2deg_tapers_cap;below_target_minus1_skips_brake_only\",";
     json += "\"wheel_work_boundary_policy\":\"positive_energy_blend;absolute_negative_context_previous_peak_5.0288_to_target_plus2deg_margin0.3;wheel_minus1_to575.79rpm_margin1_and25;rate_margin2dps;cap_times_support_weight;freshness_and_voltage_hard_gates;positive_branch7_excluded_from_learning;negative_weight_at_least0.5_for_learning;extended_context_cross_condition\",";
     json += "\"wheel_work_full_charge_calibration\":\"free_energy_minus_0.05972251687mJ_times_clamp((battery_mV-8000)/100,0,1);22_coast_events_one_run_69890231;observed_8090_to_8110mV_whole_run;runtime_8120mV_one_telemetry_step_margin;high_voltage_brake_response_not_measured\",";
     json += "\"wheel_work_positive_current_candidates_mA\":[300,350,400],";
-    json += "\"wheel_work_positive_feedback\":\"CG_reexpressed_side_energy_bias;independent_bridge_and_work_last_3_matched_peaks_after_2;clamp_0.5mJ;stores_U0_minus_raw_and_signed_CG_coefficient;current_CG_reexpression;no_double_common_bias;reset_each_run\",";
-    json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"legacy_negative_extended\",\"3\":\"legacy_negative_broad\",\"4\":\"negative_pooled_0_or_10_to_70ms\",\"5\":\"positive_expanded_bridge\",\"6\":\"positive_expanded_8run_work\",\"7\":\"positive_energy_blend_guard_band\",\"8\":\"negative_bounded_guard_band\"},";
-    json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;all_pulses_above_8000mV_cross_condition_flagged;cross_condition_strong_pulses_flagged;above_40ms_unmeasured_flagged;negative_absolute_limit_70ms;absolute_context_extension_not_jointly_validated\",";
+    json += "\"wheel_work_positive_feedback\":\"CG_reexpressed_side_energy_bias;independent_bridge_and_work_last_3_matched_peaks_after_2;clamp_0.5mJ_times_max1_Utarget_over_U8;stores_U0_minus_raw_and_signed_CG_coefficient;current_CG_reexpression;no_double_common_bias;reset_each_run\",";
+    json += "\"wheel_work_negative_assist_policy\":\"target10_12_only;two_consecutive_measured_peaks_below_target_minus0.3deg_arm;corrected_coast_shortage_over0.03mJ;300mA_initial25ms;two_under_target_saturated_pulses_extend5ms_to100ms;Q25mAs;voltage_at_least7000mV;positive_gain_transfer_unvalidated;separate_assist_bias;exclude_assist_from_CG_and_brake_cap_learning\",";
+    json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"legacy_negative_extended\",\"3\":\"legacy_negative_broad\",\"4\":\"negative_pooled_0_or_10_to_70ms\",\"5\":\"positive_expanded_bridge\",\"6\":\"positive_expanded_8run_work\",\"7\":\"positive_energy_blend_guard_band\",\"8\":\"negative_bounded_guard_band\",\"9\":\"negative_energy_assist_transferred_gain\"},";
+    json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;all_pulses_above_8000mV_cross_condition_flagged;cross_condition_strong_pulses_flagged;above_40ms_unmeasured_flagged;negative_brake_limit_70ms;negative_assist_300mA_initial25_max100ms_Q25mAs;gain_transferred_from_positive_unvalidated;absolute_context_extension_not_jointly_validated\",";
   }
   if (inverse_mode) {
     json += "\"negative_one_peak_model_revision\":\"" + String(one_peak_energy_inverse::kRevision) + "\",";
@@ -1626,7 +1627,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     const bool work_event = e.work_control_branch != 0;
     const bool inverse_event = energy_bridge_enabled_ && !negative_probe_mode_ &&
         autonomous_brake_max_ms_ == 25 && e.physical_next_peak_side < 0;
-    detail += ",\"free_model_revision\":\"" + String((e.work_control_branch==4 || e.work_control_branch==6) ? wheel_work_energy_control::kRevision :
+    detail += ",\"free_model_revision\":\"" + String((e.work_control_branch>=4) ? wheel_work_energy_control::kRevision :
         inverse_event ? one_peak_energy_inverse::kRevision :
         energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
     if (work_event)
