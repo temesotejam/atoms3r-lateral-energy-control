@@ -1,13 +1,15 @@
 #pragma once
 #include <cmath>
 #include <cstdint>
+#include "lateral_energy_control.h"
 
 // Empirical fixed-leg, one-peak energy models.  Coefficients were fitted to
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_negative_full_charge_20261023";
+constexpr char kRevision[] = "wheel_work_balanced_energy_20261026";
 constexpr float kRadPerDeg = 0.017453292519943295f;
+constexpr uint16_t kNegativeMaxMs = 70;
 constexpr float kPositiveMinQ = 8.79588f;
 constexpr float kPositiveMaxQ = 15.33208f;
 
@@ -78,9 +80,9 @@ inline bool broadNegativeSupported(const State& s) {
 
 inline bool supported(const State& s, int8_t side) {
   if (!freshFinite(s)) return false;
-  if (side > 0) return s.rate_dps >= 48.3821f && s.rate_dps <= 58.9332f &&
-      s.wheel_rpm >= 213.22f && s.wheel_rpm <= 394.61f &&
-      s.battery_mv >= 7280.f && s.battery_mv <= 7400.f;
+  if (side > 0) return s.rate_dps >= 48.3821f && s.rate_dps <= 72.7405f &&
+      s.wheel_rpm >= -1.f && s.wheel_rpm <= 400.f &&
+      s.battery_mv >= 7000.f && s.battery_mv <= 8120.f;
   return side < 0 && broadNegativeSupported(s);
 }
 
@@ -99,9 +101,47 @@ inline Prediction positive(const State& s, float q_mas) {
   return p;
 }
 
+// Whole-pulse plus post-pulse work fit: 8 runs, 180 positive arrivals.
+// The body label U_ref(angle) is an energy coordinate, not a new geometry measurement.
+inline Prediction positiveExpanded(const State& s,float q_mas,float bias_mj=0.f) {
+  Prediction p;
+  if (!supported(s,1) || !std::isfinite(q_mas) || q_mas<0.f || q_mas>25.f ||
+      !std::isfinite(bias_mj)) return p;
+  const float omega=s.rate_dps*kRadPerDeg;
+  const float work_zero=.36045438418f-.05256293271f*s.wheel_rpm/500.f
+      -.10535792788f*(s.battery_mv-7500.f)/1000.f;
+  const float qomega=q_mas*omega;
+  p.work_mj=work_zero+.06189960458f*qomega;
+  p.on_mj=.09858037463f*qomega;
+  p.after_mj=p.work_mj-p.on_mj;
+  p.change_mj=p.work_mj-work_zero;
+  p.free_mj=.07353697995f+.41423900771f*omega*omega+.22502117220f*work_zero;
+  p.energy_mj=p.free_mj+.22502117220f*p.change_mj+bias_mj;
+  p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
+  p.branch=6;
+  p.cross_condition=q_mas>kPositiveMaxQ || s.rate_dps>58.9332f ||
+      s.wheel_rpm<213.22f || s.battery_mv<7280.f || s.battery_mv>7400.f;
+  return p;
+}
+
+// Preserve the historical rate/input response as a bounded start-up fallback,
+// but allow all three already-tested command currents. Choose in energy units.
+inline Prediction positiveBridge(const lateral_energy::Geometry& geometry,
+    const State& s,float q_mas,float bias_mj) {
+  Prediction p;
+  if (!std::isfinite(s.rate_dps) || s.rate_dps<0.f ||
+      !std::isfinite(q_mas) || q_mas<0.f || !std::isfinite(bias_mj)) return p;
+  p.free_mj=lateral_energy::potential(geometry,lateral_energy::bridgeFreeAngle(1,s.rate_dps))*1000.f;
+  p.energy_mj=lateral_energy::bridgeArrivalEnergy(geometry,1,s.rate_dps,q_mas)*1000.f+bias_mj;
+  p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
+  p.branch=5;
+  p.cross_condition=true;
+  return p;
+}
+
 inline Prediction negative(const State& s, uint16_t width_ms, float residual_mj = 0.f) {
   Prediction p;
-  if (!broadNegativeSupported(s) || (width_ms!=0 && width_ms<10) || width_ms>40 ||
+  if (!broadNegativeSupported(s) || (width_ms!=0 && width_ms<10) || width_ms>kNegativeMaxMs ||
       !std::isfinite(residual_mj)) return p;
   const float rate=(s.rate_dps-70.f)/10.f;
   const float rpm=(s.wheel_rpm-200.f)/200.f;
@@ -122,7 +162,7 @@ inline Prediction negative(const State& s, uint16_t width_ms, float residual_mj 
   p.energy_mj=p.free_mj+.44113787836f*p.change_mj+residual_mj;
   p.valid=std::isfinite(p.energy_mj) && p.energy_mj>=0.f;
   p.branch=4;
-  p.cross_condition=s.battery_mv>8110.f || (width_ms>0 && s.battery_mv>8000.f) ||
+  p.cross_condition=width_ms>40 || s.battery_mv>8110.f || (width_ms>0 && s.battery_mv>8000.f) ||
       (width_ms>25 && !extendedNegativeSupported(s));
   return p;
 }
@@ -136,7 +176,7 @@ class PositiveFeedback {
     if (count_<2) return 0.f;
     float sum=0.f;
     for (uint8_t i=0;i<count_;++i) sum+=residuals_[i];
-    return std::fmax(-.12f,std::fmin(.12f,sum/count_));
+    return std::fmax(-.25f,std::fmin(.25f,sum/count_));
   }
   __attribute__((noinline)) void observe(float actual_mj, float raw_prediction_mj) {
     if (!std::isfinite(actual_mj) || !std::isfinite(raw_prediction_mj) ||
@@ -154,7 +194,8 @@ class PositiveFeedback {
 class NegativeFeedback {
  public:
   uint16_t capMs(float previous_peak_deg) const {
-    return previous_peak_deg>=7.5f ? cap_ms_ : 25;
+    return previous_peak_deg>=7.8f ? cap_ms_ : previous_peak_deg>=7.5f ?
+        (cap_ms_>40 ? 40 : cap_ms_) : 25;
   }
   uint8_t count() const { return count_; }
   __attribute__((noinline)) float biasMj() const {
@@ -167,15 +208,17 @@ class NegativeFeedback {
       float target_mj, float previous_peak_deg, uint16_t applied_width_ms) {
     if (!std::isfinite(actual_mj) || !std::isfinite(raw_prediction_mj) ||
         !std::isfinite(target_mj) || !std::isfinite(previous_peak_deg) ||
-        applied_width_ms>40) return;
+        applied_width_ms>kNegativeMaxMs) return;
     if (previous_peak_deg<7.5f) { cap_ms_=25; high_count_=0; return; }
+    if (previous_peak_deg<7.8f && cap_ms_>40) { cap_ms_=40; high_count_=0; }
     residuals_[next_]=actual_mj-raw_prediction_mj;
     next_=(next_+1)%3;
     if (count_<3) ++count_;
     const float excess=actual_mj-target_mj;
     if (excess<-.03f) {
       cap_ms_=cap_ms_>25 ? cap_ms_-5 : 25; high_count_=0;
-    } else if (excess>.03f && applied_width_ms>=cap_ms_ && cap_ms_<40) {
+    } else if (excess>.03f && applied_width_ms>=cap_ms_ && cap_ms_<kNegativeMaxMs &&
+        (cap_ms_<40 || previous_peak_deg>=7.8f)) {
       if (++high_count_>=2) { cap_ms_+=5; high_count_=0; }
     } else high_count_=0;
   }
@@ -209,5 +252,25 @@ inline void finish(Choice& c, float target_mj) {
   if (!c.valid) return;
   c.target_below_reachable=target_mj<c.minimum_mj;
   c.target_above_reachable=target_mj>c.maximum_mj;
+}
+
+inline Choice choosePositive(const lateral_energy::Geometry& geometry,const State& state,
+    float initial_current_ma,const lateral_energy::CurrentTable* const tables[3],
+    const float goals[3],float target_mj,float bias_mj) {
+  Choice choice;
+  if (!std::isfinite(target_mj) || target_mj<=0.f) return choice;
+  const bool identified=supported(state,1);
+  const int16_t currents[]={300,350,400};
+  for (uint8_t i=0;i<3;++i) {
+    for (uint16_t width=0;width<=100;width=(width==0 ? 10 : width+1)) {
+      const float q=lateral_energy::charge(*tables[i],width,initial_current_ma,goals[i]);
+      const Prediction p=identified ? positiveExpanded(state,q,bias_mj) :
+          positiveBridge(geometry,state,q,bias_mj);
+      consider(choice,currents[i],width,q,p,target_mj);
+    }
+    if (choice.valid && std::fabs(choice.energy_mj-target_mj)<=.005f) break;
+  }
+  finish(choice,target_mj);
+  return choice;
 }
 }  // namespace wheel_work_energy_control

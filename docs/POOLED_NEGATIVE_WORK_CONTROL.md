@@ -1,3 +1,44 @@
+## 1.0.29: separate side energy models and balanced input authority
+
+### What the latest run showed
+
+Run 130765421 used 7.92-7.95 V. Positive input reverted to a 300 mA bridge because the original work model admitted only 7.28-7.40 V. Its 0.12 mJ residual limit was active on 17/22 late positive decisions. Negative 40 ms inputs predicted 9.78 degrees and measured 9.73 degrees on average: reaching 8 degrees was outside the allowed candidate set. Positive peaks below 7.5 degrees reset the negative cap twice. These are actuator/model restrictions, not evidence of IMU mounting error.
+
+Correct IMU mounting does not imply symmetric mechanics. Foot contact geometry, center-of-mass offset, friction and the fixture can change effective inertia, potential and losses between sides. Current observations do not identify those causes separately. The reference potential U_ref(abs(angle)) remains the existing geometric coordinate; the revised side-specific models and residuals predict arrival energy in this coordinate. They do not claim to measure a new asymmetric physical potential or isolate each loss.
+
+### Positive model
+
+Fit 8 runs and 180 completed positive arrivals, including the five randomized 300/350/400 mA runs and runs 107786469, 69890231 and 130765421. Provisional wheel-work labels use J=2.8e-5 kg m2 and the timestamped position estimator. Only pre-input rate, wheel RPM, voltage and candidate predicted current integral enter runtime prediction. Future peak and observed work enter offline labels only.
+
+Let omega=rate*pi/180, n=RPM/500, v=(battery_mV-7500)/1000, Q=predicted current integral in mA s. All energy/work below is mJ:
+
+```
+W_zero = 0.36045438418 - 0.05256293271*n - 0.10535792788*v
+W_total = W_zero + 0.06189960458*Q*omega
+W_on = 0.09858037463*Q*omega
+W_post = W_total - W_on
+E_free = 0.07353697995 + 0.41423900771*omega^2 + 0.22502117220*W_zero
+E_peak = E_free + 0.22502117220*(W_total-W_zero) + b_positive
+```
+
+The work coefficient is an effective empirical multiplier, not mechanical efficiency. Search 300,350,400 mA with each current's prepared rise-time table and voltage-dependent goal current, at 0 or 10-100 ms. Prefer a lower current if it already reaches within 0.005 mJ of U_ref(8 degrees). Otherwise choose the candidate minimizing arrival-energy error. Outside the expanded work-state range, the startup bridge also searches all three currents; it no longer falls back to 300 mA only.
+
+Work-state admission: rate 48.3821-72.7405 deg/s, RPM -1 to 400, battery 7.00-8.12 V, fresh speed. Q above the observed 15.33208 mA s and unmeasured combinations are flagged, not presented as validated. The command envelope remains at most 400 mA and 100 ms. Positive residual correction is the last-three mean after two completed matched peaks, now bounded at +/-0.25 mJ. Bridge and work histories remain separate, reset per run, and compare to the raw model without double counting the applied correction.
+
+Across the eight held-out runs, raw RMSE ranges from 0.1594 to 0.8708 degrees, and causal residual correction ranges from 0.1319 to 0.4872 degrees; this is not a universal geometry identification. Latest whole-run held-out prediction RMSE is 0.3961 degrees; using only earlier measured residuals from that held-out run reduces it to 0.2074 degrees. Final training RMSE on the latest run is 0.1636 degrees. These predict unchanged recorded inputs and are not closed-loop target-achievement results. The actual candidate solver selects 350/400 mA on 14 of the latest 26 stored states with zero initial residual (and zero residual-current assumption in that selection test). See `positive_work_8runs_validation.json`, fixture/source manifest, and `test_balanced_energy.cpp`.
+
+### Negative input authority
+
+Keep the 31-run pulse/post-pulse work coefficients and the full-charge coast calibration. Continue minimizing abs(E_peak(input)-U_ref(8 degrees)); duration is not forced to the cap. Start the cap at 25 ms. Two completed matched cap-length inputs with excess above 0.03 mJ can advance it by 5 ms. A previous positive peak must be at least 7.5 degrees through 40 ms, and at least 7.8 degrees to go above 40 ms. The absolute maximum is now 70 ms at 300 mA. Below 7.8 degrees an extended cap is limited/reset to 40 ms; below 7.5 it resets to 25 ms; below 7 degrees braking is skipped. A negative energy undershoot reduces the cap by 5 ms.
+
+The latest measured states require approximately 56-70 ms under this extrapolated model; some reach the new limit. All inputs above 40 ms are explicitly unmeasured extrapolations. Every such candidate is logged as cross-condition/extrapolated; no measured data above 40 ms are claimed. Finite-energy and fresh-state checks, previous-side protection and the existing emergency stop remain. Stronger input is contingent on completed peaks, not enabled at startup. Real response and simultaneous left/right target feasibility still require the next run.
+
+### Measurement
+
+Flash 1.0.29-balanced-energy-inputs. Keep the same fixed-leg fixture and saved upright reference. Use the existing 30-second work-control button at 8 degrees. The current and duration are selected automatically. Log branch 6 means expanded positive work, 5 expanded positive bridge, and 4 negative work; raw/corrected energy, bias/history size and candidate bounds remain recorded. Other presets and the IMU/reference implementation are unchanged.
+
+---
+
 ## 1.0.28: full-charge coast calibration and negative control
 
 Run 69890231 recorded 8.09-8.11 V. Its 34 negative decisions were skipped by the previous 8.00 V ceiling. The stable 10-30 s interval supplies 22 no-command negative peaks. Only their pre-crossing rate, wheel speed, previous positive peak and voltage are runtime inputs; the subsequent peak is an offline label.

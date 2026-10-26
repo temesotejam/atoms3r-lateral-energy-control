@@ -229,7 +229,7 @@ function render(s) {
     ? s.energy_model === 'bridge_probe_positive_current' ? '今回の負側入力：300 mA・40 msに固定'
       : s.energy_model === 'bridge_probe_extended' ? '今回の負側入力：30・35・40 msを3条件ずつ順序を変更'
       : s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを5条件ずつ順序を変更'
-      : s.energy_model === 'work_control' ? '今回の負側入力：エネルギー差から0または10～40 msを選択。上限は段階的に調整'
+      : s.energy_model === 'work_control' ? '今回の負側入力：エネルギー差から0または10～70 msを選択。40 ms超は正側7.8°以上で段階的に許可'
       : s.energy_model === 'bridge_inverse' ? '今回の負側入力：実測0〜25 ms、ピークを確認して最大30 ms'
       : s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';

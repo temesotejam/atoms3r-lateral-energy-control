@@ -16,7 +16,7 @@ static const char RUNTIME_HTML[] PROGMEM = R"FREEFOOT(<!doctype html><html lang=
 <p class="muted">この操作で保存した姿勢を0°として、左右の目標角・エネルギー計算・入力タイミングをそろえます。初回は基準を保存してから測定してください。</p>
 <div id="work-energy-control">
   <h2>固定脚・ホイールの仕事を使う制御（30秒）</h2>
-  <p class="muted">脚の前後移動を固定し、目標8°で測ります。負側は、入力中と入力後の仕事を含む予測エネルギーと目標との差から通電時間を選びます。満充電付近は無入力データで基準エネルギーを補正し、電圧8.12 Vまで対応します。入力できる時間の上限は25 msから始め、正側の揺れと負側の実測ピークを確認しながら30・35・40 msへ段階的に広げます。正側・負側とも、実測ピークの位置エネルギーと予測との差を次回の計算に反映します。正側の揺れが小さくなった場合は上限を下げ、7°未満では負側入力を見送ります。</p>
+  <p class="muted">脚の前後移動を固定し、目標8°で測ります。正側は必要なエネルギーから300・350・400 mAと通電時間を選びます。負側は入力中・入力後の仕事を含めて計算し、上限を25 msから5 msずつ広げます。40 msを超える入力は正側の揺れが7.8°以上の場合に限り、最大70 msです。各段階で実測ピークを確認し、左右別のエネルギー予測誤差を次回に反映します。正側が小さくなると上限を下げ、7°未満では負側入力を見送ります。電圧8.12 Vまで対応します。</p>
   <button id="work-start" type="button" disabled>仕事に基づく制御で30秒測定を開始</button>
 </div>
 <div id="negative-energy-control">
@@ -704,7 +704,7 @@ function render(s) {
     ? s.energy_model === 'bridge_probe_positive_current' ? '今回の負側入力：300 mA・40 msに固定'
       : s.energy_model === 'bridge_probe_extended' ? '今回の負側入力：30・35・40 msを3条件ずつ順序を変更'
       : s.energy_model === 'bridge_probe_batch' ? '今回の負側入力：0・10・15・20・25 msを5条件ずつ順序を変更'
-      : s.energy_model === 'work_control' ? '今回の負側入力：エネルギー差から0または10～40 msを選択。上限は段階的に調整'
+      : s.energy_model === 'work_control' ? '今回の負側入力：エネルギー差から0または10～70 msを選択。40 ms超は正側7.8°以上で段階的に許可'
       : s.energy_model === 'bridge_inverse' ? '今回の負側入力：実測0〜25 ms、ピークを確認して最大30 ms'
       : s.energy_model === 'bridge' ? '今回の旧式換算：ブレーキなし' : `今回の負側ブレーキ上限：${s.brake_max_ms} ms`
     : '負側ブレーキ上限は測定開始時に確定します。';

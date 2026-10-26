@@ -37,7 +37,7 @@ int main() {
   }
   finish(all,.73342f);
   assert(all.valid && all.width_ms==40 && all.target_below_reachable);
-  assert(!negative(state,41).valid && !negative(state,1).valid);
+  assert(!negative(state,71).valid && !negative(state,1).valid);
   assert(!negative(state,25,NAN).valid);
   assert(negative(state,25).on_mj<0 && negative(state,25).after_mj>0);
   assert(std::fabs(negative(state,25,.05f).energy_mj-negative(state,25).energy_mj-.05f)<1e-6f);
@@ -79,7 +79,7 @@ int main() {
   PositiveFeedback separate_work_branch;
   assert(separate_work_branch.biasMj()==0.f);
   for (unsigned i=0;i<3;++i) positive_feedback.observe(.2f,.8f);
-  assert(std::fabs(positive_feedback.biasMj()+.12f)<1e-6f);
+  assert(std::fabs(positive_feedback.biasMj()+.25f)<1e-6f);
   positive_feedback=PositiveFeedback{};
   assert(positive_feedback.count()==0 && positive_feedback.biasMj()==0.f);
   // Underprediction and overprediction change the energy inverse in opposite directions.
@@ -102,16 +102,16 @@ int main() {
   assert(feedback.capMs(8.f)==30 && std::fabs(feedback.biasMj()-.06f)<1e-6f);
   feedback.observe(1.14f,1.08f,.733f,8.f,25);
   assert(feedback.capMs(8.f)==30); // No growth unless the current cap was used.
-  for (uint16_t cap : {30,35}) {
+  for (uint16_t cap : {30,35,40,45,50,55,60,65}) {
     feedback.observe(1.1f,1.05f,.733f,8.f,cap);
     assert(feedback.capMs(8.f)==cap);
     feedback.observe(1.1f,1.05f,.733f,8.f,cap);
     assert(feedback.capMs(8.f)==cap+5);
   }
-  for (unsigned i=0;i<20;++i) feedback.observe(1.1f,1.05f,.733f,8.f,40);
-  assert(feedback.capMs(8.f)==40 && feedback.capMs(7.4f)==25);
-  feedback.observe(.65f,.65f,.733f,8.f,40);
-  assert(feedback.capMs(8.f)==35);
+  for (unsigned i=0;i<20;++i) feedback.observe(1.1f,1.05f,.733f,8.f,70);
+  assert(feedback.capMs(8.f)==70 && feedback.capMs(7.6f)==40 && feedback.capMs(7.4f)==25);
+  feedback.observe(.65f,.65f,.733f,8.f,70);
+  assert(feedback.capMs(8.f)==65);
   feedback.observe(1.1f,1.05f,.733f,7.4f,25);
   assert(feedback.capMs(8.f)==25);
   const auto samples=feedback.count();

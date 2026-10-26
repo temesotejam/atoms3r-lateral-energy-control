@@ -7,6 +7,9 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_positive_current_batch
 /tmp/test_positive_current_batch
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_wheel_work_energy_control.cpp -o /tmp/test_wheel_work_energy_control
 /tmp/test_wheel_work_energy_control
+
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_balanced_energy.cpp -o /tmp/test_balanced_energy
+/tmp/test_balanced_energy
 g++ -std=c++11 -O2 -Wall -Wextra -Werror tools/test_one_peak_energy_inverse.cpp -o /tmp/test_one_peak_energy_inverse
 /tmp/test_one_peak_energy_inverse
 node --check web/runtime.js

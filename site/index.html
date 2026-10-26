@@ -17,8 +17,8 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
-      <h2>1.0.28：満充電時の負側エネルギー予測と制御に対応</h2>
-      <p>満充電時の無入力データで負側の基準エネルギー予測を補正し、電圧8.12 Vまで入力を選択できるようにしました。測定は30秒で、正側もエネルギー予測の誤差を補正します。補正は測定ごとに初期化し、従来予測と仕事モデルで分けて蓄積します。実機の「仕事に基づく制御で30秒測定を開始」を使います。目標8°に必要なエネルギーとの差から入力を選び、正側が保たれていることと実測の負側ピークを確認しながら、入力上限を25→30→35→40 msへ段階的に広げます。満充電時の減速入力や低電圧での強い入力は未確認の組合せを含むため、ログに区別して記録します。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/POOLED_NEGATIVE_WORK_CONTROL.md">制御式と検証結果</a></p>
+      <h2>1.0.29：左右別のエネルギー予測と入力の選択範囲を更新</h2>
+      <p>今回を含む8回・180件で正側の仕事と到達エネルギーを予測し、必要に応じて300・350・400 mAを選びます。左右別の予測誤差で補正し、負側は正側の揺れを確認しながら上限を25 msから5 msずつ広げます。40 msを超える入力は正側7.8°以上を条件とし、最大70 msです。実機の「仕事に基づく制御で30秒測定を開始」を使います。目標8°に必要なエネルギーとの差から入力を選びます。40 msを超える減速入力など、未実測の組合せはログで区別します。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/POOLED_NEGATIVE_WORK_CONTROL.md">制御式と検証結果</a></p>
     </section>
     <section class="panel important">
       <h2>1.0.22：正側300・350・400 mAの一括測定</h2>
