@@ -256,6 +256,10 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
         parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
     assert work_metadata['energy_model'] == 'wheel_work_one_peak_control'
     assert work_metadata['autonomous_duration_ms'] == 30000
+    assert work_metadata['energy_control_autonomous_negative_side_brake_width_max_ms'] == 70
+    assert work_metadata['energy_control_autonomous_brake_width_max_ms'] == 70
+    assert work_metadata['energy_control_autonomous_integral_Ki_plus_J_per_J'] == 0
+    assert work_metadata['wheel_work_positive_current_candidates_mA'] == [300,350,400]
     assert work_metadata['metadata_json_final_bytes'] == work_header['metadata_json_size']
     assert not work_metadata['metadata_event_detail_truncated']
     work_rows = work_metadata['energy_control_autonomous_zero_cross_events']

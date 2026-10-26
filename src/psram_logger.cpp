@@ -480,6 +480,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     json += "\"wheel_work_broad_negative_support\":\"rate_57.2522_to_76.2778dps;wheel_4.28_to_575.79rpm;battery_6210_to_8120mV;previous_peak_5.0288_to_8.56178deg;marginal_ranges_not_full_joint_coverage;opposite_peak_below_7deg_skips_braking\",";
     json += "\"wheel_work_negative_feedback\":\"last_3_matched_healthy_negative_peaks;raw_model_energy_residual_mean_after_2_samples;clamp_0.12mJ;cap_25_to_70ms_5ms_steps_after_2_completed_cap_inputs_with_excess_above_0.03mJ;previous_positive_at_least_7.5deg_to_40ms_and_7.8deg_above_40ms;weak_positive_caps_25ms;undershoot_reduces_cap;reset_each_run\",";
     json += "\"wheel_work_full_charge_calibration\":\"free_energy_minus_0.05972251687mJ_times_clamp((battery_mV-8000)/100,0,1);22_coast_events_one_run_69890231;observed_8090_to_8110mV_whole_run;runtime_8120mV_one_telemetry_step_margin;high_voltage_brake_response_not_measured\",";
+    json += "\"wheel_work_positive_current_candidates_mA\":[300,350,400],";
     json += "\"wheel_work_positive_feedback\":\"separate_bridge_and_work_last_3_matched_peaks;actual_U_minus_raw_prediction;after_2_samples;clamp_0.25mJ;reset_each_run;no_parallel_energy_integral\",";
     json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"legacy_negative_extended\",\"3\":\"legacy_negative_broad\",\"4\":\"negative_pooled_0_or_10_to_70ms\",\"5\":\"positive_expanded_bridge\",\"6\":\"positive_expanded_8run_work\"},";
     json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;all_pulses_above_8000mV_cross_condition_flagged;cross_condition_strong_pulses_flagged;above_40ms_unmeasured_flagged;negative_absolute_limit_70ms\",";
@@ -591,14 +592,14 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   json += "\"energy_control_autonomous_integral_enable_rule\":\"matched_command_peak_only;per_physical_peak_side;energy_J;antiwindup\",";
   json += "\"energy_control_autonomous_integral_Ki_J_per_J\":";
   json += energy_bridge_enabled_ ? "null," : "0.1,";
-  json += "\"energy_control_autonomous_integral_Ki_plus_J_per_J\":" + String(energy_bridge_enabled_ ? .1f*lateral_energy::bridgeCoefficients(1).gain_deg_per_mAs : lateral_energy::kIntegralGain, 6) + ",";
-  json += "\"energy_control_autonomous_integral_Ki_minus_J_per_J\":" + String(energy_bridge_enabled_ ? .1f*lateral_energy::bridgeCoefficients(-1).gain_deg_per_mAs : lateral_energy::kIntegralGain, 6) + ",";
+  json += "\"energy_control_autonomous_integral_Ki_plus_J_per_J\":" + String(work_mode ? 0.f : energy_bridge_enabled_ ? .1f*lateral_energy::bridgeCoefficients(1).gain_deg_per_mAs : lateral_energy::kIntegralGain, 6) + ",";
+  json += "\"energy_control_autonomous_integral_Ki_minus_J_per_J\":" + String(work_mode ? 0.f : energy_bridge_enabled_ ? .1f*lateral_energy::bridgeCoefficients(-1).gain_deg_per_mAs : lateral_energy::kIntegralGain, 6) + ",";
   json += "\"energy_control_autonomous_normal_current_mA\":" + String(run_current_mA_) + ",";
   json += "\"energy_control_autonomous_start_kick_current_mA\":" + String(run_current_mA_) + ",";
   json += "\"energy_control_autonomous_normal_width_min_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MIN_PULSE_MS) + ",";
   json += "\"energy_control_autonomous_normal_width_max_ms\":" + String(Config::ENERGY_CONTROL_AUTONOMOUS_MAX_PULSE_MS) + ",";
-  json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(energy_bridge_enabled_ ? 0 : lateral_energy::kBrakeMaxMs) + ",";
-  json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(inverse_mode ? 30 : energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
+  json += "\"energy_control_autonomous_brake_width_max_ms\":" + String(work_mode ? wheel_work_energy_control::kNegativeMaxMs : energy_bridge_enabled_ ? 0 : lateral_energy::kBrakeMaxMs) + ",";
+  json += "\"energy_control_autonomous_negative_side_brake_width_max_ms\":" + String(work_mode ? wheel_work_energy_control::kNegativeMaxMs : inverse_mode ? 30 : energy_bridge_enabled_ ? 0 : autonomous_brake_max_ms_) + ",";
   json += "\"fixed_negative_work_probe\":" + String(negative_probe_mode_ ? "true" : "false") + ",";
   json += "\"fixed_negative_work_probe_width_ms\":" + String(positive_current_batch_mode ?
       positive_current_batch::kNegativeWidthMs : negative_probe_batch_mode ? 0 :
