@@ -1,0 +1,13 @@
+"""Exercise the shared gate in C++; guard both actual HTTP integration points here."""
+from pathlib import Path
+s=Path('src/web_ui.cpp').read_text(encoding='utf-8')
+status=s.split('void WebUi::status()',1)[1].split('void WebUi::',1)[0]
+ready=next(line for line in status.splitlines() if '\\"ready\\"' in line)
+assert 'work_start_policy::ready(' in ready
+assert 'upright_reference' not in ready
+command=s.split('void WebUi::command(',1)[1].split('void WebUi::status()',1)[0]
+assert 'work_start_policy::referenceAllowed(' in command
+assert 'server_->arg("energy_model")=="work_control"' in command
+assert command.count('"upright_reference_required"')==1
+assert 'experiment_package_settings_invalid_reload_page' in command
+print('actual status readiness and HTTP start route have no unconditional reference gate PASS')

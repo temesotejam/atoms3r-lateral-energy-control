@@ -1,3 +1,4 @@
+#include "work_start_policy.h"
 #include "web_ui.h"
 #include "config.h"
 #include "runtime_web.h"
@@ -140,7 +141,9 @@ void WebUi::command(RunControlWorker::Command cmd) {
       (export_->status().phase != ImmutableExport::Phase::Empty || !st.ready)) {
     server_->send(409, "text/plain", "clear_previous_run_first"); return;
   }
-  if (cmd == RunControlWorker::Command::Start && !upright_reference::valid(st.upright_reference)) {
+  if (cmd == RunControlWorker::Command::Start && !work_start_policy::referenceAllowed(
+      server_->hasArg("energy_model") && server_->arg("energy_model")=="work_control",
+      upright_reference::valid(st.upright_reference))) {
     server_->send(409, "text/plain", "upright_reference_required"); return;
   }
   if ((cmd == RunControlWorker::Command::CaptureUprightReference ||
@@ -149,10 +152,6 @@ void WebUi::command(RunControlWorker::Command cmd) {
        st.pulse_active || st.motor_cmd_mA != 0 ||
        (String(st.state_name) != "READY_TO_MEASURE" && String(st.state_name) != "FINISHED" && String(st.state_name) != "ESTOP"))) {
     server_->send(409, "text/plain", "upright_reference_requires_stopped"); return;
-  }
-  if ((cmd == RunControlWorker::Command::CaptureEquilibrium || cmd == RunControlWorker::Command::SetLateralCg) &&
-      !upright_reference::valid(st.upright_reference)) {
-    server_->send(409,"text/plain","upright_reference_required");return;
   }
   if (cmd == RunControlWorker::Command::SetLateralCg) {
     const String text=server_->arg("shift_mm");char* end=nullptr;
@@ -253,7 +252,7 @@ void WebUi::status() {
   json += ",\"network\":{\"phase\":\"" + String(offline_.name()) + "\",\"last_error\":\"" + String(offline_.error()) + "\"}";
   json += ",\"usb_diagnostics\":" + String(RuntimeDiag::enabled() ? "true" : "false");
   json += ",\"running\":" + String(s.running ? "true" : "false");
-  json += ",\"ready\":" + String(s.ready && fresh && s.imu_ok && s.roller_ok && export_->ready() && upright_reference::valid(s.upright_reference) ? "true" : "false");
+  json += ",\"ready\":" + String(work_start_policy::ready(s.ready,fresh,s.imu_ok,s.roller_ok,export_->ready()) ? "true" : "false");
   json += ",\"controller_fresh\":" + String(fresh ? "true" : "false");
   json += ",\"run_id\":" + String(s.run_id) + ",\"samples\":" + String(s.sample_count);
   json += ",\"remaining_ms\":" + String(s.remaining_ms) + ",\"elapsed_ms\":" + String(s.measure_elapsed_ms);

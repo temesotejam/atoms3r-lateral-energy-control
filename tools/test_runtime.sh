@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_side_energy_feedback.cpp -o /tmp/test_side_energy_feedback
+/tmp/test_side_energy_feedback
+python3 tools/test_work_start_wiring.py
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_absolute_reference.cpp -o /tmp/test_absolute_reference
 /tmp/test_absolute_reference
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_boundary_energy.cpp -o /tmp/test_boundary_energy

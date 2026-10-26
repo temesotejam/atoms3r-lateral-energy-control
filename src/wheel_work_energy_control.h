@@ -8,7 +8,7 @@
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_smooth_boundary_20261026";
+constexpr char kRevision[] = "wheel_work_absolute_side_feedback_20261026";
 constexpr float kRadPerDeg = 0.017453292519943295f;
 constexpr uint16_t kNegativeMaxMs = 70;
 constexpr float kPositiveMinQ = 8.79588f;
@@ -24,6 +24,7 @@ struct State {
   float battery_mv = NAN;
   bool wheel_fresh = false;
   float previous_peak_deg = NAN;
+  bool absolute_reference = false;
 };
 struct Prediction {
   bool valid = false;
@@ -105,6 +106,10 @@ inline float positiveWorkWeight(const State& s) {
 inline float negativeBoundaryWeight(const State& s) {
   if (!freshFinite(s) || !std::isfinite(s.previous_peak_deg) ||
       s.battery_mv<6210.f || s.battery_mv>8120.f) return 0.f;
+  if (s.absolute_reference)
+    return boxWeight(s.rate_dps,57.2522f,76.2778f,2.f,2.f)*
+        boxWeight(s.wheel_rpm,-1.f,575.79f,1.f,25.f)*
+        boxWeight(s.previous_peak_deg,5.0288f,10.f,.3f,.3f);
   return boxWeight(s.rate_dps,57.2522f,76.2778f,2.f,2.f)*
       boxWeight(s.wheel_rpm,4.28f,575.79f,4.28f,25.f)*
       boxWeight(s.previous_peak_deg,5.0288f,8.56178f,.3f,.3f);
@@ -220,6 +225,9 @@ inline Prediction negativeBoundary(const State& s,uint16_t width_ms,float residu
   auto p=negativeRaw(s,width_ms,residual_mj);
   p.support_weight=weight;
   if (weight<1.f) { p.branch=8;p.cross_condition=true; }
+  // Absolute-peak context is extended; pulse effects still come from the
+  // historical fit and must remain explicitly marked as cross-condition.
+  if (s.absolute_reference && !broadNegativeSupported(s)) p.cross_condition=true;
   return p;
 }
 

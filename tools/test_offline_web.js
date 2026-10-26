@@ -152,8 +152,10 @@ vm.runInContext(source,context);
   assert.equal(vm.runInContext('requestedEnergyModel',context),'bridge_inverse');
   vm.runInContext('clearOffline()',context);
   Object.assign(status,{state:'READY_TO_MEASURE',ready:true,downloadable:false});
+  status.upright_reference={valid:false,capturing:false,revision:0};
   await vm.runInContext('refresh()',context);
   assert.equal(element('work-start').disabled,false);
+  assert.equal(element('start').disabled,true); // Legacy preset still needs its saved origin.
   assert.equal(vm.runInContext('offlineMode',context),false);
   assert.equal(vm.runInContext('commandInFlight',context),false);
   assert.equal(typeof element('work-start').onclick,'function');

@@ -217,7 +217,7 @@ int main(int argc,char** argv){
     assert(metadata.find("\"lateral_cg\":{\"valid\":true") != std::string::npos);
     assert(metadata.find(work_first ? "\"shift_mm\":0.500000" : "\"shift_mm\":-0.500000") != std::string::npos);
     assert(metadata.find("\"autonomous_duration_ms\":30000") != std::string::npos);
-    assert(metadata.find(work_first ? "no_parallel_branch6_residual_bias" : "separate_bridge_and_work_last_3_matched_peaks") != std::string::npos);
+    assert(metadata.find("CG_reexpressed_side_energy_bias") != std::string::npos);
     if (work_first) {
       assert(metadata.find("\"final_mm\":0.500000") != std::string::npos);
       assert(metadata.find("\"updates\":3") != std::string::npos);

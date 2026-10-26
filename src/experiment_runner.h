@@ -11,11 +11,11 @@
 #include "autonomous_brake_limit.h"
 #include "lateral_energy_control.h"
 #include "wheel_work_energy_control.h"
-#include "wheel_work_energy_control.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
 #include "lateral_cg_energy.h"
 #include "adaptive_lateral_cg.h"
+#include "side_energy_feedback.h"
 #include "control_math_cache.h"
 #include "imu_manager.h"
 #include "log_types.h"
@@ -491,7 +491,7 @@ private:
   uint16_t inverse_negative_pending_width_ms_ = 0;
   float inverse_negative_pending_bias_j_ = 0.f;
   wheel_work_energy_control::NegativeFeedback work_negative_feedback_;
-  wheel_work_energy_control::PositiveFeedback work_positive_feedback_[2]; // bridge, work
+  wheel_work_energy_control::SideEnergyFeedback work_positive_feedback_[3]; // bridge, work, negative
   bool work_positive_pending_ = false;
   uint8_t work_positive_pending_branch_ = 0;
   float work_positive_pending_raw_j_ = NAN;
