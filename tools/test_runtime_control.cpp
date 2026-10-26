@@ -146,12 +146,18 @@ int main(){
     assert(w.requestStop());w.oneStep();
     assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
   }
-  assert(!w.request(RunControlWorker::Command::Start,10,0.0f,300,40,false,true,false));
-  assert(w.request(RunControlWorker::Command::Start,8,0.0f,300,40,false,true,false));
-  w.oneStep();
-  assert(!m.probe && m.brake==40 && m.target==8 && m.current==300);
-  assert(w.requestStop());w.oneStep();
-  assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
+  for(float target : {8.f,10.f,12.f}) {
+    assert(!w.request(RunControlWorker::Command::Start,target,0.f,300,40,true,true,false));
+    assert(!w.request(RunControlWorker::Command::Start,target,0.f,500,40,false,true,false));
+    if(target!=8.f) assert(!w.request(RunControlWorker::Command::Start,target,0.f,300,25,false,true,false));
+    assert(w.request(RunControlWorker::Command::Start,target,0.f,300,40,false,true,false));
+    w.oneStep();
+    assert(!m.probe && m.brake==40 && m.target==target && m.current==300 && !m.adaptation);
+    assert(w.snapshot().target_deg==target && w.commandState().ok);
+    assert(w.commandPublished(w.commandState().completed));
+    assert(w.requestStop());w.oneStep();
+    assert(w.request(RunControlWorker::Command::Clear));w.oneStep();
+  }
   assert(w.request(RunControlWorker::Command::Start));w.oneStep();
   assert(m.target==Config::ENERGY_CONTROL_AUTONOMOUS_DEFAULT_TARGET_PEAK_DEG);
   std::cout<<"permanent owner, command exclusion, STOP precedence, sealed audit and wrap PASS\n";

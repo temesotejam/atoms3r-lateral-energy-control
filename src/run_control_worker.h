@@ -14,6 +14,7 @@
 #include "autonomous_input_percent.h"
 #include "autonomous_input_current.h"
 #include "autonomous_brake_limit.h"
+#include "work_target_policy.h"
 #include "upright_reference.h"
 #include "lateral_cg_energy.h"
 #include "adaptive_lateral_cg.h"
@@ -128,8 +129,8 @@ class RunControlWorker {
             autonomous_brake_limit::positiveCurrentBatch(brake_max_ms)) ||
           target_deg != 8.0f || input_current_mA != 300 || peak_adaptation_enabled)) ||
         (!negative_probe_mode && energy_bridge_enabled && brake_max_ms != 0 &&
-          !((brake_max_ms == 25 || brake_max_ms == 40) && target_deg == 8.0f && input_current_mA == 300 &&
-            !peak_adaptation_enabled)) ||
+          !work_target_policy::packageAllowed(target_deg, brake_max_ms, input_current_mA,
+                                             peak_adaptation_enabled)) ||
         (!energy_bridge_enabled && !autonomous_brake_limit::quadratic(brake_max_ms)))) return false;
     if (command == Command::SetLateralCg && (!std::isfinite(target_deg) ||
         std::fabs(target_deg)>lateral_cg::kMaxShiftMm)) return false;

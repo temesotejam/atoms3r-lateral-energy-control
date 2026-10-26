@@ -14,4 +14,6 @@ assert 'work_target_policy::packageAllowed(target_deg,brake_max_ms,input_current
 runner=Path('src/experiment_runner.cpp').read_text(encoding='utf-8')
 assert 'work_target_policy::packageAllowed(energy_control_autonomous_target_peak_deg_' in runner
 assert 'state.target_deg=event.target_peak_deg;' in runner
+worker=Path('src/run_control_worker.h').read_text(encoding='utf-8')
+assert 'work_target_policy::packageAllowed(target_deg, brake_max_ms, input_current_mA,' in worker
 print('actual status readiness and HTTP start route have no unconditional reference gate PASS')
