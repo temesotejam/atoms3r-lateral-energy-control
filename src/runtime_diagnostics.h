@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define RUNTIME_VERSION "1.0.31-adaptive-cg-energy"
+#define RUNTIME_VERSION "1.0.32-smooth-energy-boundary"
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

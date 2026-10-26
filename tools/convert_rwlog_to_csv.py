@@ -1129,7 +1129,7 @@ ENERGY_CONTROL_AUTONOMOUS_ZERO_CROSS_COLUMNS = [
     "predicted_observed_energy_j", "predicted_observed_next_peak_deg",
     "energy_model_extrapolated", "rate_support_diagnostic",
     "arrival_energy_model_revision", "work_control_branch",
-    "work_prediction_cross_condition", "work_brake_cap_ms", "work_bias_samples",
+    "work_prediction_cross_condition", "work_brake_cap_ms", "work_bias_samples", "work_model_weight",
     "predicted_wheel_work_j", "predicted_input_work_j",
     "predicted_post_input_work_j", "predicted_work_change_j",
 ]

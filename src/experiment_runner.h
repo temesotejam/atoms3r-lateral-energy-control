@@ -496,6 +496,7 @@ private:
   uint8_t work_positive_pending_branch_ = 0;
   float work_positive_pending_raw_j_ = NAN;
   bool work_negative_pending_ = false;
+  bool work_negative_pending_supported_ = false;
   uint16_t work_negative_pending_width_ms_ = 0;
   float work_negative_pending_bias_j_ = 0.f;
   void __attribute__((noinline)) captureWheelWorkDecision(

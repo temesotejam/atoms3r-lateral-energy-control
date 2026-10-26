@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.31-adaptive-cg-energy",
+  "version": "1.0.32-smooth-energy-boundary",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

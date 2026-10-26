@@ -21,6 +21,7 @@ class Adaptive {
     state_.common_bias_mj=std::isfinite(initial_bias_mj) ? std::fmax(-.25f,std::fmin(.25f,initial_bias_mj)) : 0.f;
   }
   const AdaptiveSnapshot& snapshot() const { return state_; }
+  void breakPair() { pending_[0].valid=pending_[1].valid=false; }
   // r = U0(measured peak)-raw predicted arrival energy = b-k*dx.
   // k is signed mJ/mm. Learn only after both adjacent sides have arrived.
   bool observe(const lateral_energy::Geometry& g,int8_t side,float amplitude_deg,

@@ -192,6 +192,7 @@ int main(int argc,char** argv){
     for (unsigned i = 0; i < 256; ++i) {
       PsramLogger::EnergyControlAutonomousZeroCrossEvent z{};
       z.cg_shift_mm=i%2 ? .35f : -.15f;
+      z.work_model_weight=i%2 ? .75f : 1.f;
       z.event_index = i;
       z.event_kind = i == 0 ? 1 : 0;
       z.physical_next_peak_side = i % 2 ? -1 : 1;
