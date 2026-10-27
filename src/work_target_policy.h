@@ -19,4 +19,7 @@ inline float reserveFull(float target) { return target-.2f; }
 inline float previousCeiling(float target) { return target+2.f; }
 // Keep completed-peak learning below the unchanged 16-degree stop boundary.
 inline float observationCeiling(float target) { return target==12.f ? 15.f : 13.f; }
+inline unsigned negativeFeedbackIndex(float target,bool assist) {
+  return assist && target!=12.f ? 3u : 2u;
+}
 }

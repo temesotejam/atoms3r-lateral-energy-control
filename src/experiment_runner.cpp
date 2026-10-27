@@ -3148,7 +3148,7 @@ void ExperimentRunner::observeWheelWorkPeak(
         event.target_energy_j*1000.f,energy_control_autonomous_last_peak_amplitude_deg_,
         work_negative_pending_width_ms_,true,event.target_peak_deg);
     learn=work_negative_pending_supported_ && !work_negative_pending_assist_;
-    if (work_negative_pending_supported_) work_positive_feedback_[work_negative_pending_assist_ ? 3 : 2].observe(lateral_energy_geometry_,-1,
+    if (work_negative_pending_supported_) work_positive_feedback_[work_target_policy::negativeFeedbackIndex(event.target_peak_deg,work_negative_pending_assist_)].observe(lateral_energy_geometry_,-1,
         event.peak_amplitude_deg,raw,event.target_peak_deg);
   }
   if (!learn) adaptive_cg_.breakPair();
@@ -3174,7 +3174,7 @@ void ExperimentRunner::captureWheelWorkDecision(
   event.work_model_weight=choice.support_weight;
   if (event.physical_next_peak_side<0) {
     event.work_brake_cap_ms=choice.allowed_cap_ms;
-    event.work_bias_samples=static_cast<uint8_t>(work_positive_feedback_[choice.branch==9 ? 3 : 2].count());
+    event.work_bias_samples=static_cast<uint8_t>(work_positive_feedback_[work_target_policy::negativeFeedbackIndex(event.target_peak_deg,choice.branch==9)].count());
   }
   if (event.physical_next_peak_side>0)
     event.work_bias_samples=static_cast<uint8_t>(work_positive_feedback_[choice.branch==6 ? 1 : 0].count());
@@ -3222,7 +3222,7 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
     if(state.target_deg==8.f && state.previous_peak_deg<work_target_policy::reserveFloor(state.target_deg)) return choice;
     const uint16_t cap=work_negative_feedback_.balancedCapMs(lateral_energy_geometry_,state.previous_peak_deg,run_cg_shift_mm_,event.target_peak_deg);
     const float bias_mj=work_positive_feedback_[2].biasMj(run_cg_shift_mm_,adaptive_cg_.snapshot().common_bias_mj);
-    const float assist_bias=work_positive_feedback_[3].biasMj(run_cg_shift_mm_,bias_mj);
+    const float assist_bias=work_positive_feedback_[work_target_policy::negativeFeedbackIndex(event.target_peak_deg,true)].biasMj(run_cg_shift_mm_,bias_mj);
     choice=wheel_work_energy_control::chooseNegativeBidirectional(state,cap,
         work_negative_assist_feedback_,lateral_current_table_,initial_current_ma,
         predictCurrentGoalMa(300,fast_v),target_mj,bias_mj,assist_bias);

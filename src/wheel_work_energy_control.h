@@ -9,7 +9,7 @@
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_target12_energy_guard_20261027";
+constexpr char kRevision[] = "wheel_work_target12_shared_energy_bias_20261027";
 constexpr float kRadPerDeg = 0.017453292519943295f;
 constexpr uint16_t kNegativeMaxMs = 70;
 constexpr float kPositiveMinQ = 8.79588f;
@@ -369,7 +369,9 @@ inline Prediction negativeAssistRaw(const State& s,float q_mas,float coast_bias,
   if (!p.valid || !std::isfinite(q_mas) || q_mas<0.f || q_mas>25.f) return Prediction{};
   const float qomega=q_mas*s.rate_dps*kRadPerDeg;
   if(!std::isfinite(assist_bias)) assist_bias=coast_bias;
-  const float blend=ramp(q_mas/5.f);
+  // At target 12 all negative actions share ONE arrival-energy offset.
+  // A q-dependent blend of offsets can manufacture an interior energy maximum.
+  const float blend=s.target_deg==12.f ? 0.f : ramp(q_mas/5.f);
   const float extra_bias=blend*(assist_bias-coast_bias);
   const float added_work=.06189960458f*qomega;
   p.on_mj=.09858037463f*qomega;
@@ -392,7 +394,7 @@ class NegativeAssistFeedback {
     if(low_count_>=2) armed_=true;
     if(assisted && amplitude<target-.3f && applied_width>=cap_ms_) {
       if(++limited_count_>=2) { cap_ms_=cap_ms_<100 ? cap_ms_+5 : 100;limited_count_=0; }
-    } else limited_count_=0;
+    } else if(assisted || target!=12.f) limited_count_=0;
     if(assisted && amplitude>target+.3f) { cap_ms_=cap_ms_>25 ? cap_ms_-5 : 25;limited_count_=0; }
   }
  private:
@@ -408,8 +410,8 @@ inline Choice chooseNegativeBidirectional(const State& s,uint16_t brake_cap,
   const auto coast=negativeBoundary(s,0,brake_bias);
   if(s.target_deg==8.f || !c.valid || !coast.valid || !feedback.allowed() ||
       target_mj<=coast.energy_mj+.03f || s.battery_mv<7000.f) return c;
-  // Compare an unchanged coast candidate to assist candidates in the SAME
-  // energy coordinate. A mode-specific correction is learned separately.
+  // Target12 uses the same learned offset for coast/brake/assist. The target10
+  // historical mode-specific correction is retained for its existing trials.
   const uint16_t assist_cap=static_cast<uint16_t>(std::floor(feedback.capMs()*negativeBoundaryWeight(s)));
   for(uint16_t ms=10;ms<=assist_cap;++ms) {
     const float q=lateral_energy::charge(table,ms,initial_current,goal_current);
