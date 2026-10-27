@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.39-negative-shared-energy",
+  "version": "1.0.40-state-work-control",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

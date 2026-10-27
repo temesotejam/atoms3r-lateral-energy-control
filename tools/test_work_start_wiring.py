@@ -16,6 +16,10 @@ assert 'work_target_policy::packageAllowed(energy_control_autonomous_target_peak
 assert 'state.target_deg=event.target_peak_deg;' in runner
 assert 'd.command_sign=choice.command_sign;' in runner
 assert 'chooseNegativeBidirectional(state,cap,' in runner
+assert 'if(state.target_deg==12.f)' in runner
+assert 'work_target12_controller_.choose(' in runner
+assert 'work_target12_controller_.observe(' in runner
+assert 'work_pending_calibration_weight_>=.9f' in runner
 assert 'work_choice.branch==9' in runner
 assert 'positiveBiasMj(run_cg_shift_mm_' in runner
 assert 'positive_bias_mj,bridge_bias_mj,coast_only)' in runner

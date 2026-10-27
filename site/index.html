@@ -17,6 +17,10 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
+      <h2>1.0.40：12°の仕事予測と入力上限を回転数・電圧に対応</h2>
+      <p>12°では、入力前の機体角速度・ホイール回転数・電池電圧・直前の振幅から、入力中と入力後の仕事を予測します。目標エネルギーに近づく電流と時間を選び、負側の補助入力上限も回転数と電圧に応じて調整します。書き込み後、同じ固定脚条件で「12°・30秒」を測定してください。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/TARGET12_STATE_WORK.md">計算方法と適用範囲</a></p>
+    </section>
+    <section class="panel important">
       <h2>1.0.39：12°の負側エネルギー補正と補助入力の選択を修正</h2>
       <p>無入力・ブレーキ・補助入力に同じ到達エネルギー補正を使い、補助入力で加わる仕事の増分を別に計算します。補正の切り替えによって長い入力が不利になる処理を除きました。補助の上限不足を示す実測結果は、間に無入力があっても保持します。書き込み後、同じ固定脚条件の12°・30秒でまず1回確認してください。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/TARGET12_SHARED_ENERGY.md">計算方法と検証範囲</a></p>
       <p>12°では13°を超える確定ピークも15°まで補正へ取り込みます。予測より大きく揺れた直後は、直近のエネルギー誤差をすぐに入力選択へ反映します。補正範囲を超えた場合は加振を見送り、16°での停止条件は維持します。書き込み後、まず同じ固定脚条件の12°・30秒で確認してください。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/TARGET12_ENERGY_GUARD.md">計算方法と検証範囲</a></p>
