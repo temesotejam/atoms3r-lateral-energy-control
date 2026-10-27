@@ -3138,7 +3138,8 @@ void ExperimentRunner::observeWheelWorkPeak(
     learn=work_positive_pending_branch_==1;
     if (work_positive_pending_branch_<2)
       work_positive_feedback_[work_positive_pending_branch_].observe(lateral_energy_geometry_,1,
-          event.peak_amplitude_deg,raw,event.target_peak_deg);
+          event.peak_amplitude_deg,raw,event.target_peak_deg,event.cg_shift_mm,
+          energy_control_autonomous_pending_model_energy_j_*1000.f-raw);
   } else if (work_negative_pending_ && event.physical_peak_side<0) {
     raw=(energy_control_autonomous_pending_model_energy_j_-work_negative_pending_bias_j_)*1000.f;
     work_negative_assist_feedback_.observe(event.peak_amplitude_deg,event.target_peak_deg,
@@ -3204,14 +3205,19 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
       !std::isfinite(target_mj) || target_mj<=0.f) return choice;
   const float initial_current_ma=static_cast<float>(side)*event.i0_estimated_mA;
   if (side>0) {
-    const float positive_bias_mj=work_positive_feedback_[1].biasMj(run_cg_shift_mm_,adaptive_cg_.snapshot().common_bias_mj);
+    const float positive_bias_mj=work_positive_feedback_[1].positiveBiasMj(run_cg_shift_mm_,adaptive_cg_.snapshot().common_bias_mj,event.target_peak_deg);
+    const float bridge_bias_mj=work_positive_feedback_[0].positiveBiasMj(run_cg_shift_mm_,0.f,event.target_peak_deg);
+    const float weight=wheel_work_energy_control::positiveWorkWeight(state);
+    const bool coast_only=event.target_peak_deg==12.f &&
+        ((weight>0.f && work_positive_feedback_[1].coastOnly()) ||
+         (weight<1.f && work_positive_feedback_[0].coastOnly()));
     const lateral_energy::CurrentTable* tables[] = {
         &lateral_current_table_,&positive_current_probe_tables_[0],
         &positive_current_probe_tables_[1]};
     const float goals[]={predictCurrentGoalMa(300,fast_v),predictCurrentGoalMa(350,fast_v),
         predictCurrentGoalMa(400,fast_v)};
     choice=wheel_work_energy_control::choosePositive(lateral_energy_geometry_,state,
-        initial_current_ma,tables,goals,target_mj,positive_bias_mj,work_positive_feedback_[0].biasMj(run_cg_shift_mm_,0.f));
+        initial_current_ma,tables,goals,target_mj,positive_bias_mj,bridge_bias_mj,coast_only);
   } else {
     if(state.target_deg==8.f && state.previous_peak_deg<work_target_policy::reserveFloor(state.target_deg)) return choice;
     const uint16_t cap=work_negative_feedback_.balancedCapMs(lateral_energy_geometry_,state.previous_peak_deg,run_cg_shift_mm_,event.target_peak_deg);

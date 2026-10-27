@@ -17,6 +17,8 @@ assert 'state.target_deg=event.target_peak_deg;' in runner
 assert 'd.command_sign=choice.command_sign;' in runner
 assert 'chooseNegativeBidirectional(state,cap,' in runner
 assert 'work_choice.branch==9' in runner
+assert 'positiveBiasMj(run_cg_shift_mm_' in runner
+assert 'positive_bias_mj,bridge_bias_mj,coast_only)' in runner
 worker=Path('src/run_control_worker.h').read_text(encoding='utf-8')
 assert 'work_target_policy::packageAllowed(target_deg, brake_max_ms, input_current_mA,' in worker
 print('actual status readiness and HTTP start route have no unconditional reference gate PASS')

@@ -9,7 +9,7 @@
 // complete wheel work (pulse plus coast to the next peak), in mJ.  The work
 // multiplier is a regression coefficient, not a mechanical efficiency.
 namespace wheel_work_energy_control {
-constexpr char kRevision[] = "wheel_work_negative_assist_20261026";
+constexpr char kRevision[] = "wheel_work_target12_energy_guard_20261027";
 constexpr float kRadPerDeg = 0.017453292519943295f;
 constexpr uint16_t kNegativeMaxMs = 70;
 constexpr float kPositiveMinQ = 8.79588f;
@@ -334,13 +334,14 @@ inline void finish(Choice& c, float target_mj) {
 
 inline Choice choosePositive(const lateral_energy::Geometry& geometry,const State& state,
     float initial_current_ma,const lateral_energy::CurrentTable* const tables[3],
-    const float goals[3],float target_mj,float bias_mj,float bridge_bias_mj=NAN) {
+    const float goals[3],float target_mj,float bias_mj,float bridge_bias_mj=NAN,bool coast_only=false) {
   Choice choice;
   if (!std::isfinite(target_mj) || target_mj<=0.f) return choice;
   if (!std::isfinite(bridge_bias_mj)) bridge_bias_mj=bias_mj;
   const int16_t currents[]={300,350,400};
   for (uint8_t i=0;i<3;++i) {
     for (uint16_t width=0;width<=100;width=(width==0 ? 10 : width+1)) {
+      if(coast_only && width>0) break;
       const float q=lateral_energy::charge(*tables[i],width,initial_current_ma,goals[i]);
       const Prediction p=positiveBoundary(geometry,state,q,bias_mj,bridge_bias_mj);
       consider(choice,currents[i],width,q,p,target_mj);
@@ -385,7 +386,7 @@ class NegativeAssistFeedback {
   bool allowed() const { return armed_; }
   uint16_t capMs() const { return cap_ms_; }
   void observe(float amplitude,float target,bool assisted,uint16_t applied_width) {
-    if (!std::isfinite(amplitude) || !work_target_policy::valid(target) || amplitude<6.f || amplitude>13.f) return;
+    if (!std::isfinite(amplitude) || !work_target_policy::valid(target) || amplitude<6.f || amplitude>work_target_policy::observationCeiling(target)) return;
     if (amplitude<target-.3f) { if(low_count_<2) ++low_count_; }
     else low_count_=0;
     if(low_count_>=2) armed_=true;

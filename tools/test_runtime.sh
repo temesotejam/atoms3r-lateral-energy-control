@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_target12_guard.cpp -o /tmp/test_target12_guard
+/tmp/test_target12_guard
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_negative_assist.cpp -o /tmp/test_negative_assist
 /tmp/test_negative_assist
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_work_targets.cpp -o /tmp/test_work_targets

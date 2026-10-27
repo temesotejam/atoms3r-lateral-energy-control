@@ -17,4 +17,6 @@ inline float rateCeiling(float target,int side) {
 inline float reserveFloor(float target) { return target-1.f; }
 inline float reserveFull(float target) { return target-.2f; }
 inline float previousCeiling(float target) { return target+2.f; }
+// Keep completed-peak learning below the unchanged 16-degree stop boundary.
+inline float observationCeiling(float target) { return target==12.f ? 15.f : 13.f; }
 }
