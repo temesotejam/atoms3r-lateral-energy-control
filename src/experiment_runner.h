@@ -11,6 +11,7 @@
 #include "autonomous_brake_limit.h"
 #include "lateral_energy_control.h"
 #include "wheel_work_energy_control.h"
+#include "walking_energy_loss.h"
 #include "target12_state_work.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
@@ -492,6 +493,8 @@ private:
   uint16_t inverse_negative_pending_width_ms_ = 0;
   float inverse_negative_pending_bias_j_ = 0.f;
   wheel_work_energy_control::NegativeFeedback work_negative_feedback_;
+  walking_energy_loss::Feedback walking_loss_feedback_;
+  bool work_walking_pending_=false;
   wheel_work_energy_control::NegativeAssistFeedback work_negative_assist_feedback_;
   target12_state_work::Controller work_target12_controller_;
   float work_pending_battery_mv_=NAN;

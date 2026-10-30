@@ -22,6 +22,7 @@ extern FootObserver feet;
 #include "lateral_energy_control.h"
 #include "one_peak_energy_inverse.h"
 #include "wheel_work_energy_control.h"
+#include "walking_energy_loss.h"
 
 static constexpr uint16_t RWLOG_FORMAT_VERSION = 56;
 static constexpr uint32_t RWLOG_FLAG_CRC32 = 1U << 0;
@@ -493,7 +494,8 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     json += "\"wheel_work_negative_assist_policy\":\"target10_legacy_transferred_gain;target12_measured_signed_work_slopes_rpm_voltage;seed_caps25_to40ms;context_evidence_extensions5ms_max100ms;300mA;Q25mAs;voltage7000_to8120mV;assist_excluded_from_CG_and_brake_cap_learning\",";
     json += "\"wheel_work_target12_positive_guard\":\"context_weighted_energy_residuals;shrink_sparse_updates;large_underprediction_uses_context_weighted_latest_residual;over15deg_or_outside_scaled_residual_limit_coasts_until_accepted_peak;16deg_stop_unchanged\",";
     json += "\"wheel_work_target12_negative_policy\":\"state_work_model;common_continuous_coast_at_zero_charge;separate_signed_dose_slopes;rpm_voltage_context_residuals;rpm_voltage_weighted_cap_evidence;limited_evidence_survives_coast;overshoot_reduces_only_nearby_context_caps;seed25_to40ms_then5ms_stages_to100ms;Q25mAs;16deg_stop_unchanged\",";
-    json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"legacy_negative_extended\",\"3\":\"legacy_negative_broad\",\"4\":\"negative_brake_target12_state_or_legacy_pooled\",\"5\":\"positive_expanded_bridge\",\"6\":\"positive_work_target12_state_or_legacy8run\",\"7\":\"positive_energy_blend_guard_band\",\"8\":\"negative_bounded_guard_band\",\"9\":\"negative_assist_target12_state_or_legacy_transferred\"},";
+    json += "\"walking_energy_loss\":{\"revision\":\"walking_negative_coast_50881356_v1\",\"source_run\":50881356,\"fit_coast_events\":32,\"independent_validation\":false,\"branch\":10,\"scope\":\"target8_negative_only;strict_measured_marginal_envelope;zero_CG_only\",\"loss_semantics\":\"previous_peak_U_minus_predicted_coast_U;includes_model_and_attitude_bias;not_pure_impact_loss\",\"formula_mj\":\"coast=0.09046158+0.00018973*rate_dps^2;arrival=Uprev-loss+transferred_increment+branch_residual\",\"input_policy\":\"two_matched_coast_arrivals_then300mA_10to25ms;no_cap_growth;powered_gain_unvalidated;no_old_side_bias_or_CG_learning\"},";
+    json += "\"work_control_branch_codes\":{\"0\":\"not_selected\",\"1\":\"positive_work\",\"2\":\"legacy_negative_extended\",\"3\":\"legacy_negative_broad\",\"4\":\"negative_brake_target12_state_or_legacy_pooled\",\"5\":\"positive_expanded_bridge\",\"6\":\"positive_work_target12_state_or_legacy8run\",\"7\":\"positive_energy_blend_guard_band\",\"8\":\"negative_bounded_guard_band\",\"9\":\"negative_assist_target12_state_or_legacy_transferred\",\"10\":\"walking_negative_loss_compensation\"},";
     json += "\"wheel_work_target12_state_model\":\"fixed_leg_3runs;155_complete_coverage95pct_peaks_after5s;positive78_negative77;inputs_rate_squared_rpm_voltage_previous_peak_signed_predicted_Q;work_on_plus_post_to_peak_from_position_J2.8e-5;U0_peak_arrival_fit;retained_work_coefficient_is_empirical_not_efficiency;negative_assist_gain_fitted_not_transferred;positive_V7380_to7560_negative_V7380_to7550mV;bounded_smooth_legacy_transition;all_predictions_cross_condition;no_closed_loop_validation_claim\",";
     json += "\"wheel_work_model_interpretation\":\"effective_arrival_energy_regression;work_coefficient_not_physical_efficiency;includes_post_pulse_work;target12_measured_state_work_model_and_smooth_legacy_transition;unmeasured_commands_cross_condition;negative_brake70ms;negative_assist300mA_max100ms_Q25mAs;no_closed_loop_validation_claim\",";
   }
@@ -1630,11 +1632,11 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     const bool work_event = e.work_control_branch != 0;
     const bool inverse_event = energy_bridge_enabled_ && !negative_probe_mode_ &&
         autonomous_brake_max_ms_ == 25 && e.physical_next_peak_side < 0;
-    detail += ",\"free_model_revision\":\"" + String((e.work_control_branch>=4) ? wheel_work_energy_control::kRevision :
+    detail += ",\"free_model_revision\":\"" + String(e.work_control_branch==10 ? walking_energy_loss::kRevision : (e.work_control_branch>=4) ? wheel_work_energy_control::kRevision :
         inverse_event ? one_peak_energy_inverse::kRevision :
         energy_bridge_enabled_ ? lateral_energy::kRevision : lateral_energy::kQuadraticRevision) + "\"";
     if (work_event)
-      detail += ",\"arrival_energy_model_revision\":\"" + String(control_target_cdeg_==1200 ? "target12_state_work_20261027" : wheel_work_energy_control::kRevision) + "\"";
+      detail += ",\"arrival_energy_model_revision\":\"" + String(e.work_control_branch==10 ? walking_energy_loss::kRevision : control_target_cdeg_==1200 ? "target12_state_work_20261027" : wheel_work_energy_control::kRevision) + "\"";
     else
       // The compact table stores one shared field list for every row. Startup
       // and fallback events must keep the work-model column, with a null value.

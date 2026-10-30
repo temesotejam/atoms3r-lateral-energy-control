@@ -35,6 +35,7 @@ __attribute__((noinline)) lateral_energy::Decision workDecision(
   d.free_j=std::isfinite(choice.free_mj) ? choice.free_mj*.001f : passive_j;
   d.target_j=target_j;
   d.predicted_j=choice.energy_mj*.001f;
+  d.loss_j=choice.walking_loss_mj*.001f;
   d.deficit_j=d.target_j-d.free_j;d.commanded_deficit_j=d.deficit_j;
   d.corrected_target_j=d.target_j;d.energy_error_j=d.target_j-d.predicted_j;
   d.selected_q_mAs=(side>0 || choice.command_sign>0 || std::isfinite(choice.q_mas)) ? choice.q_mas :
@@ -2526,6 +2527,8 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   } else run_cg_shift_mm_=0.f;
   pending_cg_shift_mm_=0;
   work_negative_feedback_ = wheel_work_energy_control::NegativeFeedback{};
+  walking_loss_feedback_=walking_energy_loss::Feedback{};
+  work_walking_pending_=false;
   for (auto& feedback : work_positive_feedback_) feedback=wheel_work_energy_control::SideEnergyFeedback{};
   work_negative_assist_feedback_=wheel_work_energy_control::NegativeAssistFeedback{};
   work_target12_controller_=target12_state_work::Controller{};
@@ -3136,6 +3139,12 @@ void ExperimentRunner::observeWheelWorkPeak(
   }
   float raw=NAN;
   bool learn=false;
+  if(work_walking_pending_ && work_negative_pending_ && event.physical_peak_side<0) {
+    raw=(energy_control_autonomous_pending_model_energy_j_-work_negative_pending_bias_j_)*1000.f;
+    walking_loss_feedback_.observe(event.measured_energy_j*1000.f,raw,event.target_energy_j*1000.f);
+    adaptive_cg_.breakPair();
+    return; // Separate measured walking branch: no historical bias/CG learning.
+  }
   if(event.target_peak_deg==12.f && (work_positive_pending_ || work_negative_pending_)) {
     const float raw_mj=work_positive_pending_ ? work_positive_pending_raw_j_*1000.f :
         (energy_control_autonomous_pending_model_energy_j_-work_negative_pending_bias_j_)*1000.f;
@@ -3192,6 +3201,8 @@ void ExperimentRunner::captureWheelWorkDecision(
     event.work_bias_samples=static_cast<uint8_t>(work_positive_feedback_[choice.branch==6 ? 1 : 0].count());
   if(event.target_peak_deg==12.f)
     event.work_bias_samples=static_cast<uint8_t>(work_target12_controller_.count(event.physical_next_peak_side));
+  if(choice.branch==10)
+    event.work_bias_samples=static_cast<uint8_t>(walking_loss_feedback_.count());
   if (choice.valid && std::isfinite(choice.free_mj)) {
     event.passive_energy_j=choice.free_mj*.001f;
     event.free_next_peak_amplitude_deg=controlAngle(event.passive_energy_j,event.physical_next_peak_side);
@@ -3215,6 +3226,11 @@ wheel_work_energy_control::Choice ExperimentRunner::chooseWheelWork(
   state.target_deg=event.target_peak_deg;
   const bool supported=wheel_work_energy_control::supported(state,side);
   if (state_supported) *state_supported=supported;
+  if(side<0 && walking_energy_loss::supported(state)) {
+    return walking_energy_loss::choose(lateral_energy_geometry_,state,lateral_current_table_,
+        static_cast<float>(side)*event.i0_estimated_mA,predictCurrentGoalMa(300,fast_v),
+        target_mj,walking_loss_feedback_,run_cg_shift_mm_);
+  }
   if ((side<0 && wheel_work_energy_control::negativeBoundaryWeight(state)<=0.f) ||
       !std::isfinite(target_mj) || target_mj<=0.f) return choice;
   const float initial_current_ma=static_cast<float>(side)*event.i0_estimated_mA;
@@ -3621,6 +3637,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   work_positive_pending_raw_j_=work_positive_pending_ ?
       event.predicted_energy_j-(work_choice.valid ? prediction_bias_j : 0.f) : NAN;
   work_negative_pending_=work_mode && work_choice.valid && event.physical_next_peak_side<0;
+  work_walking_pending_=work_negative_pending_ && work_choice.branch==10;
   work_negative_pending_assist_=work_negative_pending_ && work_choice.branch==9;
   work_negative_pending_supported_=work_negative_pending_ && work_choice.support_weight>=.5f;
   work_negative_pending_width_ms_=work_negative_pending_ ? selected_width_ms : 0;

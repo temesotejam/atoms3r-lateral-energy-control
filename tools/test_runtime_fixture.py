@@ -55,7 +55,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.41-foot-five-pose'
+assert metadata['firmware_revision']=='1.0.42-walking-loss'
 for manifest in ('site/manifest.json','site/manifest-freefoot-runtime-v2.json'):
     assert json.loads(Path(manifest).read_text())['version']==metadata['firmware_revision']
 assert metadata['energy_model']=='angle_energy_bridge'
@@ -269,8 +269,9 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
     for index, event in enumerate(work_rows):
         assert abs(event['cg_shift_mm']-(.35 if index%2 else -.15))<1e-6
         assert event['work_model_weight'] == (.75 if index%2 else 1)
-        fallback = (index % 3 == 0) != work_first
-        cross_condition = not fallback and index % 4 == 1
+        walking = index == 255
+        fallback = not walking and ((index % 3 == 0) != work_first)
+        cross_condition = walking or (not fallback and index % 4 == 1)
         if index % 2 == 0:
             assert event['work_bias_samples'] == 2
         assert event['event_index'] == index + 1
@@ -278,6 +279,11 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
         assert event['work_prediction_cross_condition'] == cross_condition
         if fallback:
             assert event['arrival_energy_model_revision'] is None
+        elif walking:
+            assert event['arrival_energy_model_revision'] == 'walking_negative_coast_50881356_v1'
+            assert event['free_model_revision'] == 'walking_negative_coast_50881356_v1'
+            assert event['predicted_loss_j'] == .00014
+            assert work_metadata['walking_energy_loss']['independent_validation'] is False
         else:
             assert event['arrival_energy_model_revision'] == work_metadata['wheel_work_model_revision']
         if event['work_control_branch'] == 4:

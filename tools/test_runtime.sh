@@ -2,6 +2,10 @@
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
 
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_walking_energy_loss.cpp -o /tmp/test_walking_energy_loss
+/tmp/test_walking_energy_loss
+python3 tools/test_walking_loss_evidence.py /tmp/test_walking_energy_loss
+
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_target12_state_work.cpp -o /tmp/test_target12_state_work
 /tmp/test_target12_state_work
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_negative_shared_energy.cpp -o /tmp/test_negative_shared_energy

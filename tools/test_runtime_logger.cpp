@@ -202,6 +202,10 @@ int main(int argc,char** argv){
       z.energy_model_extrapolated = z.energy_model_extrapolated || z.work_prediction_cross_condition;
       z.work_brake_cap_ms = z.work_control_branch==4 ? (z.work_prediction_cross_condition ? 30 : 25) : 0;
       z.work_bias_samples = z.physical_next_peak_side>0 ? 2 : z.work_control_branch==4 ? 3 : 0;
+      if(i==255) {
+        z.work_control_branch=10;z.work_prediction_cross_condition=true;
+        z.energy_model_extrapolated=true;z.predicted_loss_j=.00014f;
+      }
       work.addEnergyControlAutonomousZeroCrossEvent(z);
     }
     work.markMeasurementDone(); work.seal();

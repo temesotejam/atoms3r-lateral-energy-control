@@ -38,6 +38,7 @@ struct Prediction {
   float support_weight=1.f,applied_bias_mj=0.f;
 };
 struct Choice {
+  float walking_loss_mj = NAN;
   bool valid = false;
   bool target_below_reachable = false;
   bool target_above_reachable = false;

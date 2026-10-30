@@ -17,8 +17,12 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
+      <h2>1.0.42：歩行時のエネルギー低下を追加</h2>
+      <p>バージョン <strong>1.0.42-walking-loss</strong>。目標8°の歩行ログから、無入力の負側半周期32回で観測したエネルギー低下を暫定モデルに追加しました。測定できた角速度・回転数・電圧・前ピークの範囲内で、まず無入力を2回確認し、300 mA・最大25 msの負側補償入力を選びます。範囲外ではこの追加モデルを使いません。歩行中の±8°達成は実機で未検証です。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/WALKING_ENERGY_LOSS.md">データ・式・適用範囲</a></p>
+    </section>
+    <section class="panel important">
       <h2>1.0.41：5姿勢のデータで足角度を校正</h2>
-      <p>左右それぞれのマーカー位置から、機体に対する足の角度を推定します。校正点の間は直線補間し、範囲を少し超えても端の区間の傾きで外挿して、角度と範囲外の印を保存します。手で固定した5姿勢による暫定校正です。書き込むバージョンは <strong>1.0.41-foot-five-pose</strong> です。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/foot_calibration_20261030.md">校正データと計算方法</a></p>
+      <p>左右それぞれのマーカー位置から、機体に対する足の角度を推定します。校正点の間は直線補間し、範囲を少し超えても端の区間の傾きで外挿して、角度と範囲外の印を保存します。手で固定した5姿勢による暫定校正です。足角度の5姿勢校正は引き継いでいます。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/foot_calibration_20261030.md">校正データと計算方法</a></p>
     </section>
     <section class="panel important">
       <h2>1.0.40：12°の仕事予測と入力上限を回転数・電圧に対応</h2>
