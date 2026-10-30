@@ -6,13 +6,13 @@
 // run 50881356. All energies here are mJ. Never add this loss to the old
 // side-bias correction: this is a separate, mutually exclusive branch.
 namespace walking_energy_loss {
-constexpr char kRevision[]="walking_negative_coast_50881356_v1";
+constexpr char kRevision[]="walking_coast_voltage_transfer_v2";
 inline bool supported(const wheel_work_energy_control::State& s) {
   return s.absolute_reference && s.target_deg==8.f &&
       wheel_work_energy_control::freshFinite(s) &&
-      s.rate_dps>=25.4613f && s.rate_dps<=36.752f &&
-      s.wheel_rpm>=536.86f && s.wheel_rpm<=603.21f &&
-      s.battery_mv>=7830.f && s.battery_mv<=7840.f &&
+      s.rate_dps>=24.7827f && s.rate_dps<=36.752f &&
+      s.wheel_rpm>=511.45f && s.wheel_rpm<=603.21f &&
+      s.battery_mv>=7000.f && s.battery_mv<=8120.f &&
       s.previous_peak_deg>=4.70603f && s.previous_peak_deg<=6.11884f;
 }
 inline float coastMj(float rate_dps) {

@@ -9,6 +9,12 @@ int main(int argc,char**) {
   const float target=1000.f*lateral_energy::potential(g,8.f);
   Feedback f;State s{32,560,7840,true,5.5f};s.absolute_reference=true;
   assert(supported(s));
+  State alternate{30,520,7690,true,5.5f};alternate.absolute_reference=true;
+  assert(supported(alternate));
+  assert(choose(g,alternate,table,0,280,target,f,0).valid);
+  alternate.battery_mv=7000;assert(supported(alternate));
+  alternate.battery_mv=8120;assert(supported(alternate));
+  alternate.battery_mv=8121;assert(!supported(alternate));
   auto c=choose(g,s,table,0,280,target,f,0);
   assert(c.valid&&c.branch==10&&c.width_ms==0&&c.walking_loss_mj>0);
   assert(c.cross_condition&&c.support_weight==0);
@@ -27,10 +33,10 @@ int main(int argc,char**) {
   for(int i=0;i<9;++i) {
     State bad=s;
     if(i==0)bad.wheel_fresh=false;
-    if(i==1)bad.rate_dps=25.f;
+    if(i==1)bad.rate_dps=24.f;
     if(i==2)bad.rate_dps=37.f;
     if(i==3)bad.wheel_rpm=620;
-    if(i==4)bad.battery_mv=7800;
+    if(i==4)bad.battery_mv=6900;
     if(i==5)bad.previous_peak_deg=7;
     if(i==6)bad.target_deg=10;
     if(i==7)bad.absolute_reference=false;
