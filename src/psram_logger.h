@@ -364,6 +364,8 @@ class PsramLogger {
     uint8_t rate_baseline_reason = 255;
     float passive_energy_j = NAN;
     float target_peak_deg = NAN;
+    float foot_balance_target_deg = NAN, foot_balance_left_deg = NAN, foot_balance_right_deg = NAN;
+    float foot_balance_left_mean = NAN, foot_balance_right_mean = NAN;
     float target_energy_j = NAN;
     float delta_energy_required_j = NAN;
     float kinetic_energy_j=NAN, predicted_loss_j=NAN, integral_energy_j=NAN;

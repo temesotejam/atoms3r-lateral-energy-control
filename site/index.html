@@ -17,8 +17,12 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
+      <h2>1.0.44：歩行中の足の動きを左右で調整</h2>
+      <p>バージョン <strong>1.0.44-foot-balance</strong>。目標8°の仕事制御で、左右の足マーカーの変化を比較して、小さい側の目標を少しずつ調整します。足の検出が欠けた場合は更新を待ちます。左右バランス・前進・直進の効果は実機で未検証です。</p>
+    </section>
+    <section class="panel important">
       <h2>1.0.43：歩行時の補償を電圧変化に対応</h2>
-      <p>バージョン <strong>1.0.43-walking-voltage</strong>。歩行データ2回を使い、エネルギー低下の予測範囲を拡張しました。電圧に応じた既存の電流予測を使って負側の補償入力を選びます。歩行中の電圧依存性と入力の効果は実機で引き続き検証が必要です。</p>
+      <p>1.0.43の変更：歩行データ2回を使い、エネルギー低下の予測範囲を拡張しました。電圧に応じた既存の電流予測を使って負側の補償入力を選びます。歩行中の電圧依存性と入力の効果は実機で引き続き検証が必要です。</p>
     </section>
     <section class="panel important">
       <h2>1.0.42：歩行時のエネルギー低下を追加</h2>

@@ -1652,6 +1652,11 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
     appendAutonomousNullable("predicted_work_change_j", e.predicted_work_change_j, 8);
     appendAutonomousNullable("passive_energy_j", e.passive_energy_j, 8);
     appendAutonomousNullable("target_peak_deg", e.target_peak_deg, 5);
+    appendAutonomousNullable("foot_balance_target_deg", e.foot_balance_target_deg, 5);
+    appendAutonomousNullable("foot_balance_left_deg", e.foot_balance_left_deg, 5);
+    appendAutonomousNullable("foot_balance_right_deg", e.foot_balance_right_deg, 5);
+    appendAutonomousNullable("foot_balance_left_mean", e.foot_balance_left_mean, 5);
+    appendAutonomousNullable("foot_balance_right_mean", e.foot_balance_right_mean, 5);
     appendAutonomousNullable("cg_shift_mm", e.cg_shift_mm, 6);
     appendAutonomousNullable("target_energy_j", e.target_energy_j, 8);
     appendAutonomousNullable("delta_energy_required_j", e.delta_energy_required_j, 8);

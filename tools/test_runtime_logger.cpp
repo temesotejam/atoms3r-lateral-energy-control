@@ -205,6 +205,8 @@ int main(int argc,char** argv){
       if(i==255) {
         z.work_control_branch=10;z.work_prediction_cross_condition=true;
         z.energy_model_extrapolated=true;z.predicted_loss_j=.00014f;
+        z.foot_balance_target_deg=8.2f;z.foot_balance_left_mean=2.5f;
+        z.foot_balance_right_mean=.2f;z.target_energy_j=.00076f;
       }
       work.addEnergyControlAutonomousZeroCrossEvent(z);
     }

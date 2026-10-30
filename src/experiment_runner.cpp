@@ -2529,6 +2529,8 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   work_negative_feedback_ = wheel_work_energy_control::NegativeFeedback{};
   walking_loss_feedback_=walking_energy_loss::Feedback{};
   work_walking_pending_=false;
+  foot_balance_.reset(status_.run_id);foot_frame_run_id_=0;
+  foot_frame_left_valid_=foot_frame_right_valid_=false;pending_target_energy_j_=NAN;
   for (auto& feedback : work_positive_feedback_) feedback=wheel_work_energy_control::SideEnergyFeedback{};
   work_negative_assist_feedback_=wheel_work_energy_control::NegativeAssistFeedback{};
   work_target12_controller_=target12_state_work::Controller{};
@@ -2839,6 +2841,11 @@ void ExperimentRunner::updateEnergyControlAutonomousPulse(uint32_t now_ms) {
     // were completed by the bounded fast selector at the accepted zero crossing.
   }
 }
+void ExperimentRunner::observeFootFrame(uint16_t run_id,uint32_t frame_ms,bool left_valid,bool right_valid,float left_deg,float right_deg) {
+  foot_frame_run_id_=run_id;foot_frame_ms_=frame_ms;
+  foot_frame_left_valid_=left_valid;foot_frame_right_valid_=right_valid;
+  foot_frame_left_=left_deg;foot_frame_right_=right_deg;
+}
 bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_t physical_side,
                                                             float amplitude_deg, float detector_peak_angle_deg) {
   if (!logger_ || physical_side == 0 || !isfinite(amplitude_deg) || !isfinite(detector_peak_angle_deg) ||
@@ -2872,6 +2879,8 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
       ? energy_control_autonomous_pending_q_command_mA_s_ : NAN;
   event.cg_shift_mm=wheelWorkMode() ? (event.pending_command_matched ? pending_cg_shift_mm_ : run_cg_shift_mm_) : 0.f;
   event.target_energy_j = lateral_cg::potential(lateral_energy_geometry_,physical_side * event.target_peak_deg,event.cg_shift_mm);
+  if(event.pending_command_matched && isfinite(pending_target_energy_j_))
+    event.target_energy_j=pending_target_energy_j_;
   event.measured_energy_j = lateral_cg::potential(lateral_energy_geometry_,physical_side * event.peak_amplitude_deg,event.cg_shift_mm);
   if (roller_) {
     const uint32_t capture_us=micros();
@@ -2946,6 +2955,12 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
   event.integral_plus_j = energy_control_autonomous_integral_plus_j_;
   event.integral_minus_j = energy_control_autonomous_integral_minus_j_;
   logger_->addEnergyControlAutonomousPeakEvent(event);
+  if(wheelWorkMode() && energy_control_autonomous_target_peak_deg_==8.f) {
+    const bool left=physical_side>0;
+    const float value=left ? foot_frame_left_ : foot_frame_right_;
+    const bool valid=left ? foot_frame_left_valid_ : foot_frame_right_valid_;
+    foot_balance_.observe(physical_side,fmaxf(0.f,value),valid && isfinite(value),foot_frame_run_id_,peak_ms,foot_frame_ms_);
+  }
   return true;
 }
 void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
@@ -3394,6 +3409,18 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
       : lateral_energy::freeEnergy(energy_coeff,omega);
   event.cg_shift_mm=wheelWorkMode() ? run_cg_shift_mm_ : 0.f;
   event.target_energy_j = wheelWorkMode() ? controlPotential(event.physical_next_peak_side * event.target_peak_deg) : lateral_target_energy_j_;
+  if(wheelWorkMode() && event.target_peak_deg==8.f) {
+    const float offset=event.physical_next_peak_side<0 ? foot_balance_.negativeOffsetDeg() : foot_balance_.positiveOffsetDeg();
+    const float adjusted=event.target_peak_deg+offset;
+    event.foot_balance_target_deg=adjusted;
+    event.foot_balance_left_mean=foot_balance_.leftMean();
+    event.foot_balance_right_mean=foot_balance_.rightMean();
+    if(foot_frame_run_id_==status_.run_id && t_test_ms>=foot_frame_ms_ && t_test_ms-foot_frame_ms_<=150) {
+      event.foot_balance_left_deg=foot_frame_left_valid_ ? foot_frame_left_ : NAN;
+      event.foot_balance_right_deg=foot_frame_right_valid_ ? foot_frame_right_ : NAN;
+    }
+    event.target_energy_j=controlPotential(event.physical_next_peak_side*adjusted);
+  }
   event.free_next_peak_amplitude_deg = energy_bridge_enabled_ ? bridge_free_angle :
       lateral_energy::angle(lateral_energy_geometry_,event.passive_energy_j);
   const auto bridge_coeff=lateral_energy::bridgeCoefficients(event.physical_next_peak_side);
@@ -3630,6 +3657,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   energy_control_autonomous_pending_probe_ = fixed_negative_probe;
   energy_control_autonomous_pending_next_side_ = event.physical_next_peak_side;
   energy_control_autonomous_pending_target_deg_ = event.target_peak_deg;
+  pending_target_energy_j_=event.target_energy_j;
   energy_control_autonomous_pending_q_command_mA_s_ = selected_q_mA_s;
   energy_control_autonomous_pending_model_energy_j_ = event.predicted_energy_j;
   work_positive_pending_=work_mode && event.physical_next_peak_side>0;

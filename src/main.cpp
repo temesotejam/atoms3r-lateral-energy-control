@@ -28,6 +28,7 @@ ImmutableExport log_export;
 WebUi web;
 
 static uint32_t boot_ms = 0, upright_epoch = 0;
+static uint32_t foot_observation_poll_ms = 0, foot_observation_sequence = 0;
 static uint64_t upright_since_us = 0, log_epoch_us = 0, measurement_epoch_us = 0;
 static bool upright_stable = false;
 static UprightPoseGuide::CachedMetrics pose_metrics;
@@ -189,7 +190,17 @@ static bool controlStep(void*) {
   control_latency::profile.current.accel_fresh_at_entry = accel_fresh;
   const uint32_t sample_us = r.last_gyro_update_us;
   RuntimeDiag::phase(RuntimeDiag::Lane::Control, RuntimeDiag::Phase::ControlRunner);
-  const uint32_t runner_start = micros(); runner.update();
+  const uint32_t runner_start = micros();
+  if(measurement && measurement_epoch_us && millis()-foot_observation_poll_ms>=25) {
+    foot_observation_poll_ms=millis();
+    const auto fs=feet.snapshot();const auto& f=fs.latest;
+    if(f.sequence!=foot_observation_sequence && f.frame_us>=measurement_epoch_us && f.timestamp_valid) {
+      foot_observation_sequence=f.sequence;
+      runner.observeFootFrame(f.run_id,static_cast<uint32_t>((f.frame_us-measurement_epoch_us)/1000),
+          f.left_valid,f.right_valid,f.left_deg,f.right_deg);
+    }
+  }
+  runner.update();
   uint32_t done;
   const auto done_activity = control_latency::activity(&done);
   const uint32_t runner_us = done - runner_start;

@@ -55,7 +55,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.43-walking-voltage'
+assert metadata['firmware_revision']=='1.0.44-foot-balance'
 for manifest in ('site/manifest.json','site/manifest-freefoot-runtime-v2.json'):
     assert json.loads(Path(manifest).read_text())['version']==metadata['firmware_revision']
 assert metadata['energy_model']=='angle_energy_bridge'
@@ -283,6 +283,10 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
             assert event['arrival_energy_model_revision'] == 'walking_coast_voltage_transfer_v2'
             assert event['free_model_revision'] == 'walking_coast_voltage_transfer_v2'
             assert event['predicted_loss_j'] == .00014
+            assert abs(event['foot_balance_target_deg']-8.2)<.00001
+            assert abs(event['foot_balance_left_mean']-2.5)<.00001
+            assert abs(event['foot_balance_right_mean']-.2)<.00001
+            assert abs(event['target_energy_j']-.00076)<.000001
             assert work_metadata['walking_energy_loss']['independent_validation'] is False
         else:
             assert event['arrival_energy_model_revision'] == work_metadata['wheel_work_model_revision']

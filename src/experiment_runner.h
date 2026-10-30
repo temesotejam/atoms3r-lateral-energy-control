@@ -12,6 +12,7 @@
 #include "lateral_energy_control.h"
 #include "wheel_work_energy_control.h"
 #include "walking_energy_loss.h"
+#include "foot_balance_adaptive.h"
 #include "target12_state_work.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
@@ -37,6 +38,7 @@ public:
   void serviceFast();
   void RW_HOT_CODE update();
   void updateImuDynamicBetaContext();
+  void observeFootFrame(uint16_t run_id,uint32_t frame_ms,bool left_valid,bool right_valid,float left_deg,float right_deg);
   void setLoopDt(uint32_t dt_us) { status_.loop_dt_us = dt_us; }
   void recordTimingProbeLoop(uint32_t imu_update_us, uint32_t runner_update_us, uint32_t core1_path_us);
 
@@ -143,6 +145,12 @@ public:
   const char* presetName() const { return "MEKF_ADOPTED_DYNAMIC_BETA_COMPARE_V46"; }
 
 private:
+  foot_balance_adaptive::Controller foot_balance_;
+  uint16_t foot_frame_run_id_=0;
+  uint32_t foot_frame_ms_=0;
+  float foot_frame_left_=NAN,foot_frame_right_=NAN;
+  bool foot_frame_left_valid_=false,foot_frame_right_valid_=false;
+  float pending_target_energy_j_=NAN;
   uint32_t last_logged_speed_sequence_ = 0;
   uint32_t last_logged_position_sequence_ = 0;
   uint32_t last_logged_command_sequence_ = 0;
