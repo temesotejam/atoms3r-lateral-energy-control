@@ -17,6 +17,10 @@
       <div class="badges"><span>ESP32-S3</span><span>BMI270 400/200 Hz</span><span>RWLOG v56</span><span>MEKF</span><span>左右足角度</span></div>
     </header>
     <section class="panel important">
+      <h2>1.0.41：5姿勢のデータで足角度を校正</h2>
+      <p>左右それぞれのマーカー位置から、機体に対する足の角度を推定します。校正点の間は直線補間し、範囲を少し超えても端の区間の傾きで外挿して、角度と範囲外の印を保存します。手で固定した5姿勢による暫定校正です。書き込むバージョンは <strong>1.0.41-foot-five-pose</strong> です。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/foot_calibration_20261030.md">校正データと計算方法</a></p>
+    </section>
+    <section class="panel important">
       <h2>1.0.40：12°の仕事予測と入力上限を回転数・電圧に対応</h2>
       <p>12°では、入力前の機体角速度・ホイール回転数・電池電圧・直前の振幅から、入力中と入力後の仕事を予測します。目標エネルギーに近づく電流と時間を選び、負側の補助入力上限も回転数と電圧に応じて調整します。書き込み後、同じ固定脚条件で「12°・30秒」を測定してください。<a href="https://github.com/temesotejam/atoms3r-lateral-energy-control/blob/main/docs/TARGET12_STATE_WORK.md">計算方法と適用範囲</a></p>
     </section>
