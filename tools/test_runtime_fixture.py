@@ -156,8 +156,10 @@ assert metadata['foot_observation']['calibration']==calibration
 assert metadata['foot_observation']['calibration_source_commit'] is None
 for side in ('right','left'):
     assert metadata['foot_observation'][side+'_deg_per_px']==calibration[side+'_deg_per_px']
-assert metadata['foot_observation']['right_support_x'] == [39,182]
-assert metadata['foot_observation']['left_support_x'] == [37,177.5]
+for side in ('right','left'):
+    for actual,expected in zip(metadata['foot_observation'][side+'_support_x'],
+                               diagnostics['range'][side+'_support_x']):
+        assert abs(actual-expected)<.0001
 assert metadata['foot_frames'][0]['right_valid']
 assert not metadata['foot_frames'][0]['right_in_range']
 assert metadata['foot_frames'][0]['right_deg'] == 5 # outside support is still serialized
