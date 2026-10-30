@@ -91,7 +91,7 @@ const PoseComparison = (() => {
     if (!base.right_in_range || !pose.right_in_range || !base.left_in_range || !pose.left_in_range) flags.push('outside_range');
     if (Math.abs(delta.roll_deg)>30) flags.push('large_tilt');
     return {delta, right_residual_deg:delta.right_deg+delta.roll_deg,
-      left_residual_deg:delta.left_deg+delta.roll_deg, planar_check:flags.length===0, flags};
+      left_residual_deg:delta.left_deg+delta.roll_deg, planar_check:flags.every(f => f === 'outside_range'), flags};
   }
   return {limits, wrap, orientation, sameSession, validateFrame, summarize, compare};
 })();

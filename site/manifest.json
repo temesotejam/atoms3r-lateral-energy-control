@@ -1,6 +1,6 @@
 {
   "name": "AtomS3R Lateral Energy Control",
-  "version": "1.0.40-state-work-control",
+  "version": "1.0.41-foot-five-pose",
   "builds": [
     {
       "chipFamily": "ESP32-S3",

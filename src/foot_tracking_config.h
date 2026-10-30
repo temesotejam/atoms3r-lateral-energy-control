@@ -61,47 +61,43 @@ static constexpr float kWhiteWeakWeightRatio = 0.1f;
 static constexpr float kWhiteWeakXStepPx = kWhiteMaxTrackStepXPx * 0.25f;
 static constexpr float kWhiteWeakYStepPx = kWhiteMaxTrackStepYPx * 0.5f;
 
-// Foot-angle calibration v2, measured 2026-09-24 (0.47.7).
+// Current calibration: five fixed-leg poses, 2026-10-30.
+// See foot_calibration_table.h. The scalar gains below are endpoint averages
+// for metadata compatibility only; the estimator uses the nonlinear table.
+// Historical fixtures preserve the old mapping for old logs.
 // Definition:
 //   foot_angle_deg = angle of the rigid foot/leg link relative to the body.
 //   Upright initial posture = 0 deg.
 //   Positive direction = the direction observed when marker X moves left.
 //
-// Two noncontact held poses: body roll change -20.276416529 deg,
-// A X: 171.64306 -> 40.95084; B X: 169.55292 -> 39.15524 px.
-// Slopes = -delta_body_roll / (upright_x - tilted_x), each side separately.
-// Provisional MEKF-referenced scale; hand-supported poses were held out.
-// These older nominal zeros are only the neutral-image plausibility centers;
-// actual zero is still measured independently for each foot on every boot.
-static constexpr float kFootAngleAZeroXPx = 169.615317f;
-static constexpr float kFootAngleBZeroXPx = 174.843512f;
-static constexpr float kFootAngleADegPerPx = 0.155146317f;
-static constexpr float kFootAngleBDegPerPx = 0.155496758f;
-static constexpr float kFootCalibrationBodySpanDeg = 20.276416529f;
-static constexpr float kFootCalibrationAUprightX = 171.64306f;
-static constexpr float kFootCalibrationATiltedX = 40.95084f;
-static constexpr float kFootCalibrationBUprightX = 169.55292f;
-static constexpr float kFootCalibrationBTiltedX = 39.15524f;
+// Five hand-held snapshot pairs are provisional MEKF references, with no
+// independent held-out angular validation. Actual zero is still measured
+// independently for each foot on every boot; nominal zeros center that gate.
+static constexpr float kFootAngleAZeroXPx = 203.081900000f;
+static constexpr float kFootAngleBZeroXPx = 201.656900000f;
+static constexpr float kFootAngleADegPerPx = 0.152864149f;
+static constexpr float kFootAngleBDegPerPx = 0.148947878f;
+static constexpr float kFootCalibrationBodySpanDeg = 20.678285000f;
+static constexpr float kFootCalibrationAUprightX = 203.081900000f;
+static constexpr float kFootCalibrationATiltedX = 67.809600000f;
+static constexpr float kFootCalibrationBUprightX = 201.656900000f;
+static constexpr float kFootCalibrationBTiltedX = 62.827900000f;
 
-// Accepted support from identity-v2 observations through the successful 0.47.9
-// free-foot run, including the fixed-pose comparison's individual trace frames.
-// Union the previous support with floor(min-1 px) / ceil(max+1 px).
-// See tools/fixtures/foot_range_20260925.json for source hashes and envelopes.
-// These bounds describe observed pixels, not new independent angle references;
-// retain the fitted scales and per-boot zeros above without clipping the angle.
+// Current measured envelope is diagnostic only. Keep original historical bounds
+// separately for provenance; extrapolated estimates are never clipped/rejected.
 static constexpr float kFootAngleAOriginalMinCalXPx = 42.0f;
 static constexpr float kFootAngleAOriginalMaxCalXPx = 173.0f;
 static constexpr float kFootAngleBOriginalMinCalXPx = 43.5f;
 static constexpr float kFootAngleBOriginalMaxCalXPx = 177.5f;
-static constexpr float kFootObservedAMinXPx = 40.7181f;
-static constexpr float kFootObservedAMaxXPx = 180.6437f;
-static constexpr float kFootObservedBMinXPx = 38.7209f;
-static constexpr float kFootObservedBMaxXPx = 173.52403f;
-static constexpr float kFootObservedMarginPx = 1.0f;
-static constexpr float kFootAngleAMinCalXPx = 39.0f;
-static constexpr float kFootAngleAMaxCalXPx = 182.0f;
-static constexpr float kFootAngleBMinCalXPx = 37.0f;
-static constexpr float kFootAngleBMaxCalXPx = 177.5f;
+static constexpr float kFootObservedAMinXPx = 67.8096f;
+static constexpr float kFootObservedAMaxXPx = 203.0819f;
+static constexpr float kFootObservedBMinXPx = 62.8279f;
+static constexpr float kFootObservedBMaxXPx = 201.6569f;
+static constexpr float kFootObservedMarginPx = 0.0f;
+static constexpr float kFootAngleAMinCalXPx = 67.809600000f;
+static constexpr float kFootAngleAMaxCalXPx = 203.081900000f;
+static constexpr float kFootAngleBMinCalXPx = 62.827900000f;
+static constexpr float kFootAngleBMaxCalXPx = 201.656900000f;
 
 // IMU diagnostics retained to validate body motion independently.
 static constexpr float kBodyTiltComplementaryTauS = 0.50f;

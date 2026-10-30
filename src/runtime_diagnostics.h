@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define RUNTIME_VERSION "1.0.40-state-work-control"
+#define RUNTIME_VERSION "1.0.41-foot-five-pose"
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

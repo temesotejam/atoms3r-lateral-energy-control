@@ -35,42 +35,27 @@ assert inputs['accel_g']==[.01,.02,1]
 for actual,expected in zip(inputs['gyro_dps'],[1,2,3]): assert abs(actual-expected)<.00001
 for actual,expected in zip(inputs['gyro_bias_dps'],[.1,-.2,.3]): assert abs(actual-expected)<.00001
 assert inputs['last_accel_update']['used'] and inputs['last_accel_update']['confidence']>.99
-assert diagnostics['range']['right_support_x'] == [39,182]
-assert diagnostics['range']['left_support_x'] == [37,177.5]
-assert diagnostics['range']['original_right_support_x'] == [42,173]
-assert diagnostics['range']['original_left_support_x'] == [43.5,177.5]
-assert diagnostics['range']['extension_angle_accuracy_validated'] is False
-range_evidence=json.loads(Path('tools/fixtures/foot_range_20260925.json').read_text())
-for side in ('right','left'):
-    lo,hi=diagnostics['range'][side+'_support_x']
-    assert [lo,hi]==range_evidence['accepted_support_x'][side]
-    all_lo,all_hi=range_evidence['observed_x'][side]
-    assert lo<=all_lo-1 and hi>=all_hi+1
-    for source in range_evidence['sources']:
-        observed=source['observations'][side]
-        assert lo<=observed['min_x']<=observed['max_x']<=hi
+evidence=json.loads(Path('tools/fixtures/foot_calibration_20261030.json').read_text())
 calibration=diagnostics['calibration']
-assert calibration['revision']=='fixed_two_poses_20260924' and calibration['provisional']
-assert abs(calibration['right_deg_per_px']-.155146317)<1e-8
-assert abs(calibration['left_deg_per_px']-.155496758)<1e-8
-assert calibration['fit_poses']==2 and calibration['heldout_hand_supported_poses']==2
+assert calibration['revision']=='fixed_leg_five_pose_20261030' and calibration['provisional']
+assert calibration['fit_poses']==5 and calibration['heldout_hand_supported_poses']==0
+assert calibration['outside_range_policy']=='extrapolate_nearest_endpoint_segment_and_save'
 assert not calibration['independent_angular_accuracy_validated']
-evidence=json.loads(Path('tools/fixtures/foot_calibration_20260924.json').read_text())
-assert calibration['source_sha256']==evidence['source_sha256']
-upright,tilted,*heldout=[r['summary'] for r in evidence['records']]
+import hashlib
+assert calibration['source_sha256']==hashlib.sha256(Path('tools/fixtures/foot_calibration_20261030.json').read_bytes()).hexdigest()
 for side in ('right','left'):
-    slope=(upright['roll_deg']-tilted['roll_deg'])/(upright[side+'_x']-tilted[side+'_x'])
-    assert abs(slope-calibration[side+'_deg_per_px'])<1e-8
-    for pose in heldout:
-        residual=slope*(upright[side+'_x']-pose[side+'_x'])+pose['roll_deg']-upright['roll_deg']
-        assert .25<residual<.33
+    records=evidence['records']
+    assert diagnostics['range'][side+'_support_x']==[records[-1][side+'_x'],records[0][side+'_x']]
+    for point, record in zip(calibration[side+'_points'],reversed(records)):
+        assert abs(point[0]-record[side+'_x'])<.0001
+        assert abs(point[1]-record['reference_angle_deg'])<.00001
 source = Path('/tmp/runtime-fixture.rwlog')
 data = source.read_bytes()
 header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.40-state-work-control'
+assert metadata['firmware_revision']=='1.0.41-foot-five-pose'
 for manifest in ('site/manifest.json','site/manifest-freefoot-runtime-v2.json'):
     assert json.loads(Path(manifest).read_text())['version']==metadata['firmware_revision']
 assert metadata['energy_model']=='angle_energy_bridge'
@@ -173,6 +158,9 @@ for side in ('right','left'):
     assert metadata['foot_observation'][side+'_deg_per_px']==calibration[side+'_deg_per_px']
 assert metadata['foot_observation']['right_support_x'] == [39,182]
 assert metadata['foot_observation']['left_support_x'] == [37,177.5]
+assert metadata['foot_frames'][0]['right_valid']
+assert not metadata['foot_frames'][0]['right_in_range']
+assert metadata['foot_frames'][0]['right_deg'] == 5 # outside support is still serialized
 assert metadata['foot_frames'][0]['right_scan_y'] == 42
 assert metadata['foot_frames'][0]['left_templates'] == 17
 assert metadata['foot_frames'][0]['left_candidates'] == 2

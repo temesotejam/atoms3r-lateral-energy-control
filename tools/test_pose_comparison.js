@@ -37,6 +37,7 @@ assert.throws(()=>P.compare(base,{...pose,boot_id:456}),/条件/);
 assert.throws(()=>P.compare(base,base),/条件/);
 const range=series(-20,20,20000000);range[1].right_in_range=false;
 assert(P.compare(base,P.summarize(range)).flags.includes('outside_range'));
+assert(P.compare(base,P.summarize(range)).planar_check); // range is diagnostic, not rejection
 const rotated=series(-20,20,20000000);rotated.forEach(m=>m.mekf.quaternion=qFromEuler(-20,3,8));
 assert.deepStrictEqual(P.compare(base,P.summarize(rotated)).flags,['sideways_changed']);
 // Yaw wrapping and the two equivalent quaternion signs cannot become a 360-degree motion.

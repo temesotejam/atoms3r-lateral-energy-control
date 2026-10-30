@@ -1,21 +1,29 @@
 #pragma once
 #include <Arduino.h>
 #include "foot_tracking_config.h"
-
-// One description shared by status, frozen images and the RWLOG export.
+#include "foot_calibration_table.h"
 inline String footCalibrationDiagnosticsJson() {
-  String json; json.reserve(850);
-  json = "{\"revision\":\"fixed_two_poses_20260924\",\"provisional\":true";
-  json += ",\"method\":\"two_noncontact_pose_means\",\"reference\":\"negative_mekf_roll_change\"";
-  json += ",\"assumption\":\"feet_ground_fixed_fore_aft_planar_motion\"";
+  String json; json.reserve(1400);
+  json = "{\"revision\":\"fixed_leg_five_pose_20261030\",\"provisional\":true";
+  json += ",\"method\":\"piecewise_linear_with_endpoint_extrapolation\"";
+  json += ",\"reference\":\"baseline_mekf_roll_minus_pose_mekf_roll\"";
+  json += ",\"assumption\":\"feet_fixed_upper_body_camera_rotate_about_same_leg_joint\"";
+  json += ",\"zero\":\"per_boot_subtract_calibrated_angle_at_zero_x\"";
+  json += ",\"fit_poses\":5,\"heldout_hand_supported_poses\":0";
+  json += ",\"independent_angular_accuracy_validated\":false";
+  json += ",\"outside_range_policy\":\"extrapolate_nearest_endpoint_segment_and_save\"";
   json += ",\"right_deg_per_px\":" + String(appcfg::kFootAngleADegPerPx, 9);
   json += ",\"left_deg_per_px\":" + String(appcfg::kFootAngleBDegPerPx, 9);
-  json += ",\"body_span_deg\":" + String(appcfg::kFootCalibrationBodySpanDeg, 6);
-  json += ",\"fit_right_x\":[" + String(appcfg::kFootCalibrationATiltedX, 5) + "," + String(appcfg::kFootCalibrationAUprightX, 5) + "]";
-  json += ",\"fit_left_x\":[" + String(appcfg::kFootCalibrationBTiltedX, 5) + "," + String(appcfg::kFootCalibrationBUprightX, 5) + "]";
-  json += ",\"zero\":\"independent_per_boot\",\"fit_poses\":2,\"heldout_hand_supported_poses\":2";
-  json += ",\"independent_angular_accuracy_validated\":false";
-  json += ",\"source_file\":\"freefoot-pose-comparison.json\"";
-  json += ",\"source_sha256\":\"f731b0ac1019d3ec2b054df9ccc9cbf91c7c013c39f565851d124ad3409f3676\"}";
-  return json;
+  json += ",\"source_file\":\"foot_calibration_20261030.json\"";
+  json += ",\"source_sha256\":\"84253d6b03ae075014d354c110794f73ebea123cbb1d698d03c71496b0668203\"";
+  for (int side=0; side<2; ++side) {
+    json += side==0 ? ",\"right_points\":[" : ",\"left_points\":[";
+    const auto* points = side==0 ? foot_calibration::right : foot_calibration::left;
+    for (size_t i=0; i<foot_calibration::count; ++i) {
+      if(i) json += ",";
+      json += "[" + String(points[i].x, 5) + "," + String(points[i].angle, 6) + "]";
+    }
+    json += "]";
+  }
+  json += "}"; return json;
 }
