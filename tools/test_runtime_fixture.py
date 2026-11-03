@@ -61,7 +61,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.78-observation-quality'
+assert metadata['firmware_revision']=='1.0.79-return-recovery'
 for manifest in ('site/manifest.json','site/manifest-freefoot-runtime-v2.json'):
     cfg=json.loads(Path(manifest).read_text())
     assert cfg['version']==metadata['firmware_revision']
@@ -274,6 +274,8 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
     assert work_metadata['wheel_work_positive_current_candidates_mA'] == [300,350,400]
     assert work_metadata['tilt_priority']['branch'] == 15
     assert work_metadata['tilt_priority']['command_mA'] == 1200
+    assert work_metadata['stalled_return_recovery']['pulse_max_ms'] == 30
+    assert work_metadata['stalled_return_recovery']['physical_response_validated'] is False
     assert work_metadata['tilt_priority']['initial_target_deg'] == 4.5
     assert work_metadata['tilt_priority']['final_target_deg'] == 8
     assert work_metadata['tilt_priority']['target_step_deg'] == 0.5

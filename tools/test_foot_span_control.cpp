@@ -15,6 +15,21 @@ static uint16_t tick(Controller& x,unsigned t,float l,float r,float peak=5.f,
   x.cycle(c);return w;
 }
 int main(){
+  // Startup may collect cycles but may not queue a stale trial. A reversal
+  // while collecting must be reflected when proposals later become eligible.
+  Controller startup;startup.preferHighCurrentFirst();
+  for(unsigned i=0;i<4;++i){
+    unsigned start=100+i*100;auto w=startup.limit(start+50,30,1200,1,60,false,1);
+    startup.confirm(start+50,true,1200,1,w);
+    Cycle c;c.start_ms=start;c.end_ms=start+100;c.positive_ms=start+50;
+    c.left=i<2 ? 3.f : 1.f;c.right=i<2 ? 1.f : 3.f;
+    c.negative_peak=5;c.target_mj=1;c.negative_key=1;
+    c.positive_width=w;c.positive_ma=1200;c.positive_sign=1;
+    c.complete=c.negative_known=c.positive_executed=true;c.allow_proposal=false;
+    startup.cycle(c);assert(startup.offset()==0);
+  }
+  assert(tick(startup,500,1,3,5,30,60,30,true,1.f,1200)==30);
+  assert(startup.offset()==-10);
   // A peak concentrated in one camera frame can be a real fast swing, as in
   // run132; it must not be treated as a confirmed small-foot observation.
   assert(!spanReliable(4.02f,.11f));assert(!spanReliable(3.10f,.69f));

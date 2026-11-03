@@ -2543,6 +2543,8 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   foot_balance_.reset(status_.run_id);foot_energy_.reset(status_.run_id);wheel_speed_balance_.reset();gradual_start_.reset();foot_frame_run_id_=0;
   foot_phase_observer_.reset(status_.run_id);foot_phase_cap_.reset();phase_observer_sequence_=0;
   foot_span_observer_.reset(status_.run_id);foot_span_control_.reset();weak_side_assist_.reset();
+  stalled_return_.reset();
+  stalled_return_awaiting_peak_=false;
   positive_left_boost_.reset();positive_left_input_=positive_left_boost::Input{};tilt_priority_.reset();span_observer_sequence_=0;
   span_positive_decision_next_=0;
   for (auto& x:span_positive_decisions_) x=SpanPositiveDecision{};
@@ -2933,9 +2935,9 @@ void ExperimentRunner::processFootSpanCycle() {
     cycle.negative_rate_dps=negative->rate_dps;cycle.negative_rpm=negative->rpm;
     const bool context_ok=std::isfinite(cycle.negative_trigger_deg) &&
         std::isfinite(cycle.negative_rate_dps) && std::isfinite(cycle.negative_rpm);
-    if(context_ok && (n.mode==foot_phase_cap::NegativeMode::Coast || n.mode==foot_phase_cap::NegativeMode::UnmodeledCoast)) {
+    if(context_ok && n.branch!=16 && (n.mode==foot_phase_cap::NegativeMode::Coast || n.mode==foot_phase_cap::NegativeMode::UnmodeledCoast)) {
       cycle.negative_known=true;cycle.negative_key=1;
-    } else if(context_ok && n.mode==foot_phase_cap::NegativeMode::Powered) {
+    } else if(context_ok && n.branch!=16 && n.mode==foot_phase_cap::NegativeMode::Powered) {
       cycle.negative_known=true;
       cycle.negative_key=0x80000000u | (static_cast<uint32_t>(n.ma)<<16) |
           (n.sign<0 ? 0x8000u : 0u) | static_cast<uint32_t>(n.width);
@@ -2947,6 +2949,7 @@ void ExperimentRunner::processFootSpanCycle() {
     cycle.positive_executed=positive->executed;cycle.target_mj=positive->target_mj;
     cycle.positive_rate_dps=positive_context ? positive_context->rate_dps : NAN;
     cycle.positive_rpm=positive_context ? positive_context->rpm : NAN;
+    cycle.allow_proposal=positive_context && positive_context->allow_proposal;
   }
   // A small, consistently detected foot is still a measurement, not an
   // absent foot. Require a reversal for larger motion so a monotonic drift
@@ -3095,6 +3098,7 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
   work_negative_pending_ = false;
   work_positive_pending_ = false;
   energy_control_autonomous_last_peak_valid_ = true;
+  stalled_return_awaiting_peak_=false;
   energy_control_autonomous_last_peak_amplitude_deg_ = amplitude_deg;
   energy_control_autonomous_last_peak_side_ = physical_side;
   energy_control_autonomous_last_peak_ms_ = peak_ms;
@@ -3139,6 +3143,15 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
     return;
   }
   const uint32_t t_test_ms = now_ms - run_start_ms_;
+  // If a recovery pulse did not produce an opposite-side peak, rearm the
+  // physical peak tracker after a timeout. Do not invent a peak or issue
+  // another command: a real new extremum is needed before the next attempt.
+  if(stalled_return::reacquireDue(stalled_return_awaiting_peak_,energy_control_autonomous_pending_peak_,
+      energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_PEAK,
+      t_test_ms,energy_control_autonomous_pending_zero_ms_)) {
+    stalled_return_awaiting_peak_=false;energy_control_autonomous_pending_peak_=false;
+    resetEnergyControlAutonomousPeakTracker(true);
+  }
   if (!energy_control_autonomous_detector_has_previous_angle_) {
     energy_control_autonomous_detector_has_previous_angle_ = true;
     energy_control_autonomous_previous_detector_relative_angle_deg_ = detector_relative_angle_deg;
@@ -3178,7 +3191,18 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   const bool crossing = rate_dps * peak_side < 0.0f &&
       ((peak_side < 0 && before_deg < threshold_deg && detector_relative_angle_deg >= threshold_deg) ||
        (peak_side > 0 && before_deg > threshold_deg && detector_relative_angle_deg <= threshold_deg));
-  if (!physical_event_suppressed && (crossing || confirmation_input) &&
+  const bool recovery_enabled=wheelWorkMode() && energy_control_autonomous_target_peak_deg_==8.f &&
+      energy_control_autonomous_input_peak_percent_==0 && !physical_event_suppressed &&
+      (energy_control_autonomous_phase_==EnergyControlAutonomousPhase::ENERGY_CONTROL ||
+       energy_control_autonomous_phase_==EnergyControlAutonomousPhase::HOLD) &&
+      energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
+      energy_control_autonomous_last_peak_valid_ && !energy_control_autonomous_zero_cross_consumed_for_peak_ &&
+      energy_control_autonomous_last_peak_amplitude_deg_<=tilt_priority_.target()+1.5f &&
+      !crossing && !confirmation_input;
+  const bool return_recovery=stalled_return_.update(t_test_ms,energy_control_autonomous_last_peak_ms_,
+      energy_control_autonomous_last_peak_amplitude_deg_,peak_side,detector_relative_angle_deg,rate_dps,
+      threshold_deg,recovery_enabled);
+  if (!physical_event_suppressed && (crossing || confirmation_input || return_recovery) &&
       energy_control_autonomous_half_cycle_state_ == EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
       (energy_control_autonomous_phase_ == EnergyControlAutonomousPhase::ENERGY_CONTROL ||
        energy_control_autonomous_phase_ == EnergyControlAutonomousPhase::HOLD) &&
@@ -3192,7 +3216,7 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
     const float interpolated_rate_dps = energy_control_autonomous_previous_detector_rate_dps_ +
         alpha * (rate_dps - energy_control_autonomous_previous_detector_rate_dps_);
     updateEnergyControlAutonomousAtZeroCross(t_test_ms, interpolated_rate_dps, before_deg,
-        detector_relative_angle_deg, alpha, interpolated_time_ms);
+        detector_relative_angle_deg, alpha, interpolated_time_ms,return_recovery);
   }
   const bool passed_centre_inward = rate_dps * peak_side < 0.0f &&
       ((peak_side < 0 && before_deg < 0 && detector_relative_angle_deg >= 0) ||
@@ -3521,7 +3545,7 @@ bool ExperimentRunner::prepareUnmodeledWalkCoast(
 }
 
 bool ExperimentRunner::tryTiltPriority(
-    PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms) {
+    PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,bool return_recovery) {
   tilt_priority::Input in;
   in.now_ms=t_test_ms;in.preset_deg=event.target_peak_deg;
   in.target_deg=tilt_priority_.target();in.next_side=event.physical_next_peak_side;
@@ -3538,14 +3562,25 @@ bool ExperimentRunner::tryTiltPriority(
   // Record every accepted healthy crossing, even when ordinary control is
   // selected. It will be paired with the corresponding measured peak.
   if(in.hardware_healthy)tilt_priority_.crossing(in.next_side,t_test_ms);
-  if(!choice.selected)return false;
+  if(!choice.selected) {
+    if(!return_recovery)return false;
+    // Never send an ordinary-model fallback at a non-crossing recovery point.
+    event.work_control_branch=16;event.valid=in.hardware_healthy;event.output_executed=false;
+    event.command_current_mA=0;event.pulse_width_ms=0;
+    event.reason=in.hardware_healthy ? Config::ENERGY_CONTROL_AUTONOMOUS_REASON_VALID_NO_OUTPUT :
+        Config::ENERGY_CONTROL_AUTONOMOUS_REASON_NONFINITE_STATE;
+    return true;
+  }
+  // A missed-crossing recovery is an experimental, time-limited pulse; the
+  // ordinary hardware, sensor and peak checks still apply.
+  if(return_recovery && !choice.coast && choice.width_ms>30)choice.width_ms=30;
   // The 1200mA action is unmodeled. Trial a camera-based offset only on the
   // positive-side pulse, retaining the hardware and historical timing caps.
   // Actual sent commands, complete cycles and matched negative-side context
   // are required by foot_span_control before any outcome is evaluated.
   weak_side_assist_.interrupt();
   bool foot_adjusted=false;
-  if(!choice.coast && in.next_side>0 && choice.width_ms<=100 && tilt_priority_.target()>=6.f) {
+  if(!return_recovery && !choice.coast && in.next_side>0 && choice.width_ms<=100 && tilt_priority_.target()>=6.f) {
     foot_span_control_.preferHighCurrentFirst();
     const uint16_t baseline=choice.width_ms;
     uint16_t cap=tilt_priority_.timingCap(in.next_side,t_test_ms,in.hardware_cap_ms);
@@ -3558,12 +3593,21 @@ bool ExperimentRunner::tryTiltPriority(
         event.zero_cross_abs_rate_dps,event.pre_input_wheel_speed_rpm);
     choice.width_ms=event.foot_span_requested_ms;
     foot_adjusted=choice.width_ms!=baseline;
+  } else if(!return_recovery && !choice.coast && in.next_side>0 &&
+            choice.width_ms<=100 && tilt_priority_.target()<6.f) {
+    // Observe confirmed ordinary startup pulses and complete cycles, but
+    // do not apply the foot offset until the gradual target reaches 6 deg.
+    foot_span_control_.preferHighCurrentFirst();
+    event.foot_span_baseline_ms=choice.width_ms;
+    event.foot_span_requested_ms=foot_span_control_.limit(t_test_ms,choice.width_ms,
+        choice.current_ma,choice.direction,100,false,event.target_energy_j*1000.f,
+        event.zero_cross_abs_rate_dps,event.pre_input_wheel_speed_rpm);
   } else if(!choice.coast && in.next_side>0) {
     // Preserve the gradual startup and never truncate a legitimate ordinary
     // pulse over the camera experiment's 100 ms cap.
     (void)foot_span_control_.selectorUnavailable(t_test_ms);
   }
-  event.work_control_branch=15;event.energy_model_extrapolated=true;
+  event.work_control_branch=return_recovery ? 16 : 15;event.energy_model_extrapolated=true;
   event.work_prediction_cross_condition=true;
   event.work_brake_cap_ms=choice.width_ms;
   event.solver_selected_integer_width_ms=choice.width_ms;
@@ -3593,6 +3637,9 @@ bool ExperimentRunner::tryTiltPriority(
   }
   tilt_priority_.confirm(in.next_side,t_test_ms,choice,true);
   event.valid=true;event.output_executed=!choice.coast;
+  // Even an explicit recovery coast owns a pending opposite peak. If that
+  // peak never arrives, it must take the same measured-peak reacquisition.
+  stalled_return_awaiting_peak_=return_recovery;
   event.setFootSpanFlag(PsramLogger::EnergyControlAutonomousZeroCrossEvent::Span_selected,
       foot_adjusted && event.output_executed);
   event.reason=choice.coast ? Config::ENERGY_CONTROL_AUTONOMOUS_REASON_VALID_NO_OUTPUT
@@ -3771,6 +3818,14 @@ bool ExperimentRunner::selectFootPhaseOutput(
       if(!foot_span_control_.selectorUnavailable(t_test_ms)) {
         requestEmergencyStop("foot_span_command_unresolved");return true;
       }
+      return false;
+    }
+    if(tilt_priority_.target()<6.f) {
+      // Collect the actual baseline for the legacy selector as well, while
+      // suppressing proposals until the gradual target reaches 6 degrees.
+      event.foot_span_requested_ms=foot_span_control_.limit(t_test_ms,event.foot_span_baseline_ms,
+          work_choice.current_ma,work_choice.command_sign,work_choice.allowed_cap_ms,false,event.target_energy_j*1000.f,
+          event.zero_cross_abs_rate_dps,event.pre_input_wheel_speed_rpm);
       return false;
     }
     // Judge the gait correction from completed, quality-checked foot cycles.
@@ -3967,9 +4022,10 @@ void ExperimentRunner::finishFootEnergyDecision(PsramLogger::EnergyControlAutono
       context.rate_dps=event.zero_cross_abs_rate_dps;
       context.rpm=event.pre_input_wheel_speed_valid && event.pre_input_wheel_speed_age_us<=50000
           ? event.pre_input_wheel_speed_rpm : NAN;
+      context.allow_proposal=event.work_control_branch!=16 && tilt_priority_.target()>=6.f;
       d.executed=event.output_executed;
       span_positive_decision_next_=(span_positive_decision_next_+1)%8;
-      if(event.work_control_branch==15 && (event.pulse_width_ms>100 || tilt_priority_.target()<6.f)) {
+      if(event.work_control_branch==16 || (event.work_control_branch==15 && event.pulse_width_ms>100)) {
         (void)foot_span_control_.selectorUnavailable(t_ms);
       } else {
         foot_span_control_.confirm(t_ms,event.output_executed,event.command_current_mA,
@@ -4016,7 +4072,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
                                                                   float detector_before_deg,
                                                                   float detector_after_deg,
                                                                   float crossing_alpha,
-                                                                  float interpolated_time_ms) {
+                                                                  float interpolated_time_ms,bool return_recovery) {
   if (!energy_control_autonomous_mode_ || !logger_ || status_.pulse_active ||
       (energy_control_autonomous_phase_ != EnergyControlAutonomousPhase::ENERGY_CONTROL &&
        energy_control_autonomous_phase_ != EnergyControlAutonomousPhase::HOLD) ||
@@ -4187,7 +4243,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // In the 8-degree walking experiment, lean amplitude takes priority over
   // the ordinary fitted selector and foot-span corrections. Existing sensor,
   // motor and emergency-stop checks still gate the experimental command.
-  if(work_mode && event.target_peak_deg==8.f && tryTiltPriority(event,t_test_ms)) {
+  if(work_mode && event.target_peak_deg==8.f && tryTiltPriority(event,t_test_ms,return_recovery)) {
     finishFootEnergyDecision(event,t_test_ms);
     if(!event.output_executed)rearm_for_next_peak();
     return;

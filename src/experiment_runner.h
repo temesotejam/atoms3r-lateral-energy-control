@@ -24,6 +24,7 @@
 #include "weak_side_assist.h"
 #include "positive_left_boost.h"
 #include "tilt_priority.h"
+#include "stalled_return.h"
 #include "target12_state_work.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
@@ -177,7 +178,7 @@ private:
     uint32_t ms=0; uint16_t width=0; int16_t ma=0; int8_t sign=0;
     float target_mj=NAN; bool executed=false;
   };
-  struct SpanPositiveContext { float rate_dps=NAN,rpm=NAN; };
+  struct SpanPositiveContext { float rate_dps=NAN,rpm=NAN; bool allow_proposal=false; };
   PhaseNegativePeak phase_negative_peaks_[8];
   PhaseNegativeDecision phase_negative_decisions_[8];
   SpanPositiveDecision span_positive_decisions_[8];
@@ -410,7 +411,7 @@ private:
                                                  float detector_before_deg,
                                                  float detector_after_deg,
                                                  float crossing_alpha,
-                                                 float interpolated_time_ms);
+                                                 float interpolated_time_ms, bool return_recovery=false);
   void RW_SPEED_CODE updateEnergyControlAutonomousPulse(uint32_t now_ms);
   // Candidate search runs only at an accepted ZERO crossing. Keep its fitted
   // regression and 183-candidate scan out of the periodic IRAM motion path.
@@ -437,7 +438,7 @@ private:
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       const wheel_work_energy_control::Choice& normal,uint32_t t_test_ms);
   bool __attribute__((noinline)) tryTiltPriority(
-      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms);
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,bool return_recovery=false);
   void __attribute__((noinline)) choosePeakMpc(PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       float fast_v,wheel_work_energy_control::Choice& choice,int16_t& current,
       const lateral_energy::CurrentTable*& table) const;
@@ -810,4 +811,6 @@ private:
   // Place this additional camera-feedback array after the motion state so
   // these per-event fields do not shift hot members that follow the ring.
   SpanPositiveContext span_positive_context_[8];
+  stalled_return::Detector stalled_return_;
+  bool stalled_return_awaiting_peak_=false;
 };

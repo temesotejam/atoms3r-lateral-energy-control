@@ -25,6 +25,7 @@ struct Cycle {
   int16_t positive_ma=0;
   int8_t positive_sign=0;
   bool complete=false, negative_known=false, positive_executed=false;
+  bool allow_proposal=true;
 };
 enum class State : uint8_t { Collect, ProbeMinus, Restore, ProbePlus, Hold, Fault };
 class Controller {
@@ -119,6 +120,9 @@ class Controller {
       reference_left_=.8f*reference_left_+.2f*c.left;
       reference_right_=.8f*reference_right_+.2f*c.right;
     }
+    // During gradual startup collect actual observations, but never leave a
+    // queued correction whose sign could be stale when the stage advances.
+    if(!c.allow_proposal)return;
     if(pending_change_ || consecutive_<2 ||
        (action->feedback_changed_ms && c.start_ms<=action->feedback_changed_ms))return;
     // Capture two complete observations after the actual changed command.

@@ -10,6 +10,7 @@ constexpr uint16_t WALKING_TARGET8_MAX_PULSE_MS=150;
 constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_CURRENT_WRITE_FAILED=12;
 constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_NONE=0;
 constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_VALID_NO_OUTPUT=1;
+constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_NONFINITE_STATE=7;
 }
 enum class ExperimentState { RUNNING_BATCH_SWEEP, STOPPED };
 uint32_t millis(){return 10000;}
@@ -45,6 +46,7 @@ class ExperimentRunner {public:
  Adaptive adaptive_cg_;bool mode=true,begin_ok=true;unsigned calls=0;int sign=0,ma=0;uint16_t width=0;
  float run_cg_shift_mm_=0,pending_cg_shift_mm_=0,pending_target_energy_j_=NAN;
  bool energy_control_autonomous_pending_peak_=false,energy_control_autonomous_pending_probe_=false;
+ bool stalled_return_awaiting_peak_=false;
  int8_t energy_control_autonomous_pending_next_side_=0;
  float energy_control_autonomous_pending_target_deg_=0,energy_control_autonomous_pending_q_command_mA_s_=0;
  float energy_control_autonomous_pending_model_energy_j_=0,energy_control_autonomous_pending_wheel_rpm_=0;
@@ -57,15 +59,32 @@ class ExperimentRunner {public:
  bool beginEnergyControlAutonomousPulse(uint32_t,uint32_t,int8_t d,uint16_t w,int16_t m){
    ++calls;sign=d;width=w;ma=m;return begin_ok;
  }
- bool tryTiltPriority(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t);
+ bool tryTiltPriority(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t,bool return_recovery=false);
 };
 // METHOD_SOURCE
 using Event=PsramLogger::EnergyControlAutonomousZeroCrossEvent;
 int main(){
  // No 1200mA foot-width trial interrupts the 4.5 degree startup stage.
  {ExperimentRunner r;Event e;assert(r.tryTiltPriority(e,500));
-  assert(e.output_executed && e.pulse_width_ms==60 && e.foot_span_baseline_ms==0);
+  assert(e.output_executed && e.pulse_width_ms==60 && e.foot_span_baseline_ms==60);
   assert(!(e.foot_span_flags & Event::Span_selected));}
+ // Before 6 degrees, ordinary actual pulses and completed foot observations
+ // are retained, but even a ready candidate is not sent during startup.
+ {ExperimentRunner r;
+  for(unsigned start: {100u,200u}) {
+   Event e;assert(r.tryTiltPriority(e,start+50));
+   assert(e.output_executed && e.pulse_width_ms==60 && !(e.foot_span_flags & Event::Span_selected));
+   r.foot_span_control_.confirm(start+50,true,1200,1,e.pulse_width_ms);
+   foot_span_control::Cycle c;c.start_ms=start;c.end_ms=start+100;c.positive_ms=start+50;
+   c.left=3;c.right=1;c.negative_peak=5;c.target_mj=1;c.negative_key=1;
+   c.positive_rate_dps=10;c.positive_rpm=20;c.positive_width=60;c.positive_ma=1200;c.positive_sign=1;
+   c.allow_proposal=false;
+   c.complete=c.negative_known=c.positive_executed=true;r.foot_span_control_.cycle(c);
+  }
+  assert(r.foot_span_control_.offset()==0);
+  Event e;assert(r.tryTiltPriority(e,350));
+  assert(e.output_executed && e.pulse_width_ms==60 && !(e.foot_span_flags & Event::Span_selected));
+ }
  // Two measured imbalanced completed cycles prepare an actual 1200mA
  // pulse trial. This tests dispatch, not the response of the real robot.
  {ExperimentRunner r;uint32_t t=1000;r.tilt_priority_.peak(1,100,2.f);
@@ -136,10 +155,10 @@ int main(){
   // resume after the old large peak has been replaced by low measurements.
   r.tilt_priority_.peak(1,1098,3.8f);
   Event e3;e3.physical_next_peak_side=-1;assert(r.tryTiltPriority(e3,1300));
-  assert(e3.valid&&!e3.output_executed&&r.calls==1);
+  assert(e3.valid&&e3.output_executed&&e3.pulse_width_ms==20&&r.calls==2);
   r.tilt_priority_.peak(-1,1500,3.5f);
   Event e4;assert(r.tryTiltPriority(e4,1700));
-  assert(e4.output_executed&&r.calls==2&&e4.command_current_mA==1200);
+  assert(e4.output_executed&&r.calls==3&&e4.command_current_mA==1200);
  }
  {ExperimentRunner r;Event e;r.begin_ok=false;assert(r.tryTiltPriority(e,1000));
   assert(!e.valid&&!e.output_executed&&e.pulse_width_ms==0&&e.reason==12);
@@ -168,6 +187,23 @@ int main(){
  {ExperimentRunner r;Event e;r.status_.emergency_stop=true;assert(!r.tryTiltPriority(e,1000)&&r.calls==0);}
  {ExperimentRunner r;Event e;r.imu_obj.good=false;assert(!r.tryTiltPriority(e,1000)&&r.calls==0);}
  {ExperimentRunner r;Event e;e.pre_input_wheel_speed_age_us=999999;assert(!r.tryTiltPriority(e,1000)&&r.calls==0);}
+ // The recovery is physically dispatched in the normal next-side direction
+ // at <=30ms, recorded separately, and does not enter foot-width learning.
+ {ExperimentRunner r;r.tilt_priority_.peak(1,100,5.5f);Event e;
+  e.physical_next_peak_side=-1;e.zero_cross_abs_rate_dps=5;
+  assert(r.tryTiltPriority(e,450,true));
+  assert(e.valid&&e.output_executed&&e.work_control_branch==16&&e.pulse_width_ms==30);
+  assert(r.sign==-1&&r.ma==1200&&r.stalled_return_awaiting_peak_);}
+ // A recovery coast also arms the peak timeout, so a stale high peak cannot
+ // leave the controller waiting forever for a peak that never arrives.
+ {ExperimentRunner r;r.tilt_priority_.peak(1,100,7.f);Event e;
+  e.physical_next_peak_side=-1;e.zero_cross_abs_rate_dps=5;
+  assert(r.tryTiltPriority(e,450,true));
+  assert(e.valid&&!e.output_executed&&e.work_control_branch==16);
+  assert(r.stalled_return_awaiting_peak_&&r.energy_control_autonomous_pending_peak_);}
+ // A recovery point with bad sensor state must not select a model fallback.
+ {ExperimentRunner r;Event e;r.imu_obj.good=false;
+  assert(r.tryTiltPriority(e,1000,true));assert(!e.output_executed&&e.work_control_branch==16&&r.calls==0);}
  {ExperimentRunner r;Event e;e.pre_input_wheel_speed_rpm=1200.f;assert(r.tryTiltPriority(e,1000));
   assert(e.valid&&e.output_executed&&r.ma==1200);}
  {ExperimentRunner r;Event e;e.target_peak_deg=10;assert(!r.tryTiltPriority(e,1000)&&r.calls==0);}

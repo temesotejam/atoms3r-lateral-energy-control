@@ -155,11 +155,19 @@ class Controller {
     // A large incoming opposite peak can carry considerable energy to the
     // next side. Do not add another full input merely because the earlier
     // same-side peak was a small startup half step. This is not a stop.
-    if((opposite_fresh && opposite.peak_deg>target+1.5f) || (fresh && h.peak_deg>target+1.5f)) {
+    const bool recent_overshoot=opposite_fresh && opposite.peak_deg>target+1.5f;
+    const bool same_side_overshoot=fresh && h.peak_deg>target+1.5f;
+    // A prior same-side overshoot should not cause a second full coast when
+    // the most recent opposite peak has already decayed below target. Try a
+    // short pulse in that case, keeping the immediate-overshoot coast.
+    const bool decayed_after_overshoot=same_side_overshoot && opposite_fresh &&
+        opposite.peak_deg<target-.5f;
+    if(recent_overshoot || (same_side_overshoot && !decayed_after_overshoot)) {
       out.selected=true;out.coast=true;return out;
     }
     uint16_t cap=in.hardware_cap_ms<150 ? in.hardware_cap_ms : 150;
     if(h.width_ms<cap)cap=h.width_ms;
+    if(decayed_after_overshoot && cap>20)cap=20;
     if(fresh && h.paired_ms==h.peak_ms && h.elapsed_ms) {
       // The previous timing is evidence, not a guarantee about a new pulse.
       if(h.elapsed_ms<=30) {out.selected=true;out.coast=true;return out;}

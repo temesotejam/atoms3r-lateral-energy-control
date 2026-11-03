@@ -105,6 +105,7 @@ struct Status {bool emergency_stop=false;ExperimentState state=ExperimentState::
 class ExperimentRunner {public:
  Roller roller_storage;Imu imu_storage;Roller* roller_=&roller_storage;Imu* imu_=&imu_storage;
  Status status_;gradual_start::Controller gradual_start_;foot_span_control::Controller foot_span_control_;
+ struct Target {float value=8;float target()const{return value;}} tilt_priority_;
  lateral_energy::CurrentTable positive_current_probe_tables_[2],lateral_current_table_;
  bool wheelWorkMode()const{return true;}
  void requestEmergencyStop(const char*){status_.emergency_stop=true;}
@@ -120,6 +121,9 @@ int main(){
  Choice choice;choice.valid=true;choice.width_ms=80;choice.allowed_cap_ms=100;
  choice.branch=5;choice.current_ma=400;choice.command_sign=1;
  int16_t current=400;const lateral_energy::CurrentTable* table=nullptr;
+ {ExperimentRunner r;Event e;r.tilt_priority_.value=5.5f;
+  assert(!r.selectFootPhaseOutput(e,350,7.8,choice,current,table));
+  assert(choice.width_ms==80 && e.foot_span_requested_ms==80 && !e.span_selected);}
  {ExperimentRunner r;Event e;
   // Develop a proposed -10ms correction, then demonstrate that an under-
   // target positive peak does not discard valid foot feedback.

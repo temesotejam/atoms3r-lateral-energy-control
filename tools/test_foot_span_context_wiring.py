@@ -12,7 +12,7 @@ for x in ('d.trigger_deg=', 'd.rate_dps=event.zero_cross_abs_rate_dps',
           'context=span_positive_context_[span_positive_decision_next_]',
           'context.rate_dps=event.zero_cross_abs_rate_dps',
           'event.pre_input_wheel_speed_valid && event.pre_input_wheel_speed_age_us<=50000',
-          'foot_span_control_.confirm(', 'event.work_control_branch==15 && (event.pulse_width_ms>100 || tilt_priority_.target()<6.f)'):
+          'foot_span_control_.confirm(', 'event.work_control_branch==15 && event.pulse_width_ms>100'):
     assert x in decision
 runner=s.split('bool ExperimentRunner::tryTiltPriority(',1)[1].split('\nbool ExperimentRunner::tryWeakSideAssist(',1)[0]
 assert 'foot_span_control_.reset()' not in runner
