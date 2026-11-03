@@ -24,6 +24,7 @@
 #include "weak_side_assist.h"
 #include "positive_left_boost.h"
 #include "tilt_priority.h"
+#include "wheel_cycle_guard.h"
 #include "target12_state_work.h"
 #include "peak_error_adaptation.h"
 #include "upright_reference.h"
@@ -167,6 +168,7 @@ private:
   weak_side_assist::Controller weak_side_assist_;
   positive_left_boost::Controller positive_left_boost_;
   tilt_priority::Controller tilt_priority_;
+  wheel_cycle_guard::Controller wheel_cycle_guard_;
   positive_left_boost::Input positive_left_input_;
   struct PhaseNegativePeak { uint32_t ms=0; float amplitude=NAN; };
   struct PhaseNegativeDecision {
