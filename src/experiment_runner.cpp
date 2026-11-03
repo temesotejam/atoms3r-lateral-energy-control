@@ -3191,23 +3191,16 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   const bool crossing = rate_dps * peak_side < 0.0f &&
       ((peak_side < 0 && before_deg < threshold_deg && detector_relative_angle_deg >= threshold_deg) ||
        (peak_side > 0 && before_deg > threshold_deg && detector_relative_angle_deg <= threshold_deg));
-  const bool recovery_enabled=wheelWorkMode() && energy_control_autonomous_target_peak_deg_==8.f &&
-      energy_control_autonomous_input_peak_percent_==0 && !physical_event_suppressed &&
+  const bool event_ready=!physical_event_suppressed &&
       (energy_control_autonomous_phase_==EnergyControlAutonomousPhase::ENERGY_CONTROL ||
        energy_control_autonomous_phase_==EnergyControlAutonomousPhase::HOLD) &&
       energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
-      energy_control_autonomous_last_peak_valid_ && !energy_control_autonomous_zero_cross_consumed_for_peak_ &&
-      energy_control_autonomous_last_peak_amplitude_deg_<=tilt_priority_.target()+1.5f &&
-      !crossing && !confirmation_input;
-  const bool return_recovery=stalled_return_.update(t_test_ms,energy_control_autonomous_last_peak_ms_,
-      energy_control_autonomous_last_peak_amplitude_deg_,peak_side,detector_relative_angle_deg,rate_dps,
-      threshold_deg,recovery_enabled);
-  if (!physical_event_suppressed && (crossing || confirmation_input || return_recovery) &&
-      energy_control_autonomous_half_cycle_state_ == EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
-      (energy_control_autonomous_phase_ == EnergyControlAutonomousPhase::ENERGY_CONTROL ||
-       energy_control_autonomous_phase_ == EnergyControlAutonomousPhase::HOLD) &&
-      energy_control_autonomous_last_peak_valid_ &&
-      !energy_control_autonomous_zero_cross_consumed_for_peak_) {
+      energy_control_autonomous_last_peak_valid_ && !energy_control_autonomous_zero_cross_consumed_for_peak_;
+  bool return_recovery=false;
+  if(event_ready && !crossing && !confirmation_input) {
+    return_recovery=detectStalledReturn(t_test_ms,peak_side,detector_relative_angle_deg,rate_dps,threshold_deg);
+  } else stalled_return_.interrupt();
+  if (event_ready && (crossing || confirmation_input || return_recovery)) {
     const float before_distance = fabsf(before_deg - threshold_deg);
     const float denominator = before_distance + fabsf(detector_relative_angle_deg - threshold_deg);
     const float alpha = crossing && denominator > 0.0f ? before_distance / denominator : 1.0f;
@@ -3231,6 +3224,14 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   energy_control_autonomous_previous_detector_relative_angle_deg_ = detector_relative_angle_deg;
   energy_control_autonomous_previous_detector_rate_dps_ = rate_dps;
   energy_control_autonomous_previous_detector_test_ms_ = t_test_ms;
+}
+bool ExperimentRunner::detectStalledReturn(uint32_t t_test_ms,int8_t peak_side,
+                                            float detector_angle_deg,float rate_dps,float threshold_deg) {
+  const bool enabled=wheelWorkMode() && energy_control_autonomous_target_peak_deg_==8.f &&
+      energy_control_autonomous_input_peak_percent_==0 &&
+      energy_control_autonomous_last_peak_amplitude_deg_<=tilt_priority_.target()+1.5f;
+  return stalled_return_.update(t_test_ms,energy_control_autonomous_last_peak_ms_,
+      energy_control_autonomous_last_peak_amplitude_deg_,peak_side,detector_angle_deg,rate_dps,threshold_deg,enabled);
 }
 void ExperimentRunner::updateEnergyControlAutonomousPeakTracker(uint32_t now_ms,
                                                                   float peak_relative_angle_deg,

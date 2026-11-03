@@ -19,6 +19,9 @@ int main(){
   assert(!a.update(14038,13660,7.45,1,.41f,-6.f,0,true));
   assert(a.update(14048,13660,7.45,1,.34f,-4.68f,0,true));
   assert(!a.update(14080,13660,7.45,1,.30f,-4.f,0,true));
+  // A momentarily ineligible sample resets dwell but cannot re-arm an
+  // already-fired peak; a new measured peak is required.
+  a.interrupt();assert(!a.update(14090,13660,7.45,1,.28f,-4.f,0,true));
   // 119: the original early threshold was above zero and was not reached.
   Detector b;
   assert(!b.update(27170,26847,9.20f,1,3.55f,-9.f,2.22f,true));
@@ -32,6 +35,7 @@ int main(){
   assert(!near.update(11040,10600,7.f,1,.04f,-5.f,0,true));
   // Missing sensor intervals cannot be mistaken for 30ms of sustained motion.
   Detector gap;assert(!gap.update(14000,13660,7.f,1,.8f,-5.f,0,true));
+  gap.interrupt();assert(!gap.update(14010,13660,7.f,1,.7f,-5.f,0,true));
   assert(!gap.update(14100,13660,7.f,1,.5f,-5.f,0,true));
   assert(!gap.update(14110,13660,7.f,1,.47f,-5.f,0,true));
   assert(!gap.update(14120,13660,7.f,1,.45f,-5.f,0,true));

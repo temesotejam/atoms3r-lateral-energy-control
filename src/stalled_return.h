@@ -12,6 +12,8 @@ inline bool reacquireDue(bool awaiting,bool pending,bool waiting_peak,uint32_t n
 class Detector {
  public:
   void reset(){*this=Detector{};}
+  // Cancel a partial dwell without allowing a second attempt for a peak.
+  void interrupt(){since_=0;last_=0;}
   __attribute__((noinline)) bool update(uint32_t now,uint32_t peak_ms,float peak_abs,
       int side,float angle,float rate,float threshold,bool enabled) {
     if(last_ && (now<=last_ || now-last_>15))since_=0;

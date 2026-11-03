@@ -4,7 +4,8 @@ root=Path(__file__).resolve().parents[1]
 s=(root/'src/experiment_runner.cpp').read_text(encoding='utf8')
 motion=s.split('void ExperimentRunner::updateEnergyControlAutonomousMotion(',1)[1].split('\nvoid ExperimentRunner::updateEnergyControlAutonomousPeakTracker(',1)[0]
 for token in ('stalled_return_.update(', 'energy_control_autonomous_last_peak_ms_',
-              'threshold_deg,recovery_enabled', '!crossing && !confirmation_input',
+              'threshold_deg,enabled', '!crossing && !confirmation_input',
+              'stalled_return_.interrupt()',
               'stalled_return::reacquireDue(',
               'energy_control_autonomous_pending_peak_=false', 'resetEnergyControlAutonomousPeakTracker(true)'):
     assert token in motion, token
