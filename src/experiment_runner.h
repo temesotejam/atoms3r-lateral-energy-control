@@ -479,7 +479,9 @@ private:
   void RW_HOT_CODE logSampleNow();
   void finishRun();
   void RW_SPEED_CODE stopMotor();
-  void setSyncLed(bool on);
+  // Keep LED handling out of the time-critical motion function bodies. The
+  // LED is an event marker; the control and sensor checks remain in IRAM.
+  void __attribute__((noinline)) setSyncLed(bool on);
   uint32_t measurementTotalDurationMs() const;
   float accelPitchDeg(const ImuReading& r) const;
   float physicalRollCandidateDeg(const ImuReading& r) const;
