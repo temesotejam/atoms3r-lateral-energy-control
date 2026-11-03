@@ -53,6 +53,8 @@ def audit(table):
             raise ValueError('Missing required routine: '+prefix)
     size = sum(s['bytes'] for s in symbols.values())
     if size > LIMIT:
+        print('Motion size breakdown:', json.dumps(symbols, sort_keys=True))
+        print('Recovery helpers:', json.dumps(recovery_helpers, sort_keys=True))
         raise ValueError('Motion/acquisition code exceeds 25 KiB: '+str(size))
     return dict(revision='lateral_energy_motion_link_v2_work_control', symbols=symbols,
                 function_code_bytes=size, function_code_limit_bytes=LIMIT,
