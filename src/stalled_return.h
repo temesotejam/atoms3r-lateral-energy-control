@@ -6,7 +6,7 @@
 // This detector proposes at most one recovery per confirmed body peak.
 // It does not model contacts or predict the physical outcome of the pulse.
 namespace stalled_return {
-inline bool reacquireDue(bool awaiting,bool pending,bool waiting_peak,uint32_t now,uint32_t command_ms) {
+__attribute__((noinline)) inline bool reacquireDue(bool awaiting,bool pending,bool waiting_peak,uint32_t now,uint32_t command_ms) {
   return awaiting && pending && waiting_peak && now>=command_ms && now-command_ms>1200;
 }
 class Detector {

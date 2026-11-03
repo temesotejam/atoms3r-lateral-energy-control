@@ -24,6 +24,8 @@ REQUIRED = tuple('ExperimentRunner::'+n+'(' for n in MOTION_METHODS if n not in 
     'imu_i2c::read(', 'lateral_energy::potential(')
 PREFIXES = REQUIRED + tuple('ExperimentRunner::'+n+'(' for n in INLINE_HELPERS) + (
     'direct_q::target(', 'direct_q::width(', 'ImuPollProfile::record(')
+RECOVERY_HELPERS = ('ExperimentRunner::detectStalledReturn(',
+                    'stalled_return::Detector::update(', 'stalled_return::reacquireDue(')
 # 1.0.23 adds a bounded one-peak work dispatch at accepted ZERO crossings.
 # Its fitted candidate scan is a separate flash routine; the audited IRAM
 # motion/acquisition bodies use 24,717 bytes.  Reserve 25 KiB for these bodies
@@ -33,11 +35,14 @@ LIMIT = 25600
 
 def audit(table):
     symbols = {}
+    recovery_helpers = {}
     for line in table.splitlines():
         m = re.match(r'^([0-9a-fA-F]+)\s+.*?\bF\s+(\S+)\s+([0-9a-fA-F]+)\s+(.+)$', line)
         if not m:
             continue
         address, section, size, name = m.groups()
+        if name.startswith(RECOVERY_HELPERS):
+            recovery_helpers[name] = dict(address='0x'+address, section=section, bytes=int(size,16))
         if not name.startswith(PREFIXES):
             continue
         if not section.startswith('.iram') or int(size, 16) <= 0:
@@ -51,6 +56,8 @@ def audit(table):
         raise ValueError('Motion/acquisition code exceeds 25 KiB: '+str(size))
     return dict(revision='lateral_energy_motion_link_v2_work_control', symbols=symbols,
                 function_code_bytes=size, function_code_limit_bytes=LIMIT,
+                recovery_helpers=recovery_helpers,
+                recovery_helpers_scope='separate_from_25KiB_motion_budget;physical_latency_not_measured',
                 scope='function bodies, including emitted lambdas; excludes literals and total IRAM',
                 external_calls_and_data_may_use_flash=True, hardware_timing_verified=False)
 

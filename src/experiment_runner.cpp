@@ -3146,7 +3146,7 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   // If a recovery pulse did not produce an opposite-side peak, rearm the
   // physical peak tracker after a timeout. Do not invent a peak or issue
   // another command: a real new extremum is needed before the next attempt.
-  if(stalled_return::reacquireDue(stalled_return_awaiting_peak_,energy_control_autonomous_pending_peak_,
+  if(stalled_return_awaiting_peak_ && stalled_return::reacquireDue(true,energy_control_autonomous_pending_peak_,
       energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_PEAK,
       t_test_ms,energy_control_autonomous_pending_zero_ms_)) {
     stalled_return_awaiting_peak_=false;energy_control_autonomous_pending_peak_=false;
