@@ -3200,7 +3200,7 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   if(event_ready && !crossing && !confirmation_input) {
     return_recovery=detectStalledReturn(t_test_ms,peak_side,detector_relative_angle_deg,rate_dps,threshold_deg);
   } else stalled_return_.interrupt();
-  if (event_ready && (crossing || confirmation_input || return_recovery)) {
+  if (event_ready && logger_ && (crossing || confirmation_input || return_recovery)) {
     const float before_distance = fabsf(before_deg - threshold_deg);
     const float denominator = before_distance + fabsf(detector_relative_angle_deg - threshold_deg);
     const float alpha = crossing && denominator > 0.0f ? before_distance / denominator : 1.0f;
@@ -4074,13 +4074,8 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
                                                                   float detector_after_deg,
                                                                   float crossing_alpha,
                                                                   float interpolated_time_ms,bool return_recovery) {
-  if (!energy_control_autonomous_mode_ || !logger_ || status_.pulse_active ||
-      (energy_control_autonomous_phase_ != EnergyControlAutonomousPhase::ENERGY_CONTROL &&
-       energy_control_autonomous_phase_ != EnergyControlAutonomousPhase::HOLD) ||
-      energy_control_autonomous_half_cycle_state_ !=
-          EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS ||
-      !energy_control_autonomous_last_peak_valid_ ||
-      energy_control_autonomous_zero_cross_consumed_for_peak_) return;
+  // This private function has one call site in updateMotion, immediately
+  // gated by event_ready, the mode/phase/pulse checks and logger presence.
   const uint32_t accepted_cross_ms = static_cast<uint32_t>(lroundf(interpolated_time_ms));
   if (energy_control_autonomous_last_accepted_zero_cross_valid_ &&
       static_cast<uint32_t>(accepted_cross_ms - energy_control_autonomous_last_accepted_zero_cross_ms_) <
