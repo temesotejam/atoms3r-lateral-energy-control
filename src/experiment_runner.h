@@ -168,7 +168,6 @@ private:
   weak_side_assist::Controller weak_side_assist_;
   positive_left_boost::Controller positive_left_boost_;
   tilt_priority::Controller tilt_priority_;
-  wheel_cycle_guard::Controller wheel_cycle_guard_;
   positive_left_boost::Input positive_left_input_;
   struct PhaseNegativePeak { uint32_t ms=0; float amplitude=NAN; };
   struct PhaseNegativeDecision {
@@ -812,4 +811,6 @@ private:
   // Place this additional camera-feedback array after the motion state so
   // these per-event fields do not shift hot members that follow the ring.
   SpanPositiveContext span_positive_context_[8];
+  // Keep the experimental wheel state after the hot motion fields.
+  wheel_cycle_guard::Controller wheel_cycle_guard_;
 };
