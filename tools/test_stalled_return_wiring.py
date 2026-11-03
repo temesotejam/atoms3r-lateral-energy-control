@@ -15,6 +15,8 @@ for token in ('event_ready=!physical_event_suppressed',
               'energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS',
               'energy_control_autonomous_last_peak_valid_ && !energy_control_autonomous_zero_cross_consumed_for_peak_'):
     assert token in motion, token
+assert 'stalled_return_event_=return_recovery;' in motion
+assert 'stalled_return_event_=false;' in motion
 method=s.split('bool ExperimentRunner::tryTiltPriority(',1)[1].split('\nbool ExperimentRunner::tryWeakSideAssist(',1)[0]
 for token in ('choice.width_ms>30)choice.width_ms=30',
               'event.work_control_branch=return_recovery ? 16 : 15',

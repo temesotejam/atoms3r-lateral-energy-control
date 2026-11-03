@@ -411,7 +411,7 @@ private:
                                                  float detector_before_deg,
                                                  float detector_after_deg,
                                                  float crossing_alpha,
-                                                 float interpolated_time_ms, bool return_recovery=false);
+                                                 float interpolated_time_ms);
   void RW_SPEED_CODE updateEnergyControlAutonomousPulse(uint32_t now_ms);
   // Candidate search runs only at an accepted ZERO crossing. Keep its fitted
   // regression and 183-candidate scan out of the periodic IRAM motion path.
@@ -815,4 +815,5 @@ private:
   SpanPositiveContext span_positive_context_[8];
   stalled_return::Detector stalled_return_;
   bool stalled_return_awaiting_peak_=false;
+  bool stalled_return_event_=false;
 };

@@ -2545,6 +2545,7 @@ void ExperimentRunner::resetEnergyControlAutonomous() {
   foot_span_observer_.reset(status_.run_id);foot_span_control_.reset();weak_side_assist_.reset();
   stalled_return_.reset();
   stalled_return_awaiting_peak_=false;
+  stalled_return_event_=false;
   positive_left_boost_.reset();positive_left_input_=positive_left_boost::Input{};tilt_priority_.reset();span_observer_sequence_=0;
   span_positive_decision_next_=0;
   for (auto& x:span_positive_decisions_) x=SpanPositiveDecision{};
@@ -3208,8 +3209,10 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
         alpha * static_cast<float>(t_test_ms - energy_control_autonomous_previous_detector_test_ms_);
     const float interpolated_rate_dps = energy_control_autonomous_previous_detector_rate_dps_ +
         alpha * (rate_dps - energy_control_autonomous_previous_detector_rate_dps_);
+    stalled_return_event_=return_recovery;
     updateEnergyControlAutonomousAtZeroCross(t_test_ms, interpolated_rate_dps, before_deg,
-        detector_relative_angle_deg, alpha, interpolated_time_ms,return_recovery);
+        detector_relative_angle_deg, alpha, interpolated_time_ms);
+    stalled_return_event_=false;
   }
   const bool passed_centre_inward = rate_dps * peak_side < 0.0f &&
       ((peak_side < 0 && before_deg < 0 && detector_relative_angle_deg >= 0) ||
@@ -4073,7 +4076,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
                                                                   float detector_before_deg,
                                                                   float detector_after_deg,
                                                                   float crossing_alpha,
-                                                                  float interpolated_time_ms,bool return_recovery) {
+                                                                  float interpolated_time_ms) {
   // This private function has one call site in updateMotion, immediately
   // gated by event_ready, the mode/phase/pulse checks and logger presence.
   const uint32_t accepted_cross_ms = static_cast<uint32_t>(lroundf(interpolated_time_ms));
@@ -4239,7 +4242,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   // In the 8-degree walking experiment, lean amplitude takes priority over
   // the ordinary fitted selector and foot-span corrections. Existing sensor,
   // motor and emergency-stop checks still gate the experimental command.
-  if(work_mode && event.target_peak_deg==8.f && tryTiltPriority(event,t_test_ms,return_recovery)) {
+  if(work_mode && event.target_peak_deg==8.f && tryTiltPriority(event,t_test_ms,stalled_return_event_)) {
     finishFootEnergyDecision(event,t_test_ms);
     if(!event.output_executed)rearm_for_next_peak();
     return;
