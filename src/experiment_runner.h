@@ -215,7 +215,7 @@ private:
   void updateStartupCalibration(const ImuReading& r);
   void beginStartSync(uint32_t now_ms);
   void updateStartSync(uint32_t now_ms);
-  void updateEndSync(uint32_t now_ms);
+  void __attribute__((noinline)) updateEndSync(uint32_t now_ms);
   bool updateSyncPattern(uint32_t now_ms, const Config::LedSyncStep* pattern, uint8_t step_count);
   void beginMeasurementRun();
   void beginTrial(uint8_t trial_index);
