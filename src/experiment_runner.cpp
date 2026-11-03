@@ -3198,7 +3198,12 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
       energy_control_autonomous_last_peak_valid_ && !energy_control_autonomous_zero_cross_consumed_for_peak_;
   bool return_recovery=false;
   if(event_ready && !crossing && !confirmation_input) {
-    return_recovery=detectStalledReturn(t_test_ms,peak_side,detector_relative_angle_deg,rate_dps,threshold_deg);
+    const bool enabled=wheelWorkMode() && energy_control_autonomous_target_peak_deg_==8.f &&
+        energy_control_autonomous_input_peak_percent_==0 &&
+        energy_control_autonomous_last_peak_amplitude_deg_<=tilt_priority_.target()+1.5f;
+    return_recovery=stalled_return_.update(t_test_ms,energy_control_autonomous_last_peak_ms_,
+        energy_control_autonomous_last_peak_amplitude_deg_,peak_side,detector_relative_angle_deg,
+        rate_dps,threshold_deg,enabled);
   } else stalled_return_.interrupt();
   if (event_ready && (crossing || confirmation_input || return_recovery)) {
     const float before_distance = fabsf(before_deg - threshold_deg);
@@ -3224,14 +3229,6 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   energy_control_autonomous_previous_detector_relative_angle_deg_ = detector_relative_angle_deg;
   energy_control_autonomous_previous_detector_rate_dps_ = rate_dps;
   energy_control_autonomous_previous_detector_test_ms_ = t_test_ms;
-}
-bool ExperimentRunner::detectStalledReturn(uint32_t t_test_ms,int8_t peak_side,
-                                            float detector_angle_deg,float rate_dps,float threshold_deg) {
-  const bool enabled=wheelWorkMode() && energy_control_autonomous_target_peak_deg_==8.f &&
-      energy_control_autonomous_input_peak_percent_==0 &&
-      energy_control_autonomous_last_peak_amplitude_deg_<=tilt_priority_.target()+1.5f;
-  return stalled_return_.update(t_test_ms,energy_control_autonomous_last_peak_ms_,
-      energy_control_autonomous_last_peak_amplitude_deg_,peak_side,detector_angle_deg,rate_dps,threshold_deg,enabled);
 }
 void ExperimentRunner::updateEnergyControlAutonomousPeakTracker(uint32_t now_ms,
                                                                   float peak_relative_angle_deg,

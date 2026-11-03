@@ -439,8 +439,6 @@ private:
       const wheel_work_energy_control::Choice& normal,uint32_t t_test_ms);
   bool __attribute__((noinline)) tryTiltPriority(
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,bool return_recovery=false);
-  bool __attribute__((noinline)) detectStalledReturn(uint32_t t_test_ms,int8_t peak_side,
-      float detector_angle_deg,float rate_dps,float threshold_deg);
   void __attribute__((noinline)) choosePeakMpc(PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       float fast_v,wheel_work_energy_control::Choice& choice,int16_t& current,
       const lateral_energy::CurrentTable*& table) const;
