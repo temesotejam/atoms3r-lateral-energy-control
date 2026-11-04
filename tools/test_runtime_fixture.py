@@ -61,7 +61,7 @@ header = converter.parse_header(data)
 metadata = converter.expand_tables(json.loads(data[110:110+header['metadata_json_size']], parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))))
 assert metadata['metadata_json_final_bytes'] == header['metadata_json_size']
 assert not metadata['metadata_event_detail_truncated']
-assert metadata['firmware_revision']=='1.0.84-foot-trend-explore'
+assert metadata['firmware_revision']=='1.0.85-foot-yaw-observe'
 for manifest in ('site/manifest.json','site/manifest-freefoot-runtime-v2.json'):
     cfg=json.loads(Path(manifest).read_text())
     assert cfg['version']==metadata['firmware_revision']
@@ -389,3 +389,4 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
                 assert row[key] == str(event[key])
             assert row['work_prediction_cross_condition'] == str(event['work_prediction_cross_condition'])
 print('full mixed work/fallback RWLOGs: CRC, schema, model/null alignment and conversion PASS')
+
