@@ -17,9 +17,11 @@ at_zero=runner.split('void ExperimentRunner::updateEnergyControlAutonomousAtZero
 assert at_zero.index('tryTiltPriority(event,t_test_ms)') < at_zero.index('work_choice=chooseWheelWork(')
 branch=at_zero.split('if(work_mode && event.target_peak_deg==8.f && tryTiltPriority(event,t_test_ms)) {',1)[1].split('\n  if(work_mode && event.target_peak_deg==8.f)',1)[0]
 assert 'if(!event.output_executed)rearm_for_next_peak();' in branch and 'return;' in branch
-assert branch.count('energy_control_autonomous_zero_cross_consumed_for_peak_=false')==2
-assert branch.count('energy_control_autonomous_last_accepted_zero_cross_ms_=previous_accepted_ms')==2
-assert branch.count('EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS')==2
+assert branch.count('restoreUnsentStallRescue(event,previous_accepted_valid,previous_accepted_ms)')==2
+restore=runner.split('void ExperimentRunner::restoreUnsentStallRescue(',1)[1].split('\nvoid ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(',1)[0]
+assert 'energy_control_autonomous_zero_cross_consumed_for_peak_=false' in restore
+assert 'energy_control_autonomous_last_accepted_zero_cross_ms_=previous_accepted_ms' in restore
+assert 'EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS' in restore
 assert 'stall_rescue_attempted_peak_ms_!=energy_control_autonomous_last_peak_ms_' in runner
 assert 'energy_control_autonomous_pending_probe_=true' in method
 assert 'energy_control_autonomous_pending_model_energy_j_=NAN' in method

@@ -399,6 +399,12 @@ private:
   void RW_SPEED_CODE resetEnergyControlAutonomousPeakTracker(bool enable);
   void beginEnergyControlAutonomousStartKick(uint32_t now_ms);
   void RW_SPEED_CODE updateEnergyControlAutonomousMotion(uint32_t now_ms);
+  bool __attribute__((noinline)) observeInwardStallRescue(uint32_t t_test_ms,
+      int8_t peak_side,bool physical_event_suppressed,bool peak_just_confirmed,
+      float before_deg,float angle_deg,float rate_dps);
+  void __attribute__((noinline)) restoreUnsentStallRescue(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
+      bool previous_accepted_valid,uint32_t previous_accepted_ms);
   void RW_SPEED_CODE updateEnergyControlAutonomousPeakTracker(uint32_t now_ms,
                                                 float peak_relative_angle_deg,
                                                 float rate_dps);
@@ -439,6 +445,10 @@ private:
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       const wheel_work_energy_control::Choice& normal,uint32_t t_test_ms);
   bool __attribute__((noinline)) tryTiltPriority(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms);
+  bool __attribute__((noinline)) tryTiltPriorityImpl(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,bool* healthy_out);
+  bool __attribute__((noinline)) tryTiltPriorityRescue(
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms);
   void __attribute__((noinline)) choosePeakMpc(PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       float fast_v,wheel_work_energy_control::Choice& choice,int16_t& current,

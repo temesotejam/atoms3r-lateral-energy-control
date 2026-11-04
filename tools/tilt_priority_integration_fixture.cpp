@@ -64,6 +64,8 @@ class ExperimentRunner {public:
    ++calls;sign=d;width=w;ma=m;return begin_ok;
  }
  bool tryTiltPriority(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t);
+ bool tryTiltPriorityImpl(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t,bool*);
+ bool tryTiltPriorityRescue(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t);
 };
 // METHOD_SOURCE
 using Event=PsramLogger::EnergyControlAutonomousZeroCrossEvent;

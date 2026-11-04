@@ -3,14 +3,15 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 runner=(root/'src/experiment_runner.cpp').read_text(encoding='utf-8')
 policy=runner.split('void ExperimentRunner::updateEnergyControlAutonomousMotion(',1)[1].split('\nvoid ExperimentRunner::updateEnergyControlAutonomousPeakTracker(',1)[0]
-assert 'energy_control_autonomous_input_peak_percent_==0 && peak_side==1' in policy
 assert 'threshold_deg=tilt_priority_.negativeEarlyThreshold' not in policy
-assert 'stall_rescue_detector_.observe' in policy
+rescue=runner.split('bool ExperimentRunner::observeInwardStallRescue(',1)[1].split('\nvoid ExperimentRunner::updateEnergyControlAutonomousMotion(',1)[0]
+assert 'energy_control_autonomous_input_peak_percent_==0 && peak_side==1' in rescue
+assert 'stall_rescue_detector_.observe' in rescue and 'observeInwardStallRescue(' in policy
 assert 'WAIT_ZERO_CROSS' in policy and '!energy_control_autonomous_zero_cross_consumed_for_peak_' in policy
 assert '(crossing || confirmation_input || rescue)' in policy
 assert 'stall_rescue_event_=rescue' in policy and 'stall_rescue_event_=false' in policy
-assert '!physical_event_suppressed' in policy and '!peak_just_confirmed' in policy
-assert 'energy_control_autonomous_target_peak_deg_==8.f' in policy
+assert '!physical_event_suppressed' in rescue and '!peak_just_confirmed' in rescue
+assert 'energy_control_autonomous_target_peak_deg_==8.f' in rescue
 assert 'before_deg > threshold_deg && detector_relative_angle_deg <= threshold_deg' in policy
 assert 'rate_dps * peak_side < 0.0f' in policy
 choice=runner.split('bool ExperimentRunner::tryTiltPriority(',1)[1].split('\nbool ExperimentRunner::tryWeakSideAssist(',1)[0]
