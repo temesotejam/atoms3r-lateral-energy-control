@@ -1,3 +1,4 @@
+#define FOOT_TREND_CYCLES 2
 #include "tilt_priority.h"
 #include "wheel_cycle_guard.h"
 #include "foot_span_control.h"
