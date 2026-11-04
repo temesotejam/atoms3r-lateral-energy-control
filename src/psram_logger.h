@@ -362,6 +362,8 @@ class PsramLogger {
     float rate_baseline_peak_deg = NAN;
     float rate_baseline_correction_deg = NAN;  // retired P1-difference column
     uint8_t rate_baseline_reason = 255;
+    // Reuse alignment padding without narrowing the recorded pulse widths.
+    uint16_t weak_probe_baseline_ms=0;
     float passive_energy_j = NAN;
     float target_peak_deg = NAN;
     float foot_balance_target_deg = NAN, foot_balance_left_deg = NAN, foot_balance_right_deg = NAN;
@@ -370,6 +372,7 @@ class PsramLogger {
     uint16_t startup_positive_cap_ms=0;
     uint16_t wheel_guard_legacy_ms=0,wheel_guard_extra_ms=0;
     bool wheel_guard_trial_eligible=false;
+    uint16_t weak_probe_requested_ms=0;
     float foot_energy_bias=NAN,foot_energy_left_px=NAN,foot_energy_right_px=NAN;
     bool foot_energy_valid=false;uint8_t foot_energy_phase=0,foot_energy_reason=0;
     float low_peak_bias_mj=NAN,low_peak_base_prediction_mj=NAN,low_peak_applied_bias_mj=NAN;
@@ -467,7 +470,6 @@ class PsramLogger {
     bool output_executed = false;
     bool valid = false;
     uint8_t reason = 0;
-    uint16_t weak_probe_baseline_ms=0,weak_probe_requested_ms=0;
     bool weak_probe_executed=false;
   };  struct CalibrationResult {
     bool enabled = false; bool protocol_complete = false; bool valid = false; uint8_t failure_reason = 0;
