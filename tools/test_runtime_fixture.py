@@ -285,7 +285,7 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
     assert work_metadata['foot_span_high_current']['command_mA'] == 1200
     assert work_metadata['foot_span_high_current']['minimum_stage_target_deg'] == 6
     assert work_metadata['foot_span_high_current']['initial_left_greater_right'] == 'increase_positive_width_first;reverse_if_unfavorable'
-    assert work_metadata['foot_span_high_current']['step_ms'] == 10
+    assert work_metadata['foot_span_high_current']['step_ms'] == 5
     assert work_metadata['foot_span_high_current']['positive_rate_tolerance_dps'] == 15
     assert work_metadata['foot_span_high_current']['positive_rpm_tolerance'] == 150
     assert work_metadata['foot_span_high_current']['extremum_disagreement_deg'] == 1.5
