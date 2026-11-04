@@ -1,3 +1,4 @@
+#define FOOT_TREND_CYCLES 2
 #include "foot_span_control.h"
 #include <cassert>
 #include <iostream>
