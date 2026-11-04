@@ -1,3 +1,4 @@
+#define FOOT_TREND_CYCLES 2
 #include "foot_span_control.h"
 #include <cassert>
 #include <iostream>
@@ -19,10 +20,10 @@ int main(){
     if(kind==1)x.cycle(cycle(300,1,3));
     if(kind==2)x.cycle(cycle(300,3,1));
     const auto requested=x.limit(450,30,1200,1,60,true,1);
-    assert(requested==(kind==2?35:30));
+    assert(requested==(kind==1?30:35));
     assert(x.acceptedProbeCycles()==0 && !x.fault());
     x.confirm(450,true,1200,1,requested);
-    assert(x.acceptedProbeCycles()==(kind==2?1u:0u));
+    assert(x.acceptedProbeCycles()==(kind==1?0u:1u));
   }
   // A queued exploration must preserve a confirmed offset when canceled;
   // a pending safety rollback must never be canceled by new balance.
@@ -37,9 +38,9 @@ int main(){
     }
     auto c5=cycle(500,rollback?1.5f:2.5f,rollback?.5f:1.1f);c5.positive_width=35;x.cycle(c5);
     assert(x.offset()==(rollback?0:10));
-    auto c6=cycle(600,2,2);c6.positive_width=35;x.cycle(c6);
+    auto c6=cycle(600,1,3);c6.positive_width=35;x.cycle(c6);
     assert(x.offset()==(rollback?0:5));
     assert(x.limit(750,30,1200,1,60,true,1)==(rollback?30:35));
   }
-  std::cout << "queued foot correction: balanced/reversed cancel; sustained confirms PASS\n";
+  std::cout << "queued foot correction: isolated balanced cycle retains trend; reversal cancels PASS\n";
 }
