@@ -1,3 +1,4 @@
+#define FOOT_TREND_CYCLES 2
 #include "foot_span_control.h"
 #include <cassert>
 #include <iostream>
@@ -201,8 +202,10 @@ int main(){
   restored.positive_sign=1;restored.complete=restored.negative_known=restored.positive_executed=true;
   pending_invalid.cycle(restored);
   assert(tick(pending_invalid,24205,3,1)==100);
+  assert(pending_invalid.offset()==0); // changed negative mode restarts the trend
+  assert(tick(pending_invalid,24305,3,1)==100);
   assert(pending_invalid.offset()==-10);
-  assert(tick(pending_invalid,24305,3,1)==90 && !pending_invalid.fault());
+  assert(tick(pending_invalid,24405,3,1)==90 && !pending_invalid.fault());
   // Selector changes have the same discard/reacquire behavior.
   Controller selector;tick(selector,100,3,1);tick(selector,200,3,1);
   assert(selector.offset()==-10 && selector.selectorUnavailable(250));
