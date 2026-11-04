@@ -43,6 +43,7 @@
 
 #include "experiment_status.h"
 #include "gyro_heading_diagnostic.h"
+#include "stall_rescue.h"
 
 class ExperimentRunner {
 public:
@@ -819,5 +820,8 @@ private:
   foot_fullstride_observer::Observer foot_span_observer_;
   // Diagnostics are cold and must not change hot member offsets or control.
   GyroHeadingDiagnostic gyro_heading_diagnostic_;
+  stall_rescue::Detector stall_rescue_detector_;
+  uint32_t stall_rescue_attempted_peak_ms_=0;
+  bool stall_rescue_event_=false;
   bool gyro_heading_start_pending_ = false;
 };
