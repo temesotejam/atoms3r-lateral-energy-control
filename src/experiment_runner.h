@@ -400,11 +400,17 @@ private:
   void beginEnergyControlAutonomousStartKick(uint32_t now_ms);
   void RW_SPEED_CODE updateEnergyControlAutonomousMotion(uint32_t now_ms);
   bool __attribute__((noinline)) observeInwardStallRescue(uint32_t t_test_ms,
-      int8_t peak_side,bool physical_event_suppressed,bool peak_just_confirmed,
-      float before_deg,float angle_deg,float rate_dps);
+      bool physical_event_suppressed,bool peak_just_confirmed,float angle_deg,float rate_dps);
+  void __attribute__((noinline)) acceptMotionCrossing(bool rescue,uint32_t t_test_ms,
+      float interpolated_rate_dps,float before_deg,float after_deg,float alpha,float interpolated_time_ms);
   void __attribute__((noinline)) restoreUnsentStallRescue(
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       bool previous_accepted_valid,uint32_t previous_accepted_ms);
+  bool __attribute__((noinline)) dispatchTiltPriority(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,
+      bool previous_accepted_valid,uint32_t previous_accepted_ms);
+  void __attribute__((noinline)) finishSolverAudit(solver_audit::Record& audit,
+      const PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t end_us);
   void RW_SPEED_CODE updateEnergyControlAutonomousPeakTracker(uint32_t now_ms,
                                                 float peak_relative_angle_deg,
                                                 float rate_dps);
