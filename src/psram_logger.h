@@ -467,6 +467,8 @@ class PsramLogger {
     bool output_executed = false;
     bool valid = false;
     uint8_t reason = 0;
+    uint16_t weak_probe_baseline_ms=0,weak_probe_requested_ms=0;
+    bool weak_probe_executed=false;
   };  struct CalibrationResult {
     bool enabled = false; bool protocol_complete = false; bool valid = false; uint8_t failure_reason = 0;
     uint8_t probe_plan_count = 0; uint8_t probe_wait_halfcycles = 0;
@@ -768,3 +770,7 @@ private:
   bool ready_ = false;
   const char* last_error_ = "not_initialized";
 };
+
+
+
+
