@@ -457,4 +457,3 @@ class Controller {
   bool one_proposal_=false,one_return_=false;
 };
 }
-

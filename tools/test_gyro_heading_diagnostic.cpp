@@ -27,4 +27,3 @@ int main() {
   assert(!h.valid());
   std::puts("gyro heading diagnostic: frame, bias, invalid/gap latch, reset PASS");
 }
-

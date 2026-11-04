@@ -65,4 +65,3 @@ struct Scope {
   ~Scope() { phase(lane, previous); }
 };
 }
-

@@ -41,4 +41,3 @@ int main() {
   assert(once.offset()==5 && once.state()==State::ProbeOnce);
   std::cout << "fresh-cycle gate protects balanced and reversed motion PASS\n";
 }
-

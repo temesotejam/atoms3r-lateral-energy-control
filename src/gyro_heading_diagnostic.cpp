@@ -11,4 +11,3 @@ __attribute__((noinline)) void GyroHeadingDiagnostic::sample(
     float gyro_y_scale, uint32_t gyro_us) {
   heading_.update(-(gx-bx), (gy-by)*gyro_y_scale, -(gz-bz), gyro_us);
 }
-

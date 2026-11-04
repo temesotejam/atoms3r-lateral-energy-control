@@ -389,4 +389,3 @@ for work_first, suffix in ((False, '.fallback-first.rwlog'), (True, '.work-first
                 assert row[key] == str(event[key])
             assert row['work_prediction_cross_condition'] == str(event['work_prediction_cross_condition'])
 print('full mixed work/fallback RWLOGs: CRC, schema, model/null alignment and conversion PASS')
-

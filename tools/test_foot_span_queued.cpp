@@ -44,4 +44,3 @@ int main(){
   }
   std::cout << "queued foot correction: balanced or reversed latest cycle cancels proposal PASS\n";
 }
-

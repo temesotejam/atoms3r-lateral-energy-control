@@ -821,4 +821,3 @@ private:
   GyroHeadingDiagnostic gyro_heading_diagnostic_;
   bool gyro_heading_start_pending_ = false;
 };
-

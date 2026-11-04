@@ -1872,4 +1872,3 @@ RwLogFileHeader PsramLogger::buildHeader(uint32_t metadata_size) const {
   header.crc_offset = header.events_offset;
   return header;
 }
-

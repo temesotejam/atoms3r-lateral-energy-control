@@ -15,4 +15,3 @@ class GyroHeadingDiagnostic {
  private:
   steering::GyroHeading heading_;
 };
-
