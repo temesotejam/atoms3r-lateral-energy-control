@@ -164,7 +164,6 @@ private:
   foot_phase_observer::Observer foot_phase_observer_;
   foot_phase_cap::Controller foot_phase_cap_;
   foot_fullstride_observer::Observer foot_span_observer_;
-  foot_span_control::Controller foot_span_control_;
   weak_side_assist::Controller weak_side_assist_;
   positive_left_boost::Controller positive_left_boost_;
   tilt_priority::Controller tilt_priority_;
@@ -813,4 +812,6 @@ private:
   SpanPositiveContext span_positive_context_[8];
   // Keep the experimental wheel state after the hot motion fields.
   wheel_cycle_guard::Controller wheel_cycle_guard_;
+  // Experimental foot feedback follows hot motion fields to preserve IRAM size.
+  foot_span_control::Controller foot_span_control_;
 };
