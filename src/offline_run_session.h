@@ -1,4 +1,5 @@
 #pragma once
+#include "camera_experiment_mode.h"
 #include <stdint.h>
 
 // HTTP lifecycle only; Wi-Fi/AP stays up throughout every phase. Host callbacks
@@ -8,7 +9,7 @@ class OfflineRunSession {
  public:
   enum class Phase { Online, Draining, Starting, Running, Cancelling, Restoring };
   enum class StartResult { Pending, Started, Rejected };
-  static constexpr uint32_t kDisplayWaitMs = 30000;
+  static constexpr uint32_t kDisplayWaitMs = CAMERA_DIAGNOSTIC_ONLY ? 80000 : 30000;
   bool queue(uint32_t now) {
     if (busy()) return false;
     error_ = ""; queued_ms_ = since_ms_ = now; phase_ = Phase::Draining;

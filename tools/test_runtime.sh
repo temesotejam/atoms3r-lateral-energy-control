@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
-python3 test/test_contact_geometry_probe.py
 python3 tools/test_foot_log_version_mapping.py
 python3 tools/test_positive_sway_log.py
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc test/test_positive_sway_probe.cpp -o /tmp/test_positive_sway_probe
@@ -227,4 +226,27 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_gyro_heading_diagnosti
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_compact_json_table.cpp -o /tmp/test_compact_json_table
 /tmp/test_compact_json_table
 
+# Integrated camera comparison: host-only; device timing remains unverified.
+python tools/test_camera_diagnostic_contract.py
 python tools/test_foot_observation_timestamp.py
+python tools/test_foot_scan_equivalence.py
+python test/test_contact_geometry_probe.py
+python test/test_contact_candidates.py
+g++ -std=c++17 -Wall -Wextra -Werror test/test_foot_fast_record_gate.cpp -o /tmp/fast_gate
+/tmp/fast_gate
+for spec in "0 0" "0 1" "1 1" "2 1"; do
+  read -r mode diag <<< "$spec"
+  g++ -std=c++17 -Wall -Wextra -Werror -DFOOT_FAST_CAPTURE_EXPERIMENT=$mode -DCAMERA_DIAGNOSTIC_ONLY=$diag tools/test_camera_experiment_mode.cpp -o /tmp/camera_guard
+  /tmp/camera_guard
+done
+if g++ -std=c++17 -DFOOT_FAST_CAPTURE_EXPERIMENT=1 -DCAMERA_DIAGNOSTIC_ONLY=0 tools/test_camera_experiment_mode.cpp -o /tmp/camera_unsafe 2>/dev/null; then
+  echo "Unsafe active motor fast mode unexpectedly built"; exit 1
+fi
+for mode in 0 1 2; do
+  g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-format -ffunction-sections -fdata-sections -Itools/host_v46o -DFOOT_FAST_CAPTURE_EXPERIMENT=$mode -DCAMERA_DIAGNOSTIC_ONLY=1 -c src/foot_observer.cpp -o /tmp/foot_observer_$mode.o
+done
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-format -ffunction-sections -fdata-sections -Itools/host_v46o tools/test_observation_sampling.cpp src/foot_observer.cpp src/foot_angle_estimator.cpp src/white_marker_tracker.cpp -Wl,--gc-sections -o /tmp/test_observation_sampling
+/tmp/test_observation_sampling | python tools/check_observation_sampling.py
+
+python3 tools/test_camera_metrics.py
+python3 tools/test_prepare_camera_compare_package.py

@@ -252,6 +252,15 @@ void WebUi::status() {
   json += ",\"boot_id\":" + String(boot_id_);
   json += ",\"network\":{\"phase\":\"" + String(offline_.name()) + "\",\"last_error\":\"" + String(offline_.error()) + "\"}";
   json += ",\"usb_diagnostics\":" + String(RuntimeDiag::enabled() ? "true" : "false");
+  char camera_build_sha[41]; cameraBuildSha(camera_build_sha);
+  json += ",\"camera_build_sha\":\"" + String(camera_build_sha) + "\"";
+  json += ",\"camera_experiment_mode\":" + String(FOOT_FAST_CAPTURE_EXPERIMENT);
+  json += ",\"camera_diagnostic_motor_disabled\":" + String(CAMERA_DIAGNOSTIC_ONLY ? "true" : "false");
+#if CAMERA_DIAGNOSTIC_ONLY
+  json += ",\"camera_fast_active\":" + String(f.fast_capture_active ? "true" : "false");
+#else
+  json += ",\"camera_fast_active\":false";
+#endif
   json += ",\"running\":" + String(s.running ? "true" : "false");
   json += ",\"ready\":" + String(work_start_policy::ready(s.ready,fresh,s.imu_ok,s.roller_ok,export_->ready()) ? "true" : "false");
   json += ",\"controller_fresh\":" + String(fresh ? "true" : "false");

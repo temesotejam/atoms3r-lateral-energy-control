@@ -1,4 +1,5 @@
 #include "roller485_manager.h"
+#include "camera_experiment_mode.h"
 #include "runtime_diagnostics.h"
 
 #include <Wire.h>
@@ -287,6 +288,10 @@ void Roller485Manager::update() {
 
 bool Roller485Manager::setCurrentMa(int16_t current_mA) {
   if (current_mA == 0) return stop();
+  if (!cameraExperimentAllowsCurrent(current_mA)) {
+    last_error_ = "camera_diagnostic_motor_disabled";
+    return false;
+  }
   if (!io_task_ready_ || !io_task_running_ || command_queue_ == nullptr || io_task_handle_ == nullptr) {
     last_error_ = "roller_io_task_not_ready";
     return false;
@@ -330,6 +335,11 @@ bool Roller485Manager::stop() {
 }
 
 bool Roller485Manager::applyCurrentMa(const RollerCommand& cmd) {
+  // Defense in depth even if a nonzero command reached the IO queue.
+  if (!cameraExperimentAllowsCurrent(cmd.current_mA)) {
+    last_error_ = "camera_diagnostic_motor_disabled";
+    return false;
+  }
   const bool was_commanded = command_mA_ != 0;
   const int32_t raw = static_cast<int32_t>(cmd.current_mA) * Config::ROLLER_CURRENT_RAW_PER_MA;
   bool ok = true;
