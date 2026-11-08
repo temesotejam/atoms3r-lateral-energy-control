@@ -8,6 +8,11 @@ mm, and a 56 mm fore/aft extent. These are the reference geometry documented at
 https://github.com/temesotejam/rw-walker-digital-twin/blob/main/docs/REFERENCE_GEOMETRY.md.
 Axes are x lateral, y fore/aft, z up. Each leg is *assumed* to rotate about an
 x-oriented hip hinge at 120 mm height, not a verified current-assembly joint.
+An independent inspection of the local 2026-11-04 `Assembly 1 (1).step`
+found X-axis hole candidates corresponding to nominal heights near 82.83 mm
+and 55.33 mm from the sole inner edge. The particular active hip axis and
+current assembly state have not been verified, so neither is a confirmed hip
+height. Users can pass candidate heights to `switch` for sensitivity checks.
 Both feet are assumed rigid, independent and connected to the same body. The
 minimum height of each full sole surface is computed in a common body pose and
 the root of their height difference is found. Equal minimum heights are a
