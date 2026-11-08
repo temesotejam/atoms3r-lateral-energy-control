@@ -74,6 +74,8 @@ for the controller until the actual control-observed timestamp is measured.
 The research branch also prototypes `control_observed_us` for a recorded foot
 frame: this is captured immediately after the control task reads the snapshot.
 A matching recorded run and sequence are required; unmatched frames are null.
+The sparse table retains up to the first 64 matching frames, subject to metadata
+headroom, and reports truncation; later observations are unavailable.
 It is diagnostic only, not a contact detector, and adds a critical-section
 operation and PSRAM per frame. Firmware build and on-device load/timing tests
 must pass before deployment. Existing logs do not contain this timestamp.

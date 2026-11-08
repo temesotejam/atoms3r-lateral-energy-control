@@ -55,6 +55,22 @@ def expand_tables(value, version=None):
                 raise ValueError('Invalid compact table')
             return [expand_tables(dict(zip(fields, row)), version) for row in rows]
         result = {key: expand_tables(item, version) for key, item in value.items()}
+        if 'foot_control_observations' in result:
+            obs, frames = result['foot_control_observations'], result.get('foot_frames')
+            if not isinstance(obs, dict) or obs.get('version') != 1 or not isinstance(frames, list) or not isinstance(obs.get('rows'), list):
+                raise ValueError('Invalid foot control observation table')
+            seen = set()
+            for row in obs['rows']:
+                if not isinstance(row, list) or len(row) != 2:
+                    raise ValueError('Invalid foot control observation row')
+                index, delta = row
+                if type(index) is not int or type(delta) is not int or index in seen or not 0 <= index < len(frames) or delta < 0:
+                    raise ValueError('Invalid foot control observation offset')
+                delivered = frames[index].get('delivered_us')
+                if type(delivered) is not int or delivered < 0:
+                    raise ValueError('Invalid foot delivery timestamp')
+                frames[index]['control_observed_us'] = delivered + delta
+                seen.add(index)
         if 'foot_span_flags' in result:
             mask = result['foot_span_flags']
             bits = 15 if version in ('1.0.95-positive-sway-probe', '1.0.96-tapered-amplitude-recovery', '1.0.97-paired-sway-rollback', '1.0.98-foot-observation-timeout', '1.0.99-alternate-foot-trial') else 14
