@@ -1623,7 +1623,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   for (uint16_t i = 0; i < energy_control_autonomous_zero_cross_event_count_; ++i) {
     const EnergyControlAutonomousZeroCrossEvent& e = events_->energy_control_autonomous_zero_cross_events_[i];
     String detail = "{\"event_index\":" + String(e.event_index);
-    detail += ",\"event_kind\":\"" + String(e.event_kind == 1 ? "strong_start_kick" : e.event_kind == 2 ? "inward_stall_rescue" : "energy_control_zero_cross") + "\"";
+    detail += ",\"event_kind\":\"" + String(e.event_kind == 1 ? "strong_start_kick" : e.event_kind == 2 ? "inward_stall_rescue" : e.event_kind == 3 ? "optional_pre_zero_trial" : "energy_control_zero_cross") + "\"";
     detail += ",\"zero_cross_time_ms\":" + String(e.zero_cross_time_ms);
     auto appendAutonomousNullable = [&detail](const char* name, float value, uint8_t decimals) {
       detail += ",\""; detail += name; detail += "\":";

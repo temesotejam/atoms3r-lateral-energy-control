@@ -42,6 +42,13 @@ assert 'tilt_priority_.peak(physical_side,peak_ms,amplitude_deg)' in runner
 assert 'std::fabs(event.pre_input_wheel_speed_rpm)' not in method
 assert fixture.count('// METHOD_SOURCE')==1
 fixture=fixture.replace('// METHOD_SOURCE',method)
+assert fixture.count('// DISPATCH_SOURCE')==1
+restore_method='void ExperimentRunner::restoreUnsentStallRescue('+runner.split('void ExperimentRunner::restoreUnsentStallRescue(',1)[1].split('\n__attribute__((noinline)) bool ExperimentRunner::dispatchTiltPriority(',1)[0]
+dispatch_method='bool ExperimentRunner::dispatchTiltPriority('+branch
+fixture=fixture.replace('// DISPATCH_SOURCE',restore_method+'\n'+dispatch_method)
+assert fixture.count('// EARLY_WRAPPER_SOURCE')==1
+wrapper='void ExperimentRunner::acceptOptionalEarlyMotion('+runner.split('void ExperimentRunner::acceptOptionalEarlyMotion(',1)[1].split('\nvoid ExperimentRunner::updateEnergyControlAutonomousMotion(',1)[0]
+fixture=fixture.replace('// EARLY_WRAPPER_SOURCE',wrapper)
 with tempfile.TemporaryDirectory(prefix='tilt_priority_runner_') as td:
  source=Path(td)/'fixture.cpp';exe=Path(td)/'fixture'
  source.write_text(fixture,encoding='utf-8')

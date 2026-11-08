@@ -406,6 +406,11 @@ private:
       bool physical_event_suppressed,bool peak_just_confirmed,float angle_deg,float rate_dps);
   void __attribute__((noinline)) acceptMotionCrossing(bool rescue,uint32_t t_test_ms,
       float interpolated_rate_dps,float before_deg,float after_deg,float alpha,float interpolated_time_ms);
+  // Future experimentally enabled pre-zero source only. There is no caller in
+  // the current firmware; normal percentage and zero triggers are unchanged.
+  void __attribute__((noinline)) acceptOptionalEarlyMotion(uint32_t t_test_ms,float rate_dps,float angle_deg);
+  bool __attribute__((noinline)) tryTiltPriorityOptionalEarly(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms);
   void __attribute__((noinline)) restoreUnsentStallRescue(
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       bool previous_accepted_valid,uint32_t previous_accepted_ms);
@@ -842,6 +847,8 @@ private:
   stall_rescue::Detector stall_rescue_detector_;
   uint32_t stall_rescue_attempted_peak_ms_=0;
   bool stall_rescue_event_=false;
+  bool optional_early_event_=false;
+  uint32_t optional_early_attempted_peak_ms_=0;
   bool gyro_heading_start_pending_ = false;
   long_foot_balance::Controller long_foot_balance_;
   negative_cap_recovery::Controller negative_cap_recovery_;
