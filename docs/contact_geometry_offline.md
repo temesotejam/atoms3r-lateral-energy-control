@@ -21,11 +21,14 @@ touchdown time, or dynamic/no-slip simulation. Sole endpoints, finite width,
 body pitch, independent leg angles and central gap matter to the result.
 
 The camera-to-joint transform, per-foot signs and body-pitch sign are not
-identified here. The replay treats logged `left_deg` and `right_deg` as
-hypothetical joint-angle magnitudes and enumerates their signs and body pitch
-sign. Its candidate envelope is only a sensitivity study, not a confidence
-interval and not a physical prediction. The foot calibration in the logger was
-obtained with fixed legs and is not yet validated as a moving-joint angle.
+fully identified here. The calibration intentionally held the foot fixed and
+rotated the camera-bearing body through an equivalent relative angle; under a
+rigid, single-axis model this is a useful calibration of body-to-foot pose.
+Actual signs, boot reference, off-axis perspective and dynamic accuracy are
+not yet independently verified. The replay treats logged `left_deg` and
+`right_deg` as tentative joint-angle magnitudes and enumerates signs and body
+pitch sign. Its candidate envelope is a sensitivity study, not a confidence
+interval or a proven physical prediction.
 
 Usage, from the repository root after converting an RWLOG to CSV:
 
