@@ -28,7 +28,9 @@ Actual signs, boot reference, off-axis perspective and dynamic accuracy are
 not yet independently verified. The replay treats logged `left_deg` and
 `right_deg` as tentative joint-angle magnitudes and enumerates signs and body
 pitch sign. Its candidate envelope is a sensitivity study, not a confidence
-interval or a proven physical prediction.
+interval or a proven physical prediction. The replay also reports each
+per-boot zero's angle relative to the piecewise table's nominal zero; neither
+reference is asserted to be the mechanical centre of the leg.
 
 Usage, from the repository root after converting an RWLOG to CSV:
 

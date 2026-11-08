@@ -1,10 +1,24 @@
-import argparse, bisect, csv, statistics
+import argparse, bisect, csv, json, statistics
 from pathlib import Path
 from contact_geometry_probe import switch
 
 parser=argparse.ArgumentParser(description='Hypothesis-only geometry and causal camera replay; does not identify ground contact.')
 parser.add_argument('csv_dir',type=Path,help='directory produced by the RWLOG CSV converter')
 args=parser.parse_args()
+with (args.csv_dir/'foot_calibration.json').open(encoding='utf8') as source:
+    calibration=json.load(source)
+def interpolated_angle(points,x):
+    if x<=points[0][0]:i=0
+    elif x>=points[-1][0]:i=len(points)-2
+    else:i=next(j for j in range(len(points)-1) if points[j][0]<=x<=points[j+1][0])
+    x0,y0=points[i];x1,y1=points[i+1]
+    return y0+(x-x0)*(y1-y0)/(x1-x0)
+try:
+    cal=calibration['calibration']
+    offsets={side:interpolated_angle(cal[side+'_points'],float(calibration[side+'_zero_x']))
+             for side in ('left','right')}
+except (KeyError,TypeError,ValueError,StopIteration,ZeroDivisionError):
+    offsets=None
 def read(name):
     with (args.csv_dir/name).open(encoding='utf8',newline='') as f:return list(csv.DictReader(f))
 frames=[r for r in read('foot_angles.csv') if r['frame_valid']=='True' and r['timestamp_valid']=='True' and r['zero_ready']=='True' and r['left_valid']=='True' and r['right_valid']=='True' and
@@ -31,5 +45,6 @@ for e in events:
     roots=[x for x in roots if x is not None]
     if roots:stats.append((t,round(tm),round(left,2),round(right,2),round(pitch,2),round(min(roots),2),round(max(roots),2)))
 print('eligible crossings:',len(stats),'/',len(events))
+print('boot-to-table zero offsets [deg], not verified mechanical center:',offsets)
 for x in stats[:12]:print('cross ms, exposure ms, left, right, body pitch, min/max candidate deg:',*x)
 if stats: print('candidate spans: median',round(statistics.median(x[-1]-x[-2] for x in stats),2),'deg')
