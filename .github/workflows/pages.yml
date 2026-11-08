@@ -4,6 +4,11 @@ on:
     branches: [main]
   workflow_dispatch:
   pull_request:
+env:
+  EXPERIMENT_COMMIT: "5eb290a29b174853fe0fe8872edc4a7fc642d83f"
+  EXPERIMENT_ID: "1.0.100-second-stall-trial"
+  EXPERIMENT_BUILD_FLAG_1: "-DRESEARCH_RESCUE_REBOUND=1"
+  EXPERIMENT_BUILD_FLAG_2: "-DRESEARCH_FOLLOWUP_RESCUE=1"
 permissions:
   contents: read
   pages: write
@@ -135,8 +140,86 @@ jobs:
           path: camera-artifact/
           if-no-files-found: error
           retention-days: 30
+  build-walking-experiment:
+    needs: pages-ready
+    if: needs.pages-ready.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      # The template fails closed until the experiment SHA is replaced.
+      - name: Validate the pinned experiment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPERIMENT_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPERIMENT_ID" == '1.0.100-second-stall-trial' ]]
+          [[ "$EXPERIMENT_BUILD_FLAG_1" == '-DRESEARCH_RESCUE_REBOUND=1' ]]
+          [[ "$EXPERIMENT_BUILD_FLAG_2" == '-DRESEARCH_FOLLOWUP_RESCUE=1' ]]
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPERIMENT_COMMIT }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify the isolated experiment's regression and identity tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPERIMENT_COMMIT"
+          bash tools/test_runtime.sh
+          # The experimental source must supply this test; it must verify
+          # identity appears in both UI status and recorded RWLOG metadata.
+          test -f tools/test_experiment_identity.py
+          python3 tools/test_experiment_identity.py "$EXPERIMENT_ID"
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Build and verify experimental ESP32-S3 firmware
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat >> platformio.ini <<'EOF'
+
+          [env:walking_experiment]
+          extends = env:atoms3cam
+          build_flags =
+            ${env:atoms3cam.build_flags}
+          EOF
+          printf '  %s\n' "$EXPERIMENT_BUILD_FLAG_1" "$EXPERIMENT_BUILD_FLAG_2" >> platformio.ini
+          pio pkg install -e walking_experiment
+          python3 tools/verify_madgwick_dependency.py --library '.pio/libdeps/walking_experiment/Adafruit AHRS'
+          pio run -e walking_experiment
+          python3 tools/verify_madgwick_dependency.py --library '.pio/libdeps/walking_experiment/Adafruit AHRS'
+          ELF=.pio/build/walking_experiment/firmware.elf
+          TOOLCHAIN="$HOME/.platformio/packages/toolchain-xtensa-esp32s3/bin"
+          python3 tools/verify_camera_task_link.py "$ELF" --objdump "$TOOLCHAIN/xtensa-esp32s3-elf-objdump"
+          python3 tools/verify_log_encoder_link.py "$ELF" --nm "$TOOLCHAIN/xtensa-esp32s3-elf-nm"
+          python3 tools/verify_realtime_code_link.py "$ELF" --objdump "$TOOLCHAIN/xtensa-esp32s3-elf-objdump"
+          python3 tools/verify_imu_transport_link.py "$ELF" --nm "$TOOLCHAIN/xtensa-esp32s3-elf-nm"
+          python3 tools/verify_core_isolation_link.py "$ELF" --objdump "$TOOLCHAIN/xtensa-esp32s3-elf-objdump"
+          "$TOOLCHAIN/xtensa-esp32s3-elf-objdump" -t -C "$ELF" | grep -E "ExperimentRunner::|ImuManager::|imu_i2c::|lateral_energy::|direct_q::|ImuPollProfile::"
+          python3 tools/verify_motion_acquisition_link.py "$ELF" --objdump "$TOOLCHAIN/xtensa-esp32s3-elf-objdump"
+          # An ELF string alone is insufficient to prove it is logged; the
+          # source test above independently verifies UI and RWLOG metadata.
+          "$TOOLCHAIN/xtensa-esp32s3-elf-strings" "$ELF" | grep -F "$EXPERIMENT_ID" >/dev/null
+          test -s bmi270-build-patch.json
+          test -s madgwick-build-patch.json
+          git checkout -- platformio.ini
+          git diff --exit-code
+      - name: Collect experiment binaries
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p experiment-firmware
+          cp .pio/build/walking_experiment/{bootloader.bin,partitions.bin,firmware.bin} experiment-firmware/
+          cp "$HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin" experiment-firmware/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: walking-experiment-firmware
+          path: experiment-firmware/
+          if-no-files-found: error
+          retention-days: 30
   build-site:
-    needs: [pages-ready, build-camera-diagnostics]
+    needs: [pages-ready, build-camera-diagnostics, build-walking-experiment]
     if: needs.pages-ready.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     steps:
@@ -198,6 +281,19 @@ jobs:
             done
             python3 tools/verify_camera_pages.py --path "$d" --mode "$mode"
           done
+      - name: Include and verify isolated experiment
+        uses: actions/download-artifact@v4
+        with:
+          name: walking-experiment-firmware
+          path: _site/experiment/firmware
+      - name: Package and verify experiment without full erase
+        run: |
+          set -euxo pipefail
+          python3 tools/test_experiment_web.py
+          node tools/test_experiment_page.js
+          python3 tools/test_workflow_contract.py
+          python3 tools/package_experiment_web.py --root _site/experiment --stable-firmware _site/firmware --commit "$EXPERIMENT_COMMIT" --experiment-id "$EXPERIMENT_ID"
+          python3 tools/verify_experiment_web.py --path _site/experiment --commit "$EXPERIMENT_COMMIT" --experiment-id "$EXPERIMENT_ID"
       - uses: actions/configure-pages@v5
         with:
           enablement: true
@@ -295,3 +391,9 @@ jobs:
           for mode in 0 1 2; do
             python3 tools/verify_camera_pages.py --url "${PAGE_URL%/}/camera/camera-mode-$mode/" --mode "$mode"
           done
+      - name: Verify published experiment
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 tools/verify_experiment_web.py --url "${PAGE_URL%/}/experiment/" --commit "$EXPERIMENT_COMMIT" --experiment-id "$EXPERIMENT_ID"
+
