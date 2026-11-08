@@ -266,7 +266,9 @@ void FootObserver::appendMetadata(PsramString& json) const {
     if (json.length() + observed_rows.length() + strlen(entry) + kTailReserve >= kSoftEnd) {
       truncated = true; continue;
     }
-    if (!observed_rows.concat(entry)) { truncated = true; continue; }
+    const size_t old_length = observed_rows.length();
+    observed_rows += entry;
+    if (observed_rows.length() != old_length + strlen(entry)) { truncated = true; break; }
     ++stored_observed;
   }
   if (any_observed) {
