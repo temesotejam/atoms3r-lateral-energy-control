@@ -131,7 +131,16 @@ int main(int argc,char** argv){
     f.right_candidates=1;f.left_candidates=2;f.left_ambiguity=0.4f;f.zero_reason=FootZeroReason::Ready;
     if(i==1){f.right_valid=false;f.right_deg=NAN;f.right_scan_y=NAN;f.right_reason=MarkerDetectionReason::LowContrast;}
     feet.frames_[i]=f;
+    feet.status_.recording=true;feet.recording_run_id_=1;feet.status_.count=i+1;
+    feet.recordControlObservation(2,f.sequence,f.delivered_us+125000); // wrong run
+    feet.recordControlObservation(1,f.sequence+1,f.delivered_us+125000); // wrong frame
+    feet.recordControlObservation(1,f.sequence,f.delivered_us-1); // before delivery
+    assert(feet.frames_[i].control_observed_us==0);
+    feet.recordControlObservation(1,f.sequence,f.delivered_us+125000);
+    feet.recordControlObservation(1,f.sequence,f.delivered_us+130000); // first observation wins
+    assert(feet.frames_[i].control_observed_us==f.delivered_us+125000);
   }
+  feet.status_.recording=false;
   logger.markMeasurementDone();assert(!logger.rwlogDownloadable());
   logger.seal();assert(logger.rwlogDownloadable());
   assert(!logger.addSample(row));logger.addTimingProbeEvent({});assert(logger.timing_probe_event_count_==256);
