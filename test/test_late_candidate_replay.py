@@ -2,10 +2,13 @@ import unittest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from late_candidate_replay import threshold, should_fire
+from late_candidate_replay import threshold, should_fire, runner_rate
 
 
 class GeometryEnvelopeTests(unittest.TestCase):
+    def test_runner_rate_uses_scaled_gy_minus_mekf_bias(self):
+        self.assertAlmostEqual(runner_rate({'gy_dps': '-5.00', 'mekf_bias_y_dps': '1.00'}), -5.453466)
+        self.assertAlmostEqual(runner_rate({'gy_dps': '1.00', 'mekf_bias_y_dps': '1.00'}), 0.0)
     def test_conservative_threshold_in_both_directions(self):
         self.assertEqual(threshold(5.0, [1., 1.5, 2.]), 1.)
         self.assertEqual(threshold(-5.0, [-1., -1.5, -2.]), -1.)

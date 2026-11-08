@@ -35,17 +35,24 @@ def should_fire(angle, rate, side, target, fired):
             and side*angle > 0 and side*rate < 0 and side*angle <= side*target)
 
 
-def run(path, left_offset, right_offset):
+def runner_rate(row):
+    """Approximate the real v1.0.99 detector rate from quantized log fields."""
+    return (float(row['gy_dps'])-float(row['mekf_bias_y_dps'])) * 0.908911
+
+
+def run(path, left_offset, right_offset, legacy_rate=False):
     meta = json.loads((path/'metadata.json').read_text(encoding='utf8'))
     if (meta.get('energy_control_autonomous_target_peak_deg') != 8.0
             or meta.get('autonomous_input_peak_percent') != 0.0):
         raise ValueError('offline prototype is scoped to target 8deg, nominal zero input timing')
     raw = [r for r in read(path/'timeseries.csv') if r['state_id']=='3'
            and r['time_s'] and r['pitch_mekf_detector_relative_deg']
-           and r['physical_roll_rate_dps'] and r['roll_mekf_abs_deg']]
+           and r['roll_mekf_abs_deg'] and r.get('gy_dps') and r.get('mekf_bias_y_dps')
+           and (not legacy_rate or r.get('physical_roll_rate_dps'))]
     raw.sort(key=lambda r: float(r['time_s']))
     imu = [(float(r['time_s'])*1000, float(r['pitch_mekf_detector_relative_deg']),
-            float(r['physical_roll_rate_dps']), float(r['roll_mekf_abs_deg'])) for r in raw]
+            float(r['physical_roll_rate_dps']) if legacy_rate else runner_rate(r),
+            float(r['roll_mekf_abs_deg'])) for r in raw]
     imu = [r for r in imu if all(math.isfinite(v) for v in r)]
     if not imu: raise ValueError('no finite IMU samples')
     pitch0=imu[0][3]
@@ -91,11 +98,12 @@ def run(path, left_offset, right_offset):
         j=bisect.bisect_right(zero_times,e['time_ms'])
         if j<len(zeros) and zeros[j][1]==e['side'] and zeros[j][0]-e['time_ms']<250 and zeros[j][0] not in matches:
             matches[zeros[j][0]]=round(zeros[j][0]-e['time_ms'],1)
-    return {'frames':len(frames),'early_events':len(events),'valid_zeros':len(zeros),
+    return {'rate_source':'physical_roll_rate_dps (legacy)' if legacy_rate else '(gy_dps-mekf_bias_y_dps)*0.908911 (quantized logged fields)',
+            'frames':len(frames),'early_events':len(events),'valid_zeros':len(zeros),
             'matched':len(matches),'lead_ms':list(matches.values()), 'events':events,
             'warning':'No contact truth. Foot joint coordinates and offsets assumed; camera availability is optimistic. Not a motor controller.'}
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('folder',type=Path);p.add_argument('--left-offset',type=float,default=0);p.add_argument('--right-offset',type=float,default=0);a=p.parse_args()
-    print(json.dumps(run(a.folder,a.left_offset,a.right_offset),indent=2))
+    p=argparse.ArgumentParser();p.add_argument('folder',type=Path);p.add_argument('--left-offset',type=float,default=0);p.add_argument('--right-offset',type=float,default=0);p.add_argument('--legacy-rate',action='store_true');a=p.parse_args()
+    print(json.dumps(run(a.folder,a.left_offset,a.right_offset,a.legacy_rate),indent=2))

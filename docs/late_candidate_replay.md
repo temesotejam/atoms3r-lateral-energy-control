@@ -19,6 +19,19 @@ mapping, and the requested angle offsets are assumptions. It accepts a
 threshold only when all six hypotheses agree on the pre-zero side within 1.5
 degrees. Thresholds expire 100 ms after the frame availability estimate.
 
+The default rate is reconstructed from the logged, quantized IMU fields as
+`(gy_dps - mekf_bias_y_dps) * 0.908911`, matching the control detector formula,
+not the distinct `physical_roll_rate_dps` field. `--legacy-rate` reproduces the
+earlier experiment using that distinct field for comparison. The factor is
+`MEKF_GYRO_Y_SCALE` in `src/config.h`; its use with raw gyro Y and MEKF bias is
+in `ExperimentRunner::updateEnergyControlAutonomousMotion` in
+`src/experiment_runner.cpp` of the corresponding firmware. Non-finite logged
+IMU or foot samples and non-finite geometric thresholds are rejected. The replay reads
+logged samples, not every fresh gyro sample used by the runner. Detector angle
+uses the logged `pitch_mekf_detector_relative_deg`. The IMU `time_s` is derived
+from `t_test_ms`; camera `measurement_time_us` uses a separately reconstructed
+epoch in the control task. Their alignment is approximate, not exact.
+
 Unlike the earlier replay, if the selected threshold is already past by the
 time the frame is assumed available, this replay permits an immediate candidate
 when the sampled angle remains on the pre-ZERO side and velocity points inward.
@@ -40,7 +53,10 @@ On run305, the documented provisional table-origin offsets yield 21 matched
 candidates of 34 valid recorded ZERO events, with retrospective leads of
 6–143 ms. Changing both assumed offsets by −1 degree yields 14, and by +1 degree
 yields 30. These are one-log sensitivity observations, not success rates or
-evidence that any candidate improves walking.
+evidence that any candidate improves walking. In this log the reconstructed
+detector rate and the old `--legacy-rate` variant give exactly the same event
+times for all four tested offset combinations; this does not prove equivalence
+on other states. Rate only gates direction and the 1 degree/s cutoff here.
 In particular, one run305 candidate occurred 1 ms after the preceding recorded
 ZERO and would be blocked if that event were the last accepted crossing under
 the firmware's 250 ms minimum-half-cycle rule. This is another reason why the
