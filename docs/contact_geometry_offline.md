@@ -29,10 +29,12 @@ python tools/replay_contact_uncertainty.py path/to/csv_directory
 python test/test_contact_geometry_probe.py
 ```
 
-The replay selects only a marker frame whose recorded delivery time was at
-least 80 ms before each recorded event and whose exposure age is at most
+The replay selects only a marker frame whose recorded delivery time plus
+marker processing duration was at least 80 ms before each recorded event and whose exposure age is at most
 300 ms. It enumerates sign hypotheses; no labels from future camera frames
-are used to produce candidates. A physical input implementation would need a
+are used to produce candidates. Frame timestamp versus true exposure and
+additional publish/scheduling latency remain unvalidated; this is an optimistic
+availability bound, not proof the control task had the data. A physical input implementation would need a
 causal prediction of the future pose, a validated mapping and signed coordinate
 frames, a check for actual intervention success, an explicit pre-centre attempt,
 and a normal-zero fallback if no earlier command was sent. Motor/IMU faults and

@@ -17,7 +17,8 @@ stats=[]
 for e in events:
     t=int(e['zero_cross_time_ms'])
     # Conservative recorded delivery time, rather than future camera samples.
-    possible=[r for r in frames if int(r['measurement_time_us'])/1000+(int(r['delivered_us'])-int(r['frame_us']))/1000<=t-80]
+    possible=[r for r in frames if r['processing_us'] and int(r['measurement_time_us'])/1000+
+              (int(r['delivered_us'])-int(r['frame_us'])+int(r['processing_us']))/1000<=t-80]
     if not possible:continue
     f=possible[-1];tm=int(f['measurement_time_us'])/1000
     if t-tm>300:continue
