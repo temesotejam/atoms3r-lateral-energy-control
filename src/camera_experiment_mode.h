@@ -11,14 +11,11 @@
 #if FOOT_FAST_CAPTURE_EXPERIMENT && !CAMERA_DIAGNOSTIC_ONLY
 #error Fast capture requires passive diagnostic mode
 #endif
-constexpr bool cameraExperimentAllowsCurrent(int current_ma) {
 #if CAMERA_DIAGNOSTIC_ONLY
-  return current_ma == 0;
+constexpr bool cameraExperimentAllowsCurrent(int current_ma) { return current_ma == 0; }
 #else
-  (void)current_ma;
-  return true;
+constexpr bool cameraExperimentAllowsCurrent(int) { return true; }
 #endif
-}
 
 #include <stdio.h>
 #ifndef CAMERA_BUILD_SHA_0
