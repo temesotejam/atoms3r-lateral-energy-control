@@ -7,7 +7,7 @@ parser.add_argument('csv_dir',type=Path,help='directory produced by the RWLOG CS
 args=parser.parse_args()
 def read(name):
     with (args.csv_dir/name).open(encoding='utf8',newline='') as f:return list(csv.DictReader(f))
-frames=[r for r in read('foot_angles.csv') if r['left_valid']=='True' and r['right_valid']=='True' and
+frames=[r for r in read('foot_angles.csv') if r['frame_valid']=='True' and r['timestamp_valid']=='True' and r['zero_ready']=='True' and r['left_valid']=='True' and r['right_valid']=='True' and
         r['left_in_range']=='True' and r['right_in_range']=='True' and r['measurement_time_us'] and
         r['left_deg'] and r['right_deg'] and int(r['measurement_time_us'])>=0]
 ts=[r for r in read('timeseries.csv') if r['state_id']=='3' and r['time_s'] and r['roll_mekf_abs_deg']]
@@ -22,7 +22,8 @@ for e in events:
     if not possible:continue
     f=possible[-1];tm=int(f['measurement_time_us'])/1000
     if t-tm>300:continue
-    k=min(len(ts)-1,bisect.bisect_left(times,tm/1000))
+    k=bisect.bisect_right(times,tm/1000)-1
+    if k<0 or tm/1000-times[k]>.025:continue
     pitch=float(ts[k]['roll_mekf_abs_deg'])-float(ts[0]['roll_mekf_abs_deg'])
     left,right=float(f['left_deg']),float(f['right_deg'])
     # Sign and scale are uncalibrated; compare hypotheses, not physical claims.

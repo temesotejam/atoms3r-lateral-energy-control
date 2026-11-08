@@ -26,13 +26,19 @@ Usage, from the repository root after converting an RWLOG to CSV:
 
 ```
 python tools/replay_contact_uncertainty.py path/to/csv_directory
+python tools/replay_zero_prediction.py path/to/csv_directory
 python test/test_contact_geometry_probe.py
 ```
 
-The replay selects only a marker frame whose recorded delivery time plus
-marker processing duration was at least 80 ms before each recorded event and whose exposure age is at most
-300 ms. It enumerates sign hypotheses; no labels from future camera frames
-are used to produce candidates. Frame timestamp versus true exposure and
+The geometry sensitivity replay aligns observations retrospectively to 80 ms
+before each recorded zero event. It is useful for investigating hypotheses,
+but choosing that time with a future recorded event is not an online predictor
+and is not evidence of predicting touchdown. The independent zero-prediction
+replay samples the IMU at each frame's estimated availability, makes a linear
+constant-rate prediction from the then-available state, and compares it later
+with the recorded crossing. It does not estimate contact or motor response.
+Both scripts include marker processing time after frame delivery.
+Frame timestamp versus true exposure and
 additional publish/scheduling latency remain unvalidated; this is an optimistic
 availability bound, not proof the control task had the data. A physical input implementation would need a
 causal prediction of the future pose, a validated mapping and signed coordinate
