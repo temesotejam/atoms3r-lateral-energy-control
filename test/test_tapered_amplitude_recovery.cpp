@@ -33,6 +33,9 @@ int main(){
   cycles(disabled,t,4,5.5f,true,false,false);assert(disabled.widthLimit(1)==before);
   Controller near;start(near,t);before=near.widthLimit(1);
   cycles(near,t,4,7.2f);assert(near.widthLimit(1)==before);
+  Controller interrupted;start(interrupted,t);before=interrupted.widthLimit(1);
+  cycles(interrupted,t,1,5.5f);cycles(interrupted,t,1,7.2f);
+  cycles(interrupted,t,1,5.5f);assert(interrupted.widthLimit(1)==before);
   Controller bounded;start(bounded,t);cycles(bounded,t,16,5.5f);
   assert(bounded.widthLimit(1)==80 && bounded.widthLimit(-1)==80);
 }

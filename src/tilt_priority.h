@@ -234,7 +234,7 @@ class Controller {
         h.width_ms=static_cast<uint16_t>(h.width_ms+5);
         if(h.width_ms>80)h.width_ms=80;
       }
-    } else if(h.evidence==3)h.under_count=0;
+    } else h.under_count=0;
     h.evidence=0;
   }
   History history_[2];
