@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
+python3 test/test_contact_geometry_probe.py
 python3 tools/test_foot_log_version_mapping.py
 python3 tools/test_positive_sway_log.py
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc test/test_positive_sway_probe.cpp -o /tmp/test_positive_sway_probe
