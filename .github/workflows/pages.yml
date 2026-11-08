@@ -196,6 +196,7 @@ jobs:
           python3 tools/verify_realtime_code_link.py "$ELF" --objdump "$TOOLCHAIN/xtensa-esp32s3-elf-objdump"
           python3 tools/verify_imu_transport_link.py "$ELF" --nm "$TOOLCHAIN/xtensa-esp32s3-elf-nm"
           python3 tools/verify_core_isolation_link.py "$ELF" --objdump "$TOOLCHAIN/xtensa-esp32s3-elf-objdump"
+          "$TOOLCHAIN/xtensa-esp32s3-elf-objdump" -t -C "$ELF" | grep -E "ExperimentRunner::|ImuManager::|imu_i2c::|lateral_energy::|direct_q::|ImuPollProfile::"
           python3 tools/verify_motion_acquisition_link.py "$ELF" --objdump "$TOOLCHAIN/xtensa-esp32s3-elf-objdump"
           # An ELF string alone is insufficient to prove it is logged; the
           # source test above independently verifies UI and RWLOG metadata.
