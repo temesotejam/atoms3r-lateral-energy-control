@@ -1199,7 +1199,7 @@ def write_energy_control_autonomous_events(metadata: dict, out_dir: Path) -> tup
                     zero_count += 1
     return peak_count, zero_count
 
-FOOT_COLUMNS = ["sequence", "run_id", "frame_us", "delivered_us", "log_time_us",
+FOOT_COLUMNS = ["sequence", "run_id", "frame_us", "delivered_us", "control_observed_us", "log_time_us",
     "measurement_time_us", "imu_sample_us", "state_id", "led_state", "sync_event_id",
     "processing_us", "timestamp_valid", "frame_valid", "zero_ready", "right_valid",
     "left_valid", "right_in_range", "left_in_range", "right_x", "left_x", "right_deg",

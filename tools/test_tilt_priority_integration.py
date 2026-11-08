@@ -15,6 +15,9 @@ assert runner.count(start)==1 and runner.count(end)==1
 method=start+runner.split(start,1)[1].split(end,1)[0]
 at_zero=runner.split('void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(',1)[1]
 assert at_zero.index('dispatchTiltPriority(event,t_test_ms,previous_accepted_valid,previous_accepted_ms)') < at_zero.index('work_choice=chooseWheelWork(')
+pulse=runner.split('bool ExperimentRunner::beginEnergyControlAutonomousPulse(',1)[1].split('bool ExperimentRunner::beginEnergyControlAutonomousStartKickPulse(',1)[0]
+assert pulse.index('roller_->setCurrentMa(command_current_mA)') < pulse.index('if(optional_early_event_)optional_early_write_uncertain_=true')
+assert 'requestEmergencyStop("optional_early_write_unresolved")' in runner
 branch=runner.split('bool ExperimentRunner::dispatchTiltPriority(',1)[1].split('\n__attribute__((noinline)) void ExperimentRunner::finishSolverAudit(',1)[0]
 assert 'tryTiltPriority(event,t_test_ms)' in branch
 assert 'if(!event.output_executed)' in branch and 'resetEnergyControlAutonomousPeakTracker(true)' in branch

@@ -848,6 +848,7 @@ private:
   uint32_t stall_rescue_attempted_peak_ms_=0;
   bool stall_rescue_event_=false;
   bool optional_early_event_=false;
+  bool optional_early_write_uncertain_=false;
   uint32_t optional_early_attempted_peak_ms_=0;
   bool gyro_heading_start_pending_ = false;
   long_foot_balance::Controller long_foot_balance_;

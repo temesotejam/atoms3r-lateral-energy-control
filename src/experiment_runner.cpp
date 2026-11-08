@@ -1420,7 +1420,7 @@ void ExperimentRunner::recordV59StateGateEvent(uint32_t crossing_ms, float hprev
 
 void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   stall_rescue_detector_.reset();stall_rescue_attempted_peak_ms_=0;stall_rescue_event_=false;
-  optional_early_event_=false;optional_early_attempted_peak_ms_=0;
+  optional_early_event_=false;optional_early_write_uncertain_=false;optional_early_attempted_peak_ms_=0;
   // Amplitude only: relative heading is a diagnostic, never a target.
   energy_control_autonomous_pending_target_deg_ = NAN;
   status_.steering = steering::disabledSnapshot();
@@ -2743,6 +2743,8 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   const bool set_current_ok = roller_->setCurrentMa(command_current_mA);
   const uint32_t set_current_us = static_cast<uint32_t>(micros() - set_current_t0_us);
   if (!set_current_ok) {
+    // A failed transport write does not prove that the actuator saw nothing.
+    if(optional_early_event_)optional_early_write_uncertain_=true;
     energy_control_autonomous_pulse_authorized_ = false;
     stopMotor();
     return false;
@@ -3251,11 +3253,14 @@ __attribute__((noinline)) void ExperimentRunner::acceptOptionalEarlyMotion(
      t_test_ms<=energy_control_autonomous_last_peak_ms_ ||
      t_test_ms-energy_control_autonomous_last_peak_ms_>1500 ||
      (energy_control_autonomous_last_accepted_zero_cross_valid_ &&
-      t_test_ms<=energy_control_autonomous_last_accepted_zero_cross_ms_) ||
+      (t_test_ms<=energy_control_autonomous_last_accepted_zero_cross_ms_ ||
+       t_test_ms-energy_control_autonomous_last_accepted_zero_cross_ms_ <
+           Config::ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS)) ||
      optional_early_attempted_peak_ms_==energy_control_autonomous_last_peak_ms_ ||
      (side!=1 && side!=-1) || !isfinite(rate_dps) || !isfinite(angle_deg) ||
      rate_dps*side>=0.f || angle_deg*side<=0.f) return;
   optional_early_attempted_peak_ms_=energy_control_autonomous_last_peak_ms_;
+  optional_early_write_uncertain_=false;
   optional_early_event_=true;
   acceptMotionCrossing(false,t_test_ms,rate_dps,angle_deg,angle_deg,1.f,
                        static_cast<float>(t_test_ms));
@@ -4332,6 +4337,12 @@ __attribute__((noinline)) bool ExperimentRunner::dispatchTiltPriority(
     PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,
     bool previous_accepted_valid,uint32_t previous_accepted_ms) {
   if(event.target_peak_deg==8.f && wheelWorkMode() && tryTiltPriority(event,t_test_ms)) {
+    if(optional_early_event_ && optional_early_write_uncertain_) {
+      // The write may have reached the roller: do not reopen this half-cycle.
+      logger_->addEnergyControlAutonomousZeroCrossEvent(event);
+      requestEmergencyStop("optional_early_write_unresolved");
+      return true;
+    }
     if((stall_rescue_event_ || optional_early_event_) && !event.output_executed) {
       restoreUnsentStallRescue(event,previous_accepted_valid,previous_accepted_ms);
       return true;

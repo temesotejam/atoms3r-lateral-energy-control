@@ -30,7 +30,7 @@ not yet independently verified. The replay treats logged `left_deg` and
 pitch sign. Its candidate envelope is a sensitivity study, not a confidence
 interval or a proven physical prediction. The replay also reports each
 per-boot zero's angle relative to the piecewise table's nominal zero; neither
-reference is asserted to be the mechanical centre of the leg.
+reference is independently verified as the mechanical centre of the leg.
 
 Usage, from the repository root after converting an RWLOG to CSV:
 
@@ -55,3 +55,25 @@ causal prediction of the future pose, a validated mapping and signed coordinate
 frames, a check for actual intervention success, an explicit pre-centre attempt,
 and a normal-zero fallback if no earlier command was sent. Motor/IMU faults and
 existing safety gates can still prevent a physical input.
+
+## Calibration and timing follow-up
+
+The existing foot calibration notes describe the positive calibration poses as
+forward foot angles, and the table zero as the upright-leg reference. With
+unchanged mounting, adding the table angle at each boot-zero pixel to the
+logged relative angle estimates that reference; it does not distinguish actual
+boot pose from mounting drift. In run305 those corrections are about +1.246 deg
+left and +1.784 deg right. This does not by itself validate a three-dimensional
+joint transform or establish actual touchdown.
+
+`delivered_us + processing_us` is an optimistic lower bound: camera-buffer
+release, publication and up to a control polling interval are not recorded in
+the existing frame. Offline candidate timing therefore cannot be proven causal
+for the controller until the actual control-observed timestamp is measured.
+
+The research branch also prototypes `control_observed_us` for a recorded foot
+frame: this is captured immediately after the control task reads the snapshot.
+A matching recorded run and sequence are required; unmatched frames are null.
+It is diagnostic only, not a contact detector, and adds a critical-section
+operation and PSRAM per frame. Firmware build and on-device load/timing tests
+must pass before deployment. Existing logs do not contain this timestamp.

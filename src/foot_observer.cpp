@@ -44,6 +44,17 @@ FootSnapshot FootObserver::snapshot() const {
   portENTER_CRITICAL(&mux_); const auto copy = status_; portEXIT_CRITICAL(&mux_);
   return copy;
 }
+void FootObserver::recordControlObservation(uint16_t run_id, uint32_t sequence, uint64_t observed_us) {
+  // The camera may publish another frame after snapshot(). Only update a
+  // matching last recorded frame; otherwise leave the timestamp unavailable.
+  portENTER_CRITICAL(&mux_);
+  if (status_.recording && run_id == recording_run_id_ && status_.count && frames_) {
+    auto& f = frames_[status_.count - 1];
+    if (f.run_id == run_id && f.sequence == sequence && !f.control_observed_us &&
+        observed_us >= f.delivered_us) f.control_observed_us = observed_us;
+  }
+  portEXIT_CRITICAL(&mux_);
+}
 void FootObserver::beginRun(uint16_t id, uint64_t epoch) {
   portENTER_CRITICAL(&mux_);
   recording_run_id_ = id; log_epoch_us_ = epoch;
@@ -219,6 +230,11 @@ void FootObserver::appendMetadata(PsramString& json) const {
         f.right_valid ? "true" : "false", f.left_valid ? "true" : "false",
         f.right_in_range ? "true" : "false", f.left_in_range ? "true" : "false");
     row += buf;
+    if (f.control_observed_us) {
+      char observed[48];
+      snprintf(observed, sizeof(observed), ",\"control_observed_us\":%llu", f.control_observed_us);
+      row += observed;
+    } else row += ",\"control_observed_us\":null";
     row += ",\"right_x\":" + number(f.right_x) + ",\"left_x\":" + number(f.left_x);
     row += ",\"right_deg\":" + number(f.right_deg) + ",\"left_deg\":" + number(f.left_deg);
     row += ",\"right_contrast\":" + number(f.right_contrast) + ",\"left_contrast\":" + number(f.left_contrast);
