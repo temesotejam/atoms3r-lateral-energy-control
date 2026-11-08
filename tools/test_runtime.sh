@@ -225,3 +225,12 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_gyro_heading_diagnosti
 /tmp/test_gyro_heading_diagnostic
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_compact_json_table.cpp -o /tmp/test_compact_json_table
 /tmp/test_compact_json_table
+
+# Isolated, default-off rebound/follow-up research fixtures.
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_rescue_rebound.cpp -o /tmp/test_rescue_rebound
+/tmp/test_rescue_rebound
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_followup_stall.cpp -o /tmp/test_followup_stall
+/tmp/test_followup_stall
+python3 tools/test_rescue_rebound_runner.py
+python3 tools/test_followup_dispatch.py
+python3 tools/test_followup_transaction.py

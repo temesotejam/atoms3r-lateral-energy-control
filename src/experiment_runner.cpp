@@ -1420,6 +1420,12 @@ void ExperimentRunner::recordV59StateGateEvent(uint32_t crossing_ms, float hprev
 
 void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   stall_rescue_detector_.reset();stall_rescue_attempted_peak_ms_=0;stall_rescue_event_=false;
+#if RESEARCH_RESCUE_REBOUND
+  rescue_rebound_.reset();rescue_rebound_recording_=false;
+#endif
+#if RESEARCH_FOLLOWUP_RESCUE
+  followup_detector_.reset();followup_event_=false;followup_write_uncertain_=false;
+#endif
   // Amplitude only: relative heading is a diagnostic, never a target.
   energy_control_autonomous_pending_target_deg_ = NAN;
   status_.steering = steering::disabledSnapshot();
@@ -2733,6 +2739,20 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
           EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS) {
     return false;
   }
+#if RESEARCH_FOLLOWUP_RESCUE
+  if(followup_event_) {
+    const uint32_t capture_us=micros();
+    const uint32_t sample_us=imu_ ? imu_->reading().last_gyro_update_us : 0;
+    const float fresh_rate=imu_ ? (imu_->reading().gy_dps-status_.mekf_bias_y_dps)*Config::MEKF_GYRO_Y_SCALE : NAN;
+    const uint32_t age_us=sample_us ? static_cast<uint32_t>(capture_us-sample_us) : UINT32_MAX;
+    const uint32_t now_test_ms=millis()-run_start_ms_;
+    if(pulse_width_ms>stall_rescue::kMaxPulseMs || direction!=-1 || now_test_ms<t_test_ms ||
+       !followup_stall::commandAllowed(status_.pitch_mekf_detector_relative_deg,
+           status_.pitch_mekf_measurement_relative_deg,fresh_rate,age_us,
+           now_test_ms-t_test_ms,imu_ && imu_->acquisitionHealthy() && !imu_->stale(millis()) &&
+           roller_ && roller_->ok() && !status_.emergency_stop)) return false;
+  }
+#endif
   const uint32_t begin_t0_us = micros();
   energy_control_autonomous_pulse_authorized_ = true;
   const int16_t command_current_mA = static_cast<int16_t>(
@@ -2742,6 +2762,9 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   const bool set_current_ok = roller_->setCurrentMa(command_current_mA);
   const uint32_t set_current_us = static_cast<uint32_t>(micros() - set_current_t0_us);
   if (!set_current_ok) {
+#if RESEARCH_FOLLOWUP_RESCUE
+    if(followup_event_)followup_write_uncertain_=true;
+#endif
     energy_control_autonomous_pulse_authorized_ = false;
     stopMotor();
     return false;
@@ -2857,6 +2880,7 @@ void ExperimentRunner::beginEnergyControlAutonomousStartKick(uint32_t now_ms) {
   event.pulse_width_ms = Config::ENERGY_CONTROL_AUTONOMOUS_START_KICK_PULSE_MS;
   event.pulse_start_ms = 0;
   event.pulse_end_ms = Config::ENERGY_CONTROL_AUTONOMOUS_START_KICK_PULSE_MS;
+
   if (logger_->energyControlAutonomousEventCapacityReached()) {
     logger_->markEnergyControlAutonomousEventOverflow();
   }
@@ -3099,6 +3123,36 @@ bool ExperimentRunner::recordEnergyControlAutonomousPeak(uint32_t peak_ms, int8_
   if (!first_peak && energy_control_autonomous_last_accepted_zero_cross_valid_ &&
       static_cast<uint32_t>(peak_ms - energy_control_autonomous_last_accepted_zero_cross_ms_) <
           Config::ENERGY_CONTROL_AUTONOMOUS_MIN_ZERO_TO_PEAK_MS) return false;
+#if RESEARCH_RESCUE_REBOUND
+  if(rescue_rebound_recording_) {
+    // This is a same-side retry peak, not the opposite peak predicted by the
+    // rescue pulse. Do not pass it to foot-cycle pairing, phase control,
+    // motor/foot learning or response estimators.
+    if(first_peak || physical_side!=1) return false;
+    PsramLogger::EnergyControlAutonomousPeakEvent event;
+    event.peak_time_ms=peak_ms;event.physical_peak_side=physical_side;
+    event.peak_amplitude_deg=amplitude_deg;event.detector_peak_angle_deg=detector_peak_angle_deg;
+    event.target_peak_deg=energyControlPeakTarget(physical_side);
+    event.peak_error_deg=event.target_peak_deg-amplitude_deg;
+    event.first_peak=false;event.pending_command_matched=false;event.rescue_rebound=true;
+    event.phase=static_cast<uint8_t>(energy_control_autonomous_phase_);
+    // Invalidate incomplete cycle context rather than teach it as a good pair.
+    tilt_priority_.invalidateUnpairedCycle();positive_left_boost_.interrupt();
+    positive_sway_probe_.interrupt();negative_cap_recovery_.interrupt();
+    foot_phase_observer_.reset(status_.run_id);foot_phase_cap_.reset();phase_observer_sequence_=0;
+    foot_span_observer_.reset(status_.run_id);foot_span_control_.reset();long_foot_balance_.reset();
+    weak_side_assist_.reset();foot_trial_pending_ms_=0;foot_trial_pending_effective_=false;
+    energy_control_autonomous_pending_probe_=false;energy_control_autonomous_pending_model_energy_j_=NAN;
+    work_negative_pending_=false;work_positive_pending_=false;
+    energy_control_autonomous_last_peak_valid_=true;energy_control_autonomous_last_peak_amplitude_deg_=amplitude_deg;
+    energy_control_autonomous_last_peak_side_=physical_side;energy_control_autonomous_last_peak_ms_=peak_ms;
+    energy_control_autonomous_zero_cross_consumed_for_peak_=false;
+    energy_control_autonomous_half_cycle_state_=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS;
+    resetEnergyControlAutonomousPeakTracker(false);
+    logger_->addEnergyControlAutonomousPeakEvent(event);
+    return true;
+  }
+#endif
   if (logger_->energyControlAutonomousEventCapacityReached()) {
     // Logging capacity is diagnostic-only. The physical half-cycle controller
     // continues and the timeseries remains available.
@@ -3218,7 +3272,11 @@ __attribute__((noinline)) bool ExperimentRunner::observeInwardStallRescue(
       energy_control_autonomous_last_peak_valid_ && !physical_event_suppressed &&
       energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
       !energy_control_autonomous_zero_cross_consumed_for_peak_ && !peak_just_confirmed &&
-      stall_rescue_attempted_peak_ms_!=energy_control_autonomous_last_peak_ms_;
+      stall_rescue_attempted_peak_ms_!=energy_control_autonomous_last_peak_ms_
+#if RESEARCH_RESCUE_REBOUND
+      && !rescue_rebound_.suppressRescue()
+#endif
+      ;
   if(!scope) {stall_rescue_detector_.reset();return false;}
   return stall_rescue_detector_.observe(t_test_ms,energy_control_autonomous_previous_detector_test_ms_,
       energy_control_autonomous_last_peak_ms_,energy_control_autonomous_last_peak_amplitude_deg_,
@@ -3228,12 +3286,49 @@ __attribute__((noinline)) bool ExperimentRunner::observeInwardStallRescue(
 
 __attribute__((noinline)) void ExperimentRunner::acceptMotionCrossing(bool rescue,uint32_t t_test_ms,
     float rate,float before,float after,float alpha,float interpolated_time_ms) {
+#if RESEARCH_RESCUE_REBOUND
+  const bool old_cross_valid=energy_control_autonomous_last_accepted_zero_cross_valid_;
+  const uint32_t old_cross_ms=energy_control_autonomous_last_accepted_zero_cross_ms_;
+#endif
   stall_rescue_event_=rescue;
   if(rescue)stall_rescue_attempted_peak_ms_=energy_control_autonomous_last_peak_ms_;
   updateEnergyControlAutonomousAtZeroCross(t_test_ms,rate,before,after,alpha,interpolated_time_ms);
+#if RESEARCH_RESCUE_REBOUND
+  // A successfully issued stall pulse is an attempted crossing, not proof of
+  // crossing. Observe the subsequent motion once; do not issue another pulse.
+  if(rescue && status_.pulse_active && !status_.emergency_stop && energy_control_autonomous_pending_peak_)
+    rescue_rebound_.arm(t_test_ms,energy_control_autonomous_last_peak_side_);
+  // The downstream ZERO handler can reject a crossing due to debounce,
+  // sensor or phase gates. Such a rejected event does not reopen rescue.
+  if(!rescue && energy_control_autonomous_last_accepted_zero_cross_valid_ &&
+      (!old_cross_valid || old_cross_ms!=energy_control_autonomous_last_accepted_zero_cross_ms_))
+    { rescue_rebound_.normalCrossing();
+#if RESEARCH_FOLLOWUP_RESCUE
+      followup_detector_.cancel();
+#endif
+    }
+#endif
   stall_rescue_event_=false;
   stall_rescue_detector_.reset();
 }
+
+#if RESEARCH_RESCUE_REBOUND
+bool ExperimentRunner::acceptRescueRebound(const rescue_rebound::Peak& rebound,uint32_t now,float detector_angle,bool eligible) {
+  if(!rebound.valid)return false;
+  if(!eligible || status_.pulse_active) {rescue_rebound_.resolve(false,now,detector_angle);return false;}
+  const bool old_pending=energy_control_autonomous_pending_peak_;
+  energy_control_autonomous_pending_peak_=false; // do not attribute outcome to rescue pulse
+  rescue_rebound_recording_=true;
+  const bool accepted=recordEnergyControlAutonomousPeak(rebound.ms,1,std::fabs(rebound.angle),rebound.detector_angle);
+  rescue_rebound_recording_=false;
+  if(!accepted)energy_control_autonomous_pending_peak_=old_pending;
+#if RESEARCH_FOLLOWUP_RESCUE
+  if(accepted) followup_detector_.arm(rebound.ms,std::fabs(rebound.angle));
+#endif
+  rescue_rebound_.resolve(accepted,now,detector_angle);
+  return accepted;
+}
+#endif
 
 void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   if (!energy_control_autonomous_mode_ ||
@@ -3274,6 +3369,19 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
     return;
   }
   const float before_deg = energy_control_autonomous_previous_detector_relative_angle_deg_;
+#if RESEARCH_RESCUE_REBOUND
+  const bool rebound_healthy=wheelWorkMode() && !status_.emergency_stop &&
+      roller_ && roller_->ok() && imu_->acquisitionHealthy() && !imu_->stale(millis()) &&
+      energy_control_autonomous_pending_peak_ && energy_control_autonomous_pending_next_side_==-1;
+  const bool rebound_eligible=rebound_healthy &&
+      energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_PEAK;
+  // Maintain observation while the 15ms rescue pulse finishes; no promotion
+  // occurs during the first 80ms. The result only rearms the existing peak
+  // state machine after a same-side return, not a direct motor command.
+  const auto rebound=rescue_rebound_.observe(t_test_ms,detector_relative_angle_deg,
+      peak_relative_angle_deg,rate_dps,rebound_healthy && (rebound_eligible || status_.pulse_active));
+  if(rebound.valid)acceptRescueRebound(rebound,t_test_ms,detector_relative_angle_deg,rebound_eligible);
+#endif
   const bool was_waiting_for_peak = energy_control_autonomous_half_cycle_state_ ==
       EnergyControlAutonomousHalfCycleState::WAIT_PEAK;
   const bool physical_event_suppressed = status_.pulse_active ||
@@ -3302,7 +3410,21 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
        (peak_side > 0 && before_deg > threshold_deg && detector_relative_angle_deg <= threshold_deg));
   const bool rescue=observeInwardStallRescue(t_test_ms,physical_event_suppressed,
       peak_just_confirmed,detector_relative_angle_deg,rate_dps);
-  if (!physical_event_suppressed && (crossing || confirmation_input || rescue) &&
+#if RESEARCH_FOLLOWUP_RESCUE
+  const bool followup_scope=wheelWorkMode() && energy_control_autonomous_target_peak_deg_==8.f &&
+      energy_control_autonomous_input_peak_percent_==0 && peak_side==1 &&
+      energy_control_autonomous_last_peak_valid_ && !physical_event_suppressed &&
+      !status_.emergency_stop && roller_ && roller_->ok() && imu_->acquisitionHealthy() && !imu_->stale(millis()) &&
+      peak_relative_angle_deg>0.f && fabsf(peak_relative_angle_deg-detector_relative_angle_deg)<=0.5f &&
+      energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
+      !energy_control_autonomous_zero_cross_consumed_for_peak_ && !peak_just_confirmed && !crossing && !rescue;
+  const bool followup=followup_detector_.observe(t_test_ms,energy_control_autonomous_previous_detector_test_ms_,
+      before_deg,detector_relative_angle_deg,energy_control_autonomous_previous_detector_rate_dps_,rate_dps,
+      followup_scope,status_.pulse_active);
+#else
+  const bool followup=false;
+#endif
+  if (!physical_event_suppressed && ((crossing || confirmation_input || rescue) || followup) &&
       energy_control_autonomous_half_cycle_state_ == EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
       (energy_control_autonomous_phase_ == EnergyControlAutonomousPhase::ENERGY_CONTROL ||
        energy_control_autonomous_phase_ == EnergyControlAutonomousPhase::HOLD) &&
@@ -3315,8 +3437,14 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
         alpha * static_cast<float>(t_test_ms - energy_control_autonomous_previous_detector_test_ms_);
     const float interpolated_rate_dps = energy_control_autonomous_previous_detector_rate_dps_ +
         alpha * (rate_dps - energy_control_autonomous_previous_detector_rate_dps_);
-    acceptMotionCrossing(rescue,t_test_ms,interpolated_rate_dps,before_deg,
+#if RESEARCH_FOLLOWUP_RESCUE
+    followup_event_=followup;followup_write_uncertain_=false;
+#endif
+    acceptMotionCrossing(rescue || followup,t_test_ms,interpolated_rate_dps,before_deg,
         detector_relative_angle_deg,alpha,interpolated_time_ms);
+#if RESEARCH_FOLLOWUP_RESCUE
+    followup_event_=false;
+#endif
   }
   const bool passed_centre_inward = rate_dps * peak_side < 0.0f &&
       ((peak_side < 0 && before_deg < 0 && detector_relative_angle_deg >= 0) ||
@@ -3656,11 +3784,25 @@ bool ExperimentRunner::tryTiltPriorityRescue(
   // pulse keeps the established runner behavior and hot-path cost.
   const auto rescue_tilt_before=tilt_priority_;
   const auto rescue_wheel_before=wheel_cycle_guard_;
+#if RESEARCH_FOLLOWUP_RESCUE
+  const auto followup_negative_before=negative_cap_recovery_;
+  const auto followup_foot_ms_before=foot_trial_pending_ms_;
+  const auto followup_foot_effective_before=foot_trial_pending_effective_;
+#endif
   bool healthy=false;
   const bool selected=tryTiltPriorityImpl(event,t_test_ms,&healthy);
   if(healthy && !event.output_executed) {
     tilt_priority_=rescue_tilt_before;
     wheel_cycle_guard_=rescue_wheel_before;
+#if RESEARCH_FOLLOWUP_RESCUE
+    // A definite no-send must not alter unrelated adaptive trial state.
+    // Preserve existing health-failure and uncertain-write safety handling.
+    if(followup_event_ && !followup_write_uncertain_) {
+      negative_cap_recovery_=followup_negative_before;
+      foot_trial_pending_ms_=followup_foot_ms_before;
+      foot_trial_pending_effective_=followup_foot_effective_before;
+    }
+#endif
   }
   return selected;
 }
@@ -4281,6 +4423,12 @@ __attribute__((noinline)) bool ExperimentRunner::dispatchTiltPriority(
     PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,
     bool previous_accepted_valid,uint32_t previous_accepted_ms) {
   if(event.target_peak_deg==8.f && wheelWorkMode() && tryTiltPriority(event,t_test_ms)) {
+#if RESEARCH_FOLLOWUP_RESCUE
+    if(followup_event_ && followup_write_uncertain_) {
+      logger_->addEnergyControlAutonomousZeroCrossEvent(event);
+      requestEmergencyStop("followup_write_unresolved");return true;
+    }
+#endif
     if(stall_rescue_event_ && !event.output_executed) {
       restoreUnsentStallRescue(event,previous_accepted_valid,previous_accepted_ms);
       return true;
@@ -4365,7 +4513,11 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   const uint32_t v46l_decision_t0_us = micros();
   control_latency::mark(control_latency::Decision);
   PsramLogger::EnergyControlAutonomousZeroCrossEvent event;
+#if RESEARCH_FOLLOWUP_RESCUE
+  event.event_kind=followup_event_ ? 4 : (stall_rescue_event_ ? 2 : 0);
+#else
   event.event_kind=stall_rescue_event_ ? 2 : 0;
+#endif
   // V46s audit begin
   solver_audit::Record audit;
   audit.t_test_ms = t_test_ms;

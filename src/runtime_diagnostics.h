@@ -1,7 +1,11 @@
 #pragma once
 #include <stdint.h>
 
+#if defined(RESEARCH_FOLLOWUP_RESCUE) && RESEARCH_FOLLOWUP_RESCUE
+#define RUNTIME_VERSION "1.0.100-second-stall-trial"
+#else
 #define RUNTIME_VERSION "1.0.99-alternate-foot-trial"
+#endif
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

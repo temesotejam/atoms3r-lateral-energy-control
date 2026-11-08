@@ -318,6 +318,9 @@ class PsramLogger {
     float integral_plus_mA_s = 0.0f;
     float integral_minus_mA_s = 0.0f;
     bool first_peak = false;
+#if defined(RESEARCH_RESCUE_REBOUND) && RESEARCH_RESCUE_REBOUND
+    bool rescue_rebound = false;
+#endif
     bool pending_command_matched = false;
     float pending_q_command_mA_s = NAN;
     float model_residual_j = NAN;  // measured peak minus uncorrected model prediction

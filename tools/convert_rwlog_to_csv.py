@@ -1112,7 +1112,7 @@ ENERGY_CONTROL_AUTONOMOUS_PEAK_COLUMNS = [
     "cg_shift_mm",
     "peak_index", "peak_time_ms", "physical_peak_side", "peak_amplitude_deg",
     "target_peak_deg", "peak_error_deg", "phase", "integral_plus_mA_s",
-    "integral_minus_mA_s", "first_peak", "pending_command_matched",
+    "integral_minus_mA_s", "first_peak", "rescue_rebound", "pending_command_matched",
     "pending_q_command_mA_s", "antiwindup_upper_hold", "antiwindup_lower_hold",
 ]
 
