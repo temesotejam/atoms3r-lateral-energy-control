@@ -228,3 +228,5 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_comp
 /tmp/test_compact_json_table
 
 python tools/test_foot_observation_timestamp.py
+
+python3 test/test_late_candidate_replay.py
