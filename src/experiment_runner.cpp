@@ -3271,10 +3271,14 @@ bool ExperimentRunner::offerFootEarlyCandidate(uint16_t run_id,uint32_t peak_id,
 }
 void ExperimentRunner::tryEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
     float angle_deg,float rate_dps) {
-  uint32_t now=0;
-  if(!early_clock::relativeMs(esp_timer_get_time(),early_measurement_epoch_us_,now) ||
-      (now>t_test_ms ? now-t_test_ms : t_test_ms-now)>5 ||
-      static_cast<uint32_t>(micros()-sample_us)>10000 ||
+  const uint32_t sample_now_us=micros();
+  // Unsigned subtraction handles micros rollover for the bounded run. The
+  // independent run clock rejects a wrapped or mismatched epoch.
+  const uint32_t elapsed_us=sample_now_us-static_cast<uint32_t>(early_measurement_epoch_us_);
+  if(!early_measurement_epoch_us_ || elapsed_us>600000000u) return;
+  const uint32_t now=elapsed_us/1000u;
+  if((now>t_test_ms ? now-t_test_ms : t_test_ms-now)>5 ||
+      static_cast<uint32_t>(sample_now_us-sample_us)>10000 ||
       energy_control_autonomous_half_cycle_state_!=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS ||
       !early_motion_gate_.fire(status_.run_id,footEarlyPeakIdentity(),now,angle_deg,rate_dps)) return;
   acceptOptionalEarlyMotion(t_test_ms,rate_dps,angle_deg);

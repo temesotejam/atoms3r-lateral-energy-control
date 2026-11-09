@@ -62,6 +62,18 @@ int main(){
  // No send leaves ZERO eligible and a repeated early attempt blocked.
  assert(r.offerFootEarlyCandidate(1,900,1201,1240,-.5f));
  r.tryEarlyFootCandidate(1251,micros(),-.5f,10);assert(r.calls==1);
+ // A measurement epoch immediately before the 32-bit microsecond wrap
+ // yields the same 64-bit-relative run time after wrap, including rounding.
+ ExperimentRunner w;w.early_measurement_epoch_us_=4294960000ULL;
+ w.energy_control_autonomous_last_peak_ms_=1;w.energy_control_autonomous_last_accepted_zero_cross_valid_=false;
+ clock_ms=4294990;uint32_t wrapped_now=uint32_t((uint64_t(clock_ms)*1000-4294960000ULL)/1000);
+ assert(w.early_motion_gate_.offer(1,1,10,20,-.5f,wrapped_now));
+ w.tryEarlyFootCandidate(wrapped_now,micros(),-.5f,10);assert(w.calls==1);
+ // A timestamp differing by more than 5ms fails closed.
+ ExperimentRunner z;z.early_measurement_epoch_us_=4294960000ULL;
+ z.energy_control_autonomous_last_peak_ms_=1;z.energy_control_autonomous_last_accepted_zero_cross_valid_=false;
+ assert(z.early_motion_gate_.offer(1,1,10,20,-.5f,wrapped_now));
+ z.tryEarlyFootCandidate(wrapped_now+6,micros(),-.5f,10);assert(z.calls==0);
  // A definite successful early send consumes the peak.
  ExperimentRunner x;clock_ms=1350;x.send_success=true;
  assert(x.offerFootEarlyCandidate(1,900,1200,1240,-.5f));

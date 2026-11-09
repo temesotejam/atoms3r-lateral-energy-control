@@ -22,7 +22,9 @@ struct Gate {
     if(a*side<=0.f){clear();return false;}
     if(v*side>=0.f || a*side>threshold*side)return false;
     // Screening estimate only: a future actuator deadline is not guaranteed.
-    return (1000.f*std::fabs(a/v))>=kMinEstimatedLeadMs;
+    // A tiny conservative margin avoids permitting a rounded borderline
+    // value after replacing the former float division with multiplication.
+    return (50.f*std::fabs(a)*0.999999f)>std::fabs(v);
   }
 };
 }
