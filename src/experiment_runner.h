@@ -45,6 +45,10 @@
 #include "experiment_status.h"
 #include "gyro_heading_diagnostic.h"
 #include "stall_rescue.h"
+#include "early_motion_gate.h"
+#ifndef FOOT_EARLY_TRIAL
+#define FOOT_EARLY_TRIAL 0
+#endif
 #include "long_foot_balance.h"
 #include "negative_cap_recovery.h"
 
@@ -161,6 +165,15 @@ public:
   }
   const char* stateName() const;
   const char* presetName() const { return "MEKF_ADOPTED_DYNAMIC_BETA_COMPARE_V46"; }
+
+#if FOOT_EARLY_TRIAL
+  void setFootEarlyEpoch(uint64_t epoch_us);
+  void invalidateFootEarlyCandidate() { early_motion_gate_.clear(); }
+  uint32_t footEarlyPeakIdentity() const;
+  int8_t footEarlyPeakSide() const;
+  bool offerFootEarlyCandidate(uint16_t run_id,uint32_t peak_id,uint32_t frame_ms,
+                               uint32_t ready_ms,float threshold_deg);
+#endif
 
 private:
   void updateGyroHeadingDiagnostic(const ImuReading& r);
@@ -406,6 +419,11 @@ private:
       bool physical_event_suppressed,bool peak_just_confirmed,float angle_deg,float rate_dps);
   void __attribute__((noinline)) acceptMotionCrossing(bool rescue,uint32_t t_test_ms,
       float interpolated_rate_dps,float before_deg,float after_deg,float alpha,float interpolated_time_ms);
+  // Future experimentally enabled pre-zero source only. There is no caller in
+  // the current firmware; normal percentage and zero triggers are unchanged.
+  void __attribute__((noinline)) acceptOptionalEarlyMotion(uint32_t t_test_ms,float rate_dps,float angle_deg);
+  bool __attribute__((noinline)) tryTiltPriorityOptionalEarly(
+      PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms);
   void __attribute__((noinline)) restoreUnsentStallRescue(
       PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,
       bool previous_accepted_valid,uint32_t previous_accepted_ms);
@@ -842,6 +860,17 @@ private:
   stall_rescue::Detector stall_rescue_detector_;
   uint32_t stall_rescue_attempted_peak_ms_=0;
   bool stall_rescue_event_=false;
+  bool optional_early_event_=false;
+  bool optional_early_write_uncertain_=false;
+#if FOOT_EARLY_TRIAL
+  early_motion_gate::Gate early_motion_gate_;
+  uint64_t early_measurement_epoch_us_=0;
+  void RW_HOT_CODE __attribute__((optimize("Os", "no-fast-math"),noinline)) tryEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
+      float angle_deg,float rate_dps);
+  void __attribute__((noinline)) decideEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
+      float angle_deg,float rate_dps);
+#endif
+  uint32_t optional_early_attempted_peak_ms_=0;
   bool gyro_heading_start_pending_ = false;
   long_foot_balance::Controller long_foot_balance_;
   negative_cap_recovery::Controller negative_cap_recovery_;

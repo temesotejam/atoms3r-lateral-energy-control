@@ -2,6 +2,9 @@
 #include <stdint.h>
 
 #define RUNTIME_VERSION "1.0.99-alternate-foot-trial"
+#if defined(FOOT_EARLY_TRIAL) && FOOT_EARLY_TRIAL
+#define RUNTIME_DIAGNOSTIC_BUILD_ID "early-input-geometry-v1"
+#endif
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

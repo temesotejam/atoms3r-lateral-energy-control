@@ -1,0 +1,45 @@
+name: early-trial-validation
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  trial:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Host regression tests
+        run: bash tools/test_runtime.sh
+      - run: pip install platformio
+      - name: Build trial with required flags and verify link
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat >> platformio.ini <<'EOF'
+
+          [env:early_trial]
+          extends = env:atoms3cam
+          build_flags =
+            ${env:atoms3cam.build_flags}
+            -DFOOT_EARLY_TRIAL=1
+            -DFOOT_GEOMETRY_PROVISIONAL_EXPOSURE=1
+            -include tools/require_early_build.h
+          EOF
+          pio pkg install -e early_trial
+          python3 tools/verify_madgwick_dependency.py --library '.pio/libdeps/early_trial/Adafruit AHRS'
+          pio run -e early_trial
+          ELF=.pio/build/early_trial/firmware.elf
+          BIN="$HOME/.platformio/packages/toolchain-xtensa-esp32s3/bin"
+          python3 tools/verify_camera_task_link.py "$ELF" --objdump "$BIN/xtensa-esp32s3-elf-objdump"
+          python3 tools/verify_log_encoder_link.py "$ELF" --nm "$BIN/xtensa-esp32s3-elf-nm"
+          python3 tools/verify_realtime_code_link.py "$ELF" --objdump "$BIN/xtensa-esp32s3-elf-objdump"
+          python3 tools/verify_imu_transport_link.py "$ELF" --nm "$BIN/xtensa-esp32s3-elf-nm"
+          python3 tools/verify_core_isolation_link.py "$ELF" --objdump "$BIN/xtensa-esp32s3-elf-objdump"
+          python3 tools/verify_motion_acquisition_link.py "$ELF" --objdump "$BIN/xtensa-esp32s3-elf-objdump"
+          "$BIN/xtensa-esp32s3-elf-strings" "$ELF" | grep -F 'early-input-geometry-v1'
+          "$BIN/xtensa-esp32s3-elf-nm" -C "$ELF" | grep -F 'ExperimentRunner::tryEarlyFootCandidate('
+          "$BIN/xtensa-esp32s3-elf-nm" -C "$ELF" | grep -F 'foot_geometry_worker::Async::entry('
