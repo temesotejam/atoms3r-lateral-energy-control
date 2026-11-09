@@ -45,6 +45,7 @@ static float early_pitch_origin=NAN;
 static void earlySyncIdentity() {
   const uint32_t run=runner.status().run_id,peak=runner.footEarlyPeakIdentity();
   if(run!=early_run || peak!=early_peak) {
+    runner.invalidateFootEarlyCandidate();
     if(run!=early_run) {early_pitch_origin=NAN;early_last_pose_us=0;early_sequence=0;g_early_diag.reset(run);}
     early_run=run;early_peak=peak;
     if(++early_generation==0)++early_generation;
@@ -76,6 +77,8 @@ static void __attribute__((noinline)) earlySubmitFrame(
     const FootSnapshot& fs,uint64_t observed_us,uint64_t epoch) {
   const FootFrame& f=fs.latest;
   if(!early_worker_ready || !epoch || !f.sequence || f.sequence==early_sequence)return;
+  // Every new frame supersedes an armed result, including invalid frames.
+  runner.invalidateFootEarlyCandidate();
   early_sequence=f.sequence;++g_early_diag.frames;if(++early_generation==0)++early_generation;
   early_worker.generation(early_run,early_peak,early_generation);
   if(!early_peak || f.run_id!=early_run || !f.timestamp_valid || !f.frame_valid ||
@@ -84,7 +87,11 @@ static void __attribute__((noinline)) earlySubmitFrame(
   uint32_t frame,observed;
   if(!early_clock::epochSupported(epoch) || !early_clock::relativeMs(f.frame_us,epoch,frame) ||
      !early_clock::relativeMs(observed_us,epoch,observed)) {++g_early_diag.invalid_frames;return;}
-  if(frame<20 || observed<frame+20 || observed-frame>=120) {++g_early_diag.invalid_frames;return;}
+  // The earliest provisional exposure must be strictly after the current
+  // confirmed peak, with 5 ms extra allowance for run-clock disagreement.
+  // Subtractions are ordered to avoid unsigned under/overflow.
+  if(frame<20 || frame-20<=early_peak || frame-20-early_peak<=5 ||
+     observed<frame+20 || observed-frame>=120) {++g_early_diag.invalid_frames;return;}
   if(fs.left_zero<appcfg::kFootAngleBMinCalXPx || fs.left_zero>appcfg::kFootAngleBMaxCalXPx ||
      fs.right_zero<appcfg::kFootAngleAMinCalXPx || fs.right_zero>appcfg::kFootAngleAMaxCalXPx) {++g_early_diag.invalid_frames;return;}
   foot_geometry_worker::Request q;q.run_epoch_ms=static_cast<uint32_t>(epoch/1000);

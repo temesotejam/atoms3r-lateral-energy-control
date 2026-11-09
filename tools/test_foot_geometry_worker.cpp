@@ -5,7 +5,7 @@ using namespace foot_geometry_worker;
 static Input input() {
   Input x; x.run_id=1;x.peak_id=3;x.generation=7;x.frame_ms=100;x.observed_ms=160;x.expiry_ms=260;
   x.left_deg=5;x.right_deg=0;x.pitch_lo_deg=0;x.pitch_hi_deg=0;
-  x.origin_uncertainty_deg=0;x.max_spread_deg=1.5f;x.side=1;
+  x.origin_uncertainty_deg=0;x.pitch_origin_uncertainty_deg=0;x.max_spread_deg=1.5f;x.side=1;
   x.exposure=Input::Exposure::Verified;x.exposure_earliest_ms=95;x.exposure_latest_ms=105;
   x.pose_interval_bracketed=true;return x;
 }
@@ -35,6 +35,13 @@ int main() {
   Result o;assert(w.result(162,1,3,7,o));
   assert(o.run_id==1 && o.peak_id==3 && o.frame_ms==100 && o.ready_ms==162);
   assert(o.threshold_deg>0 && o.root_max_deg-o.root_min_deg<1.5f);
+  // Same data used to pass with a known pitch origin. Adding the trial +/-2
+  // degree initial-pose uncertainty makes the six geometric hypotheses
+  // disagree; it must reject rather than publish a spurious early trigger.
+  x=input();x.pitch_origin_uncertainty_deg=2.f;assert(w.submit(x,160));
+  for(int i=0;i<96 && w.status()==Status::Working;++i)w.step(161,1,3,7);
+  assert(w.status()==Status::Rejected && w.diagnostic().reason==Reason::Disagree);
+  assert(w.diagnostic().pitch_origin_uncertainty_deg==2.f);
   x=input();assert(w.submit(x,160));assert(w.step(161,2,3,7)==Status::Rejected);
   assert(w.submit(x,160));assert(w.step(161,1,4,7)==Status::Rejected);
   assert(w.submit(x,160));assert(w.step(161,1,3,8)==Status::Rejected);

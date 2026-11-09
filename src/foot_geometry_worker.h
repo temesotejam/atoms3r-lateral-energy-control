@@ -80,6 +80,9 @@ struct Input {
   // including all interior samples. Include camera/IMU clock uncertainty.
   float pitch_lo_deg=NAN, pitch_hi_deg=NAN;
   float origin_uncertainty_deg=1.f;
+  // The initial body pose is not known to be level. This trial bound is an
+  // assumption, not a measured error or a guarantee of containing the truth.
+  float pitch_origin_uncertainty_deg=2.f;
   float max_spread_deg=1.5f, zero_margin_deg=.25f;
   int8_t side=0;
   enum class Exposure : uint8_t { Unknown=0, Verified=1, Provisional=2 };
@@ -103,7 +106,7 @@ struct Diagnostic {
   uint32_t run_id=0, peak_id=0, sequence=0, generation=0, frame_ms=0;
   uint32_t exposure_earliest_ms=0, exposure_latest_ms=0, expiry_ms=0;
   uint32_t observed_ms=0;
-  float origin_uncertainty_deg=NAN,max_spread_deg=NAN,zero_margin_deg=NAN;
+  float origin_uncertainty_deg=NAN,pitch_origin_uncertainty_deg=NAN,max_spread_deg=NAN,zero_margin_deg=NAN;
   unsigned evaluated=0;
 };
 
@@ -155,7 +158,9 @@ class Worker {
     if(
        !std::isfinite(in.left_deg)||!std::isfinite(in.right_deg)||
        !std::isfinite(in.pitch_lo_deg)||!std::isfinite(in.pitch_hi_deg)||
+       in.pitch_lo_deg>in.pitch_hi_deg ||
        !std::isfinite(in.origin_uncertainty_deg)||in.origin_uncertainty_deg<0 ||
+       !std::isfinite(in.pitch_origin_uncertainty_deg)||in.pitch_origin_uncertainty_deg<0 ||
        !std::isfinite(in.max_spread_deg)||in.max_spread_deg<0 ||
        !std::isfinite(in.zero_margin_deg)||in.zero_margin_deg<0) {
       return reject(Reason::BadInput);
@@ -175,7 +180,8 @@ class Worker {
     const unsigned l=i%2;i/=2;const unsigned r=i%2;i/=2;const unsigned t=i%2;i/=2;
     const unsigned foot_sign=i%2;
     const float heights[]={55.33f,82.83f,120.f};
-    const float pitch=(t?in_.pitch_hi_deg:in_.pitch_lo_deg)*(sign?1.f:-1.f);
+    const float pitch=(t?in_.pitch_hi_deg+in_.pitch_origin_uncertainty_deg:
+                         in_.pitch_lo_deg-in_.pitch_origin_uncertainty_deg)*(sign?1.f:-1.f);
     const float ls=in_.left_deg+(l?in_.origin_uncertainty_deg:-in_.origin_uncertainty_deg);
     const float rs=in_.right_deg+(r?in_.origin_uncertainty_deg:-in_.origin_uncertainty_deg);
     const float left=foot_sign?ls:-ls, right=foot_sign?rs:-rs;
@@ -209,6 +215,7 @@ class Worker {
     d.frame_ms=in_.frame_ms;d.exposure_earliest_ms=in_.exposure_earliest_ms;
     d.exposure_latest_ms=in_.exposure_latest_ms;d.expiry_ms=in_.expiry_ms;d.observed_ms=in_.observed_ms;
     d.origin_uncertainty_deg=in_.origin_uncertainty_deg;d.max_spread_deg=in_.max_spread_deg;
+    d.pitch_origin_uncertainty_deg=in_.pitch_origin_uncertainty_deg;
     d.zero_margin_deg=in_.zero_margin_deg;d.evaluated=index_;return d;
   }
  private:

@@ -456,7 +456,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
 #if defined(FOOT_EARLY_TRIAL) && FOOT_EARLY_TRIAL
   json += "\"diagnostic_build_id\":\"" RUNTIME_DIAGNOSTIC_BUILD_ID "\",";
   const auto early = g_early_diag.snapshot();
-  json += "\"foot_early_trial\":{\"exposure\":\"unverified_frame_timestamp_plus_minus_20ms\",\"geometry\":\"discrete_hypotheses_not_contact_ground_truth\",";
+  json += "\"foot_early_trial\":{\"exposure\":\"unverified_frame_timestamp_plus_minus_20ms\",\"pitch_origin\":\"initial_pose_plus_minus_2deg_unverified\",\"geometry\":\"discrete_hypotheses_not_contact_ground_truth\",";
   json += "\"run\":" + String(early.run) + ",\"frames\":" + String(early.frames) + ",\"invalid_frames\":" + String(early.invalid_frames);
   json += ",\"submitted\":" + String(early.submitted) + ",\"submit_failed\":" + String(early.submit_failed) + ",\"pose_dropped\":" + String(early.pose_dropped);
   json += ",\"replies\":" + String(early.replies) + ",\"valid\":" + String(early.valid) + ",\"armed\":" + String(early.armed) + ",\"stale_replies\":" + String(early.stale_replies);

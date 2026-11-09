@@ -168,6 +168,7 @@ public:
 
 #if FOOT_EARLY_TRIAL
   void setFootEarlyEpoch(uint64_t epoch_us);
+  void invalidateFootEarlyCandidate() { early_motion_gate_.clear(); }
   uint32_t footEarlyPeakIdentity() const;
   int8_t footEarlyPeakSide() const;
   bool offerFootEarlyCandidate(uint16_t run_id,uint32_t peak_id,uint32_t frame_ms,
