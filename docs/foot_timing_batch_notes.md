@@ -55,3 +55,10 @@ individual events differ. This is sparse sampling, not a detection rate or a
 motor-command test. Frame IMU alignment is approximate and the 3D model remains
 unverified. Neither the 25 ms control polling phase nor a queued motor command
 guarantees physical actuation before ZERO.
+
+`assess_candidate_robustness.py` compares the same sparse, observed frames
+over simultaneous -1/0/+1 degree foot reference offsets. The common later
+ZERO events occur at 2011 and 3491 ms; tentative lead times are respectively
+[5, 1, 1] and [3, 3, 3] ms. Neither meets an illustrative 10 ms comparison
+margin. This margin is not a validated communication or physical-current
+deadline. Other reference errors and frame gaps remain untested.
