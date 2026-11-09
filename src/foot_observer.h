@@ -1,4 +1,5 @@
 #pragma once
+#include "camera_experiment_mode.h"
 #include "camera_coexistence.h"
 #include "run_control_worker.h"
 #include "psram_string.h"
@@ -7,6 +8,8 @@
 
 struct FootFrame {
   uint64_t frame_us = 0, delivered_us = 0;
+  // Snapshot return time on the control task; zero means not recorded.
+  uint64_t control_observed_us = 0;
   int64_t log_time_us = -1, measurement_time_us = -1;
   uint32_t sequence = 0, imu_sample_us = 0, processing_us = 0;
   uint16_t run_id = 0;
@@ -29,6 +32,15 @@ struct FootSnapshot {
   uint32_t count = 0, frame_failures = 0, zero_samples = 0;
   uint32_t captured_frames = 0, right_marker_failures = 0, left_marker_failures = 0;
   uint32_t processing_max_us = 0;
+#if CAMERA_DIAGNOSTIC_ONLY
+  uint32_t fast_copy_max_us = 0, fast_record_skipped = 0, fast_run_frames = 0;
+  uint32_t fast_run_received = 0, fast_run_invalid_frame = 0;
+  uint32_t fast_run_right_invalid = 0, fast_run_left_invalid = 0;
+  uint32_t fast_control_observed = 0;
+  uint64_t fast_control_last_us = 0, fast_control_max_gap_us = 0;
+  uint64_t fast_run_first_us = 0, fast_run_last_us = 0;
+  bool fast_capture_active = false;
+#endif
   float right_zero = appcfg::kFootAngleAZeroXPx, left_zero = appcfg::kFootAngleBZeroXPx;
   float fps = 0;
   FootZeroReason zero_reason = FootZeroReason::Waiting;
@@ -52,6 +64,7 @@ class FootObserver {
   void finishRun();
   void clearRun();
   FootSnapshot snapshot() const;
+  void recordControlObservation(uint16_t run_id, uint32_t sequence, uint64_t observed_us);
   CameraOneShotSnapshot cameraSnapshot() const { return camera_ ? camera_->snapshot() : CameraOneShotSnapshot{}; }
   void appendMetadata(PsramString& json) const; // sealed, export worker only
   bool copyPreview(uint8_t* out, FootPreviewInfo& info) const;
@@ -72,4 +85,11 @@ class FootObserver {
   uint8_t* preview_ = nullptr;
   SemaphoreHandle_t preview_mutex_ = nullptr;
   FootPreviewInfo preview_info_;
+#if FOOT_FAST_CAPTURE_EXPERIMENT
+  uint8_t* fast_frame_copy_ = nullptr;
+  bool fast_capture_active_ = false;
+#endif
+#if CAMERA_DIAGNOSTIC_ONLY
+  uint64_t next_recording_frame_us_ = 0;
+#endif
 };

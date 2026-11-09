@@ -96,9 +96,9 @@ function controls() {
   if ($('usb-diag')) $('usb-diag').disabled = !fresh || commandInFlight;
   if ($('reconnect')) $('reconnect').style.display = offlineMode ? 'inline-block' : 'none';
 }
-function setOffline(waitMs) {
+function setOffline(waitMs, maxWaitMs = latest?.camera_diagnostic_motor_disabled ? 80000 : 30000) {
   ++offlineGeneration;
-  offlineMode = true; offlineUntil = Date.now() + Math.max(0, Math.min(30000, waitMs));
+  offlineMode = true; offlineUntil = Date.now() + Math.max(0, Math.min(maxWaitMs, waitMs));
   try { sessionStorage.setItem(offlineKey, String(offlineUntil)); } catch (_) {}
   renderOffline();
 }
@@ -182,6 +182,9 @@ function footIssues(f, stale, terminal) {
 function render(s) {
   $('connection').textContent = s.controller_fresh ? '接続中' : '接続中 · 制御状態の更新が停止';
   $('firmware-revision').textContent = `本体プログラム：${s.revision || '不明'}`;
+  if (s.camera_diagnostic_motor_disabled) $('firmware-revision').textContent +=
+      ` · カメラ診断${s.camera_experiment_mode}（非ゼロ電流指令を禁止・受動観測60秒（同期・転送は別）${s.camera_experiment_mode && !s.camera_fast_active ? '・高速化停止' : ''}） SHA: ${s.camera_build_sha || 'unknown'}`;
+
   $('state').textContent = s.state; $('remaining').textContent = format(s.remaining_ms / 1000, 1) + ' s';
   $('pitch').textContent = format(s.pitch_deg) + '°';
   $('current').textContent = `${s.motor_mA} / ${s.actual_mA} mA`;
@@ -371,10 +374,11 @@ async function startOfflineRun(isBatchPackage = false, forcedModel = null, workT
   requestedEnergyModel = energyModel;
   const runLabel = positiveCurrentPackage ? '正側300・350・400 mAの一括実験' : extendedPackage ? '負側30・35・40 msの一括実験' : isBatchPackage ? '負側5条件の一括実験' :
     workPackage ? '固定脚・ホイール仕事に基づく制御' : inversePackage ? '固定脚・負側のエネルギー制御' : '左右揺動エネルギー制御';
-  commandInFlight = true; setOffline(batchPackage || workPackage ? 50000 : 30000); $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
+  const cameraDiagnostic = !!latest?.camera_diagnostic_motor_disabled;
+  commandInFlight = true; setOffline(cameraDiagnostic ? 80000 : (batchPackage || workPackage ? 50000 : 30000)); $('message').textContent = cameraDiagnostic ? '非ゼロ電流指令を禁止して受動観測を開始します。測定は60秒、同期・転送は別です。通常設定の入力値検査を行います。' : `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を送信中…`;
   try {
     await request(`/start-energy-control-autonomous?target_deg=${target}&input_peak_percent=${inputPercent}&input_current_mA=${inputCurrentMa}&brake_max_ms=${brakeMaxMs}&peak_adaptation=${adaptationValue}&energy_model=${energyModel}`, {method:'POST', kind:'text'});
-    $('message').textContent = `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
+    $('message').textContent = cameraDiagnostic ? '受動観測の開始要求を受け付けました。非ゼロ電流指令は禁止です。60秒の測定に同期・転送時間が加わります。' : `${runLabel}（目標${target}°・${inputCurrentMa} mA）の開始要求を受け付けました。Web休止後に本体が開始条件を確認します。Wi-Fi接続と画面をそのまま保ってお待ちください。`;
   } catch (error) {
     if (/^\d{3}:/.test(error.message)) { clearOffline(); await refresh(); }
     $('message').textContent = `開始結果の確認: ${error.message}。Web復帰後に本体の結果を確認します。`;
@@ -476,14 +480,29 @@ function saveBlob(blob, name) {
   const url = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-function expandFootTable(value) {
-  if (value == null || Array.isArray(value)) return value;
+function expandFootTable(value, observations = null) {
+  if (value == null) return value;
+  if (Array.isArray(value)) return value;
   const {fields, rows} = value;
   if (!Array.isArray(fields) || !fields.every(f => typeof f === 'string') ||
       new Set(fields).size !== fields.length || !Array.isArray(rows) ||
       rows.some(row => !Array.isArray(row) || row.length !== fields.length))
     throw new Error('足角度テーブルの形式が不正です');
-  return rows.map(row => Object.fromEntries(fields.map((field,i) => [field,row[i]])));
+  const frames = rows.map(row => Object.fromEntries(fields.map((field,i) => [field,row[i]])));
+  if (observations != null) {
+    if (observations.version !== 1 || !Array.isArray(observations.rows)) throw Error('Invalid foot observations');
+    for (const f of frames) f.control_observed_us = null;
+    const seen = new Set();
+    for (const row of observations.rows) {
+      if (!Array.isArray(row) || row.length !== 2 || !Number.isSafeInteger(row[0]) ||
+          row[0] < 0 || row[0] >= frames.length || seen.has(row[0]) ||
+          !Number.isSafeInteger(row[1]) || row[1] < 0 || !Number.isSafeInteger(frames[row[0]].delivered_us) ||
+          !Number.isSafeInteger(frames[row[0]].delivered_us + row[1])) throw Error('Invalid foot observation row');
+      frames[row[0]].control_observed_us = frames[row[0]].delivered_us + row[1];
+      seen.add(row[0]);
+    }
+  }
+  return frames;
 }
 async function download() {
   transferRunning = true; cancelTransfer = false; controls();
@@ -525,7 +544,7 @@ async function download() {
     const headerSize = v.getUint16(10, true), metadataLength = v.getUint32(24, true);
     if (headerSize !== 110 || metadataLength > file.length - headerSize - 4) throw new Error('RWLOGヘッダー不一致');
     const metadata = JSON.parse(new TextDecoder().decode(file.subarray(headerSize, headerSize + metadataLength)));
-    completedFoot = expandFootTable(metadata.foot_frames ?? null); completedFile = file; completedName = m.filename;
+    completedFoot = expandFootTable(metadata.foot_frames ?? null, metadata.foot_control_observations ?? null); completedFile = file; completedName = m.filename;
     saveBlob(new Blob([file], {type: 'application/octet-stream'}), m.filename);
     $('transfer').textContent = `CRC検証完了 · ${m.bytes} bytes · 足角度 ${completedFoot?.length ?? 0}行`;
     calculateWheelWork();
@@ -723,6 +742,6 @@ $('pose-reset').onclick = () => {
 };
 try {
   const until = Number(sessionStorage.getItem(offlineKey));
-  if (until > Date.now() && until <= Date.now() + 30000) setOffline(until - Date.now());
+  if (until > Date.now() && until <= Date.now() + 80000) setOffline(until - Date.now(), 80000);
 } catch (_) {}
 poll();

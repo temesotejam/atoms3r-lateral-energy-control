@@ -55,6 +55,22 @@ def expand_tables(value, version=None):
                 raise ValueError('Invalid compact table')
             return [expand_tables(dict(zip(fields, row)), version) for row in rows]
         result = {key: expand_tables(item, version) for key, item in value.items()}
+        if 'foot_control_observations' in result:
+            obs, frames = result['foot_control_observations'], result.get('foot_frames')
+            if not isinstance(obs, dict) or obs.get('version') != 1 or not isinstance(frames, list) or not isinstance(obs.get('rows'), list):
+                raise ValueError('Invalid foot control observation table')
+            seen = set()
+            for row in obs['rows']:
+                if not isinstance(row, list) or len(row) != 2:
+                    raise ValueError('Invalid foot control observation row')
+                index, delta = row
+                if type(index) is not int or type(delta) is not int or index in seen or not 0 <= index < len(frames) or delta < 0:
+                    raise ValueError('Invalid foot control observation offset')
+                delivered = frames[index].get('delivered_us')
+                if type(delivered) is not int or delivered < 0:
+                    raise ValueError('Invalid foot delivery timestamp')
+                frames[index]['control_observed_us'] = delivered + delta
+                seen.add(index)
         if 'foot_span_flags' in result:
             mask = result['foot_span_flags']
             bits = 15 if version in ('1.0.95-positive-sway-probe', '1.0.96-tapered-amplitude-recovery', '1.0.97-paired-sway-rollback', '1.0.98-foot-observation-timeout', '1.0.99-alternate-foot-trial') else 14
@@ -1199,7 +1215,7 @@ def write_energy_control_autonomous_events(metadata: dict, out_dir: Path) -> tup
                     zero_count += 1
     return peak_count, zero_count
 
-FOOT_COLUMNS = ["sequence", "run_id", "frame_us", "delivered_us", "log_time_us",
+FOOT_COLUMNS = ["sequence", "run_id", "frame_us", "delivered_us", "control_observed_us", "log_time_us",
     "measurement_time_us", "imu_sample_us", "state_id", "led_state", "sync_event_id",
     "processing_us", "timestamp_valid", "frame_valid", "zero_ready", "right_valid",
     "left_valid", "right_in_range", "left_in_range", "right_x", "left_x", "right_deg",

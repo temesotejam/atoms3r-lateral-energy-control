@@ -14,13 +14,15 @@ assert '!physical_event_suppressed' in rescue and '!peak_just_confirmed' in resc
 assert 'energy_control_autonomous_target_peak_deg_==8.f' in rescue
 assert 'before_deg > threshold_deg && detector_relative_angle_deg <= threshold_deg' in policy
 assert 'rate_dps * peak_side < 0.0f' in policy
+# The optional adapter must not be called by the shipping motion loop.
+assert 'acceptOptionalEarlyMotion(' not in policy
 choice=runner.split('bool ExperimentRunner::tryTiltPriority(',1)[1].split('\nbool ExperimentRunner::tryWeakSideAssist(',1)[0]
 assert 'stall_rescue_event_ ? stall_rescue::kMaxPulseMs' in choice
 assert 'event.pre_input_wheel_speed_valid' in choice and 'imu_->acquisitionHealthy()' in choice
 at_zero=runner.split('void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(',1)[1]
-assert 'event.event_kind=stall_rescue_event_ ? 2 : 0' in at_zero
+assert 'event.event_kind=stall_rescue_event_ ? 2 : (optional_early_event_ ? 3 : 0)' in at_zero
 dispatch=runner.split('bool ExperimentRunner::dispatchTiltPriority(',1)[1].split('\n__attribute__((noinline)) void ExperimentRunner::finishSolverAudit(',1)[0]
-assert 'if(stall_rescue_event_)' in dispatch and 'finishFootEnergyDecision(event,t_test_ms)' in dispatch
+assert 'if(stall_rescue_event_ || optional_early_event_)' in dispatch and 'finishFootEnergyDecision(event,t_test_ms)' in dispatch
 cycle=runner.split('void ExperimentRunner::processFootSpanCycle()',1)[1].split('\nvoid ExperimentRunner::recordFootPhasePeak(',1)[0]
 assert 'span.left.trimmed_span,span.right.trimmed_span,timing_quality' in cycle
 assert '!span.left.single_outlier && !span.right.single_outlier' in cycle

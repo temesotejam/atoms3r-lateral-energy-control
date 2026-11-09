@@ -11,8 +11,10 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+using std::isfinite;
 namespace Config {
 constexpr uint16_t WALKING_TARGET8_MAX_PULSE_MS=150;
+constexpr uint16_t ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS=250;
 constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_CURRENT_WRITE_FAILED=12;
 constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_NONE=0;
 constexpr uint8_t ENERGY_CONTROL_AUTONOMOUS_REASON_VALID_NO_OUTPUT=1;
@@ -46,8 +48,33 @@ struct Imu {bool good=true;bool acquisitionHealthy()const{return good;}bool stal
 struct Roller {bool good=true;bool ok()const{return good;}};
 struct Resettable {int resets=0;void reset(){++resets;}void interrupt(){++resets;}};
 struct Adaptive {bool broken=false;void breakPair(){broken=true;}};
+enum class EnergyControlAutonomousHalfCycleState {WAIT_PEAK,WAIT_ZERO_CROSS,PULSE_ACTIVE};
+struct Logger {unsigned events=0;void addEnergyControlAutonomousZeroCrossEvent(const PsramLogger::EnergyControlAutonomousZeroCrossEvent&){++events;}};
 class ExperimentRunner {public:
- bool stall_rescue_event_=false;
+ bool stall_rescue_event_=false,optional_early_event_=false,optional_early_write_uncertain_=false;
+ uint32_t optional_early_attempted_peak_ms_=0,energy_control_autonomous_last_peak_ms_=900;
+ bool energy_control_autonomous_last_peak_valid_=true;
+ int8_t energy_control_autonomous_last_peak_side_=-1;
+ float energy_control_autonomous_target_peak_deg_=8;
+ int energy_control_autonomous_input_peak_percent_=0;
+ Logger log_obj;Logger* logger_=&log_obj;
+ EnergyControlAutonomousHalfCycleState energy_control_autonomous_half_cycle_state_=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS;
+ bool energy_control_autonomous_last_accepted_zero_cross_valid_=true,energy_control_autonomous_zero_cross_consumed_for_peak_=true;
+ uint32_t energy_control_autonomous_last_accepted_zero_cross_ms_=0;
+ unsigned peak_tracker_resets=0,finished=0;
+ void resetEnergyControlAutonomousPeakTracker(bool){++peak_tracker_resets;}
+ void finishFootEnergyDecision(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t){++finished;}
+ void restoreUnsentStallRescue(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,bool,uint32_t);
+ bool dispatchTiltPriority(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t,bool,uint32_t);
+ void acceptOptionalEarlyMotion(uint32_t,float,float);
+ void acceptMotionCrossing(bool,uint32_t t,float rate,float,float,float,float) {
+   auto prev_valid=energy_control_autonomous_last_accepted_zero_cross_valid_;
+   auto prev_ms=energy_control_autonomous_last_accepted_zero_cross_ms_;
+   energy_control_autonomous_zero_cross_consumed_for_peak_=true;
+   energy_control_autonomous_last_accepted_zero_cross_ms_=t;
+   PsramLogger::EnergyControlAutonomousZeroCrossEvent e;e.physical_next_peak_side=rate>0?1:-1;e.zero_cross_time_ms=t;
+   dispatchTiltPriority(e,t,prev_valid,prev_ms);
+ }
  Status status_;Imu imu_obj;Roller roller_obj;Imu* imu_=&imu_obj;Roller* roller_=&roller_obj;
  tilt_priority::Controller tilt_priority_;foot_span_control::Controller foot_span_control_;
  wheel_cycle_guard::Controller wheel_cycle_guard_;
@@ -58,7 +85,7 @@ class ExperimentRunner {public:
  uint32_t foot_trial_pending_ms_=0,foot_trial_pending_generation_=0;
  bool foot_trial_pending_effective_=false;
  Resettable weak_side_assist_,walking_loss_feedback_,walking_low_speed_guard_;
- Adaptive adaptive_cg_;bool mode=true,begin_ok=true;unsigned calls=0;int sign=0,ma=0;uint16_t width=0;
+ Adaptive adaptive_cg_;bool mode=true,begin_ok=true,simulate_write_uncertain=false;unsigned calls=0;int sign=0,ma=0;uint16_t width=0;
  float run_cg_shift_mm_=0,pending_cg_shift_mm_=0,pending_target_energy_j_=NAN;
  bool energy_control_autonomous_pending_peak_=false,energy_control_autonomous_pending_probe_=false;
  int8_t energy_control_autonomous_pending_next_side_=0;
@@ -70,16 +97,104 @@ class ExperimentRunner {public:
  bool work_walking_pending_=true,work_walking_low_pending_=true;
  peak_error_adaptation::Mode energy_control_autonomous_pending_mode_=peak_error_adaptation::Coast;
  bool wheelWorkMode()const{return mode;}
+ void requestEmergencyStop(const char*){status_.emergency_stop=true;}
  bool beginEnergyControlAutonomousPulse(uint32_t,uint32_t,int8_t d,uint16_t w,int16_t m){
-   ++calls;sign=d;width=w;ma=m;return begin_ok;
+   ++calls;sign=d;width=w;ma=m;
+   if(!begin_ok && optional_early_event_ && simulate_write_uncertain)optional_early_write_uncertain_=true;
+   return begin_ok;
  }
  bool tryTiltPriority(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t);
+ bool tryTiltPriorityOptionalEarly(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t);
  bool tryTiltPriorityImpl(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t,bool*);
  bool tryTiltPriorityRescue(PsramLogger::EnergyControlAutonomousZeroCrossEvent&,uint32_t);
 };
 // METHOD_SOURCE
+// DISPATCH_SOURCE
+// EARLY_WRAPPER_SOURCE
 using Event=PsramLogger::EnergyControlAutonomousZeroCrossEvent;
 int main(){
+ // The explicitly invoked future adapter refuses past-centre and repeated
+ // attempts and returns to the ordinary zero path after failed output.
+ {ExperimentRunner r;r.tilt_priority_.peak(-1,900,3.f);r.begin_ok=false;
+  r.energy_control_autonomous_last_accepted_zero_cross_ms_=800;
+  r.energy_control_autonomous_zero_cross_consumed_for_peak_=false;
+  r.acceptOptionalEarlyMotion(1200,10.f,.2f);assert(r.calls==0);
+  r.acceptOptionalEarlyMotion(1200,10.f,-.2f);assert(r.calls==1);
+  assert(!r.optional_early_event_ && !r.energy_control_autonomous_zero_cross_consumed_for_peak_);
+  assert(r.energy_control_autonomous_last_accepted_zero_cross_ms_==800);
+  r.acceptOptionalEarlyMotion(1202,10.f,-.15f);assert(r.calls==1);}
+ // A candidate before the minimum half-cycle is not an attempted decision.
+ {ExperimentRunner r;r.tilt_priority_.peak(-1,900,3.f);
+  r.energy_control_autonomous_last_accepted_zero_cross_ms_=1000;
+  r.energy_control_autonomous_zero_cross_consumed_for_peak_=false;
+  r.acceptOptionalEarlyMotion(1200,10.f,-.2f);
+  assert(r.calls==0 && r.optional_early_attempted_peak_ms_==0);
+  r.acceptOptionalEarlyMotion(1250,10.f,-.15f);
+  assert(r.calls==1 && r.energy_control_autonomous_zero_cross_consumed_for_peak_);}
+ // Failed transport may still have delivered a command; stop and never
+ // reopen this half-cycle, even if the ordinary centre follows immediately.
+ {ExperimentRunner r;r.tilt_priority_.peak(-1,900,3.f);r.begin_ok=false;
+  r.simulate_write_uncertain=true;
+  r.energy_control_autonomous_last_accepted_zero_cross_ms_=800;
+  r.energy_control_autonomous_zero_cross_consumed_for_peak_=false;
+  r.acceptOptionalEarlyMotion(1200,10.f,-.2f);
+  assert(r.calls==1 && r.status_.emergency_stop);
+  assert(r.energy_control_autonomous_zero_cross_consumed_for_peak_);
+  assert(r.energy_control_autonomous_last_accepted_zero_cross_ms_==1200);
+  r.begin_ok=true;r.acceptOptionalEarlyMotion(1202,10.f,-.15f);
+  assert(r.calls==1 && r.log_obj.events==1);}
+ // Future optional earlier no-output attempt preserves the real centre
+ // opportunity and restores the previous crossing timestamp.
+ {ExperimentRunner r;r.optional_early_event_=true;r.roller_obj.good=false;
+  Event early;assert(r.dispatchTiltPriority(early,1200,true,800));
+  assert(!r.energy_control_autonomous_zero_cross_consumed_for_peak_);
+  assert(r.energy_control_autonomous_last_accepted_zero_cross_ms_==800);
+  assert(r.energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS);
+  assert(r.log_obj.events==1 && r.finished==0);}
+ // Early coast must also leave centre armed; the normal selector is allowed
+ // to reconsider at the real zero crossing.
+ {ExperimentRunner r;r.optional_early_event_=true;r.tilt_priority_.peak(-1,900,8.f);
+  Event early;early.physical_next_peak_side=1;assert(r.dispatchTiltPriority(early,1200,true,800));
+  assert(!early.output_executed && !r.energy_control_autonomous_zero_cross_consumed_for_peak_);
+  assert(r.energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS);}
+ // Rejected early motor command leaves the next centre attempt eligible.
+ {ExperimentRunner r;r.optional_early_event_=true;r.begin_ok=false;r.tilt_priority_.peak(-1,900,3.f);
+  r.foot_trial_pending_ms_=777;r.foot_trial_pending_generation_=12;r.foot_trial_pending_effective_=true;
+  r.status_.current_audit_q_target_mA_s=9;r.status_.current_audit_q_pred_mA_s=8;
+  const auto old_tilt=r.tilt_priority_;const auto old_guard=r.wheel_cycle_guard_;
+  Event early;early.physical_next_peak_side=1;assert(r.dispatchTiltPriority(early,1200,true,800));
+  assert(!early.output_executed && !r.energy_control_autonomous_zero_cross_consumed_for_peak_);
+  assert(r.energy_control_autonomous_last_accepted_zero_cross_ms_==800);
+  assert(r.foot_trial_pending_ms_==777 && r.foot_trial_pending_generation_==12 && r.foot_trial_pending_effective_);
+  assert(r.status_.current_audit_q_target_mA_s==9 && r.status_.current_audit_q_pred_mA_s==8);
+  tilt_priority::Input in;in.now_ms=1400;in.preset_deg=8;in.target_deg=8;in.crossing_rate_dps=10;
+  in.next_side=1;in.hardware_cap_ms=150;in.hardware_healthy=true;
+  const auto before=old_tilt.propose(in),after=r.tilt_priority_.propose(in);
+  assert(before.selected==after.selected && before.coast==after.coast && before.width_ms==after.width_ms);
+  auto guard_a=old_guard,guard_b=r.wheel_cycle_guard_;
+  assert(guard_a.limit(1,20,true,1400,60)==guard_b.limit(1,20,true,1400,60));
+  // Mirror the centre entry's accepted-timestamp bookkeeping, then execute
+  // the real dispatch after the failed early motor attempt.
+  r.optional_early_event_=false;r.begin_ok=true;
+  r.energy_control_autonomous_zero_cross_consumed_for_peak_=true;
+  r.energy_control_autonomous_last_accepted_zero_cross_ms_=1400;
+  Event centre;centre.physical_next_peak_side=1;centre.zero_cross_time_ms=1400;
+  assert(r.dispatchTiltPriority(centre,1400,true,800) && centre.output_executed);
+  assert(r.energy_control_autonomous_pending_peak_ && r.energy_control_autonomous_pending_next_side_==1 &&
+         r.energy_control_autonomous_pending_zero_ms_==1400);
+  assert(r.finished==1 && r.energy_control_autonomous_last_accepted_zero_cross_ms_==1400);}
+ // A selected early command that actually reaches the actuator owns its
+ // half-cycle; do not re-arm a duplicate centre pulse.
+ {ExperimentRunner r;r.optional_early_event_=true;r.tilt_priority_.peak(-1,900,3.f);
+  Event early;early.physical_next_peak_side=1;assert(r.dispatchTiltPriority(early,1200,true,800));
+  assert(early.output_executed && r.energy_control_autonomous_zero_cross_consumed_for_peak_);
+  assert(r.finished==1 && r.log_obj.events==0);}
+ // Current ordinary no-output semantics are untouched unless the future
+ // early path is explicitly selected.
+ {ExperimentRunner r;r.tilt_priority_.peak(-1,900,8.f);
+  Event normal;normal.physical_next_peak_side=1;assert(r.dispatchTiltPriority(normal,1200,true,800));
+  assert(!normal.output_executed && r.energy_control_autonomous_zero_cross_consumed_for_peak_);
+  assert(r.energy_control_autonomous_half_cycle_state_==EnergyControlAutonomousHalfCycleState::WAIT_PEAK);}
  // Seed the real tilt controller with an overshoot-induced negative cap of
  // 30ms and a completed 8-degree startup; no actuator shortcuts are used.
  auto prepare_negative=[](ExperimentRunner& r) {

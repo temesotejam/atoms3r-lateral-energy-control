@@ -150,6 +150,10 @@ static bool controlStep(void*) {
       if (!log_export.ready()) error = "export_worker_unavailable";
       else if (!imu.acquisitionHealthy() || imu.stale(millis())) error = "imu_not_healthy";
       else {
+#if CAMERA_DIAGNOSTIC_ONLY
+        // Comparison captures are passive. Do not issue any wheel pulse.
+        ok = runner.startPassiveCapture();
+#else
         ok = runner.setEnergyControlAutonomousInputPeakPercent(start_input_peak_percent) &&
             runner.setEnergyControlAutonomousInputCurrentMa(start_input_current_mA) &&
             runner.setEnergyControlAutonomousBrakeMaxMs(start_brake_max_ms) &&
@@ -158,6 +162,7 @@ static bool controlStep(void*) {
             runner.setNegativeProbeMode(start_negative_probe_mode) &&
             runner.setEnergyControlAutonomousTarget(start_target_deg) &&
             runner.startEnergyControlAutonomousCapture();
+#endif
         error = ok ? "started" : runner.status().last_error;
         if (ok) {
           run_started = true;
@@ -193,8 +198,9 @@ static bool controlStep(void*) {
   const uint32_t runner_start = micros();
   if(measurement && measurement_epoch_us && millis()-foot_observation_poll_ms>=25) {
     foot_observation_poll_ms=millis();
-    const auto fs=feet.snapshot();const auto& f=fs.latest;
+    const auto fs=feet.snapshot();const uint64_t foot_observed_us=esp_timer_get_time();const auto& f=fs.latest;
     if(f.sequence!=foot_observation_sequence && f.frame_us>=measurement_epoch_us && f.timestamp_valid) {
+      feet.recordControlObservation(f.run_id,f.sequence,foot_observed_us);
       foot_observation_sequence=f.sequence;
       runner.observeFootFrame(f.run_id,static_cast<uint32_t>((f.frame_us-measurement_epoch_us)/1000),
           f.left_valid,f.right_valid,f.left_deg,f.right_deg,
