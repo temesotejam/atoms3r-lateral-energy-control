@@ -38,3 +38,20 @@ states. A potential early-input controller needs existing motor and minimum
 half-cycle gates, no duplicate pulse, and ordinary ZERO reevaluation on a
 definite no-send result. Hardware communication/faults preclude guaranteeing
 physical current by ZERO. No experimental early motor command is enabled here.
+
+## Run 64408990 diagnostic
+
+CRC valid, 8-degree configured goal, 0% timing; all recorded peak stage
+targets were 4.5 degrees. 64 of 298 observed frames were retained, with zero
+unmatched observations reported. Camera driver frame timestamp to control
+snapshot was median 77.88 ms, range 63.99–87.05 ms on the 64 stored samples.
+The camera driver's frame timestamp is not validated optical exposure time.
+
+The replay can use recorded `control_observed_us` with `use_control_observed`
+and can restrict both variants to precisely those frames with `observed_subset`.
+On the 50 of 64 samples passing marker/range gates, both the optimistic and
+recorded-availability runs matched eight later ZERO events out of 78; the
+individual events differ. This is sparse sampling, not a detection rate or a
+motor-command test. Frame IMU alignment is approximate and the 3D model remains
+unverified. Neither the 25 ms control polling phase nor a queued motor command
+guarantees physical actuation before ZERO.

@@ -53,7 +53,7 @@ def frame_pose(imu, imu_times, frame_ms, available_ms, max_gap_ms=25.0):
 
 
 def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0,
-        align_frame_pose=True):
+        align_frame_pose=True, use_control_observed=False, observed_subset=False):
     if not math.isfinite(extra_delay_ms) or extra_delay_ms < 0:
         raise ValueError('additional delay must be finite and nonnegative')
     meta = json.loads((path/'metadata.json').read_text(encoding='utf8'))
@@ -78,8 +78,11 @@ def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0,
                     'left_valid','right_valid','left_in_range','right_in_range')): continue
         keys=('measurement_time_us','frame_us','delivered_us','processing_us','left_deg','right_deg')
         if not all(f.get(k) for k in keys): continue
+        if (use_control_observed or observed_subset) and not f.get('control_observed_us'): continue
         t=int(f['measurement_time_us'])/1000
         latency=(int(f['delivered_us'])-int(f['frame_us'])+int(f['processing_us']))/1000
+        if use_control_observed:
+            latency=(int(f['control_observed_us'])-int(f['frame_us']))/1000
         if t<0 or latency<0: continue
         l,r=float(f['left_deg'])+left_offset,float(f['right_deg'])+right_offset
         if not math.isfinite(l) or not math.isfinite(r): continue
