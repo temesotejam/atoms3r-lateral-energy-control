@@ -450,6 +450,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       (q_ident_mode_ ? "rwlog_q_ident_fixed_schedule" :
        (passive_capture_ ? "rwlog_passive_absolute_roll_free_decay" : "rwlog_dynamic_beta_vbat_hold_time_compare")))) + "\",";
   json += "\"firmware_revision\":\"" RUNTIME_VERSION "\",";
+  json += "\"diagnostic_build_id\":\"" RUNTIME_DIAGNOSTIC_BUILD_ID "\",";
   json += "\"wheel_cycle_trial\":{\"policy\":\"branch15_midpoint_guard;four_fresh_matched_alternating_peaks_at_least_4p5deg_with_pair_gap_at_most_2deg;no_extra_shortening_on_weaker_or_declining_side;above_100rpm_at_most_5ms_extra;no_reverse_or_added_torque;15ms_startup_recovery\",\"hardware_validated\":false},";
   json += "\"foot_camera_required_for_autonomous_start\":false,";
   json += "\"steering\":{\"revision\":\"amplitude_only_04730\",\"enabled\":false,\"profile\":\"disabled\",\"feedback_enabled\":false,\"heading_enabled\":false,\"response_check_enabled\":false,\"targets\":\"selected_target_for_both_sides;command_target_latched_until_response_peak\",\"previous_peak_target_gate\":\"disabled_in_04731;retired_8deg_residual\",\"v53_fields\":\"gyro_heading_diagnostic_only;difference_unavailable;delta_and_cycles_zero\",\"gyro_heading_diagnostic\":\"relative_from_start_sync;startup_bias;3_axis;no_magnetometer;drifts;rows_lag_one_sample;invalid_on_gap_over_10ms;never_control\",\"reason_codes\":{\"8\":\"disabled\"}},";

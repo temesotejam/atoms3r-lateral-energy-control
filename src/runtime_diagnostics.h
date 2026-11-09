@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #define RUNTIME_VERSION "1.0.99-alternate-foot-trial"
+#define RUNTIME_DIAGNOSTIC_BUILD_ID "foot-control-observation-v1"
 
 namespace RuntimeDiag {
 struct MemorySnapshot { uint32_t at_ms, internal_free, internal_min, largest, dma_free, psram_free; };

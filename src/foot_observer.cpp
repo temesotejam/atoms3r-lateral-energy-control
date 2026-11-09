@@ -44,9 +44,26 @@ FootSnapshot FootObserver::snapshot() const {
   portENTER_CRITICAL(&mux_); const auto copy = status_; portEXIT_CRITICAL(&mux_);
   return copy;
 }
+void FootObserver::recordControlObservation(uint16_t run_id, uint32_t sequence, uint64_t observed_us) {
+  // A later camera publication can replace the last row after snapshot().
+  // Never attach an observation to a different sequence; count the miss.
+  portENTER_CRITICAL(&mux_);
+  if (status_.recording && run_id == recording_run_id_) {
+    ++control_observation_attempts_;
+    bool matched = false;
+    if (status_.count && frames_) {
+      auto& f = frames_[status_.count - 1];
+      if (f.run_id == run_id && f.sequence == sequence && !f.control_observed_us &&
+          observed_us >= f.delivered_us) { f.control_observed_us = observed_us; matched = true; }
+    }
+    if (!matched) ++control_observation_unmatched_;
+  }
+  portEXIT_CRITICAL(&mux_);
+}
 void FootObserver::beginRun(uint16_t id, uint64_t epoch) {
   portENTER_CRITICAL(&mux_);
   recording_run_id_ = id; log_epoch_us_ = epoch;
+  control_observation_attempts_ = control_observation_unmatched_ = 0;
   status_.count = 0; status_.overflow = false; status_.recording = true;
   portEXIT_CRITICAL(&mux_);
 }
@@ -232,5 +249,51 @@ void FootObserver::appendMetadata(PsramString& json) const {
     row += ",\"zero_reason\":\"" + String(footZeroReasonName(f.zero_reason)) + "\"}";
     if (!table.append(row)) { json.fail(); return; }
   }
-  if (!table.finish()) json.fail();
+  if (!table.finish()) { json.fail(); return; }
+  // Sparse supplemental table: [foot_frames row index, observed-delivered us].
+  // Keep the existing 80% metadata headroom even in a maximum-size log.
+  // A truncated table is explicit; omitted rows always mean unavailable.
+  // Select ranks uniformly over the *whole run*, including first and last,
+  // rather than recording only the first part of walking. Reserve a conservative
+  // 32 bytes per JSON entry (index, full uint64 delta, delimiters).
+  String observed_rows;
+  uint32_t total_observed = 0, valid_observed = 0, stored_observed = 0;
+  constexpr uint32_t kMaxStoredObservations = 64;
+  constexpr size_t kSoftEnd = 640U * 1024U * 8U / 10U;
+  constexpr size_t kTailReserve = 256U;
+  constexpr size_t kMaxEntryBytes = 32U;
+  for (uint32_t i = 0; i < s.count; ++i) {
+    const auto& f = frames_[i];
+    if (!f.control_observed_us) continue;
+    ++total_observed;
+    if (f.control_observed_us >= f.delivered_us) ++valid_observed;
+  }
+  size_t capacity = json.length() + kTailReserve < kSoftEnd
+      ? (kSoftEnd - json.length() - kTailReserve - 1U) / kMaxEntryBytes : 0;
+  if (capacity > kMaxStoredObservations) capacity = kMaxStoredObservations;
+  if (capacity > valid_observed) capacity = valid_observed;
+  uint32_t rank = 0;
+  for (uint32_t i = 0; i < s.count && stored_observed < capacity; ++i) {
+    const auto& f = frames_[i];
+    if (!f.control_observed_us || f.control_observed_us < f.delivered_us) continue;
+    const uint32_t target = capacity == 1 ? (valid_observed - 1U) / 2U :
+        static_cast<uint32_t>((static_cast<uint64_t>(stored_observed) * (valid_observed - 1U)) / (capacity - 1U));
+    if (rank++ != target) continue;
+    char entry[64];
+    snprintf(entry, sizeof(entry), "%s[%lu,%llu]", observed_rows.length() ? "," : "",
+        static_cast<unsigned long>(i), f.control_observed_us - f.delivered_us);
+    const size_t old_length = observed_rows.length();
+    observed_rows += entry;
+    if (observed_rows.length() != old_length + strlen(entry)) break;
+    ++stored_observed;
+  }
+  const bool truncated = stored_observed < total_observed;
+  {
+    json += ",\"foot_control_observations\":{\"version\":1,\"truncated\":";
+    json += truncated ? "true" : "false";
+    json += ",\"total\":" + String(total_observed) + ",\"stored\":" + String(stored_observed);
+    json += ",\"attempts\":" + String(control_observation_attempts_) + ",\"unmatched\":" + String(control_observation_unmatched_);
+    json += ",\"semantics\":\"control_snapshot_return_before_runner_observe_v1\"";
+    json += ",\"rows\":["; json += observed_rows; json += "]}";
+  }
 }

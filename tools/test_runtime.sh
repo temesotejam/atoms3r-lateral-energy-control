@@ -152,6 +152,9 @@ node --check site/serial-monitor.js
 node --check site/flasher-completion.js
 node tools/test_flasher_completion.js
 node tools/test_serial_monitor.js
+python3 tools/test_foot_observation_timestamp.py
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-format -ffunction-sections -fdata-sections -Itools/host_v46o tools/test_observation_sampling.cpp src/foot_observer.cpp src/foot_angle_estimator.cpp src/white_marker_tracker.cpp -Wl,--gc-sections -o /tmp/test_observation_sampling
+/tmp/test_observation_sampling | python3 tools/check_observation_sampling.py
 node tools/test_runtime_web.js
 node tools/test_offline_web.js
 node tools/test_upright_reference_web.js

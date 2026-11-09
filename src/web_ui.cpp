@@ -248,7 +248,7 @@ void WebUi::status() {
   const bool fresh = s.heartbeat_us && static_cast<uint32_t>(micros() - s.heartbeat_us) < 500000;
   RuntimeDiag::phase(RuntimeDiag::Lane::Http, RuntimeDiag::Phase::HttpJson);
   String json; json.reserve(6100);
-  json = "{\"revision\":\"" RUNTIME_VERSION "\",\"state\":\"" + String(s.state_name) + "\"";
+  json = "{\"revision\":\"" RUNTIME_VERSION "\",\"diagnostic_build_id\":\"" RUNTIME_DIAGNOSTIC_BUILD_ID "\",\"state\":\"" + String(s.state_name) + "\"";
   json += ",\"boot_id\":" + String(boot_id_);
   json += ",\"network\":{\"phase\":\"" + String(offline_.name()) + "\",\"last_error\":\"" + String(offline_.error()) + "\"}";
   json += ",\"usb_diagnostics\":" + String(RuntimeDiag::enabled() ? "true" : "false");

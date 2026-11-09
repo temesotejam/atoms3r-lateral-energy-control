@@ -29,10 +29,13 @@ vm.runInContext(code,context);
     foot:{available:true,zero_ready:true,age_ms:80,frame_valid:true,frame_timestamp_valid:true,
       right_valid:true,left_valid:true,right_in_range:true,left_in_range:true,
       right_deg:8,left_deg:-6,right_reason:'detected',left_reason:'detected'},upright:{stable:false}};
+  valid.revision='1.0.99-alternate-foot-trial'; valid.diagnostic_build_id='foot-control-observation-v1';
   context.fetch=async()=>({ok:true,json:async()=>valid});
   await vm.runInContext('refresh()',context);
   assert.strictEqual(element('connection').textContent,'接続中');
   assert.strictEqual(element('start').disabled,false);
+  assert.match(element('firmware-revision').textContent,/1\.0\.99-alternate-foot-trial/);
+  assert.match(element('firmware-revision').textContent,/foot-control-observation-v1/);
   assert.strictEqual(element('probe-batch').disabled,false);
   assert.strictEqual(element('inverse-start').disabled,false);
   assert(!code.includes('steering-status'));

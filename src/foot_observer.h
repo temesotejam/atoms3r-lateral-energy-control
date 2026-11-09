@@ -7,6 +7,7 @@
 
 struct FootFrame {
   uint64_t frame_us = 0, delivered_us = 0;
+  uint64_t control_observed_us = 0; // zero: unavailable
   int64_t log_time_us = -1, measurement_time_us = -1;
   uint32_t sequence = 0, imu_sample_us = 0, processing_us = 0;
   uint16_t run_id = 0;
@@ -52,6 +53,7 @@ class FootObserver {
   void finishRun();
   void clearRun();
   FootSnapshot snapshot() const;
+  void recordControlObservation(uint16_t run_id, uint32_t sequence, uint64_t observed_us);
   CameraOneShotSnapshot cameraSnapshot() const { return camera_ ? camera_->snapshot() : CameraOneShotSnapshot{}; }
   void appendMetadata(PsramString& json) const; // sealed, export worker only
   bool copyPreview(uint8_t* out, FootPreviewInfo& info) const;
@@ -67,6 +69,7 @@ class FootObserver {
   WhiteMarker1DTracker right_{0}, left_{1};
   mutable portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
   FootSnapshot status_;
+  uint32_t control_observation_attempts_ = 0, control_observation_unmatched_ = 0;
   uint16_t recording_run_id_ = 0;
   uint64_t log_epoch_us_ = 0;
   uint8_t* preview_ = nullptr;
