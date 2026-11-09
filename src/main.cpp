@@ -15,7 +15,7 @@
 #include "foot_observer.h"
 #include "immutable_export.h"
 #include "runtime_diagnostics.h"
-#if FOOT_EARLY_TRIAL
+#if FOOT_EARLY_TRIAL && !ANGLE_EARLY_TRIAL
 #include "foot_geometry_async.h"
 #include "early_geometry_diagnostics.h"
 #include "early_clock.h"
@@ -33,7 +33,7 @@ FootObserver feet;
 ImmutableExport log_export;
 WebUi web;
 
-#if FOOT_EARLY_TRIAL
+#if FOOT_EARLY_TRIAL && !ANGLE_EARLY_TRIAL
 // Provisional test only: frame driver timestamp +/-20 ms is an assumed
 // exposure window; no optical timing validation is implied.
 early_diag::Counters g_early_diag;
@@ -299,13 +299,13 @@ static bool controlStep(void*) {
   const uint32_t sample_us = r.last_gyro_update_us;
   RuntimeDiag::phase(RuntimeDiag::Lane::Control, RuntimeDiag::Phase::ControlRunner);
   const uint32_t runner_start = micros();
-#if FOOT_EARLY_TRIAL
+#if FOOT_EARLY_TRIAL && !ANGLE_EARLY_TRIAL
   if(measurement && measurement_epoch_us) {earlySyncIdentity();earlyReceive();}
 #endif
   if(measurement && measurement_epoch_us && millis()-foot_observation_poll_ms>=25) {
     foot_observation_poll_ms=millis();
     const auto fs=feet.snapshot();const uint64_t foot_observed_us=esp_timer_get_time();const auto& f=fs.latest;
-#if FOOT_EARLY_TRIAL
+#if FOOT_EARLY_TRIAL && !ANGLE_EARLY_TRIAL
     earlySubmitFrame(fs,foot_observed_us,measurement_epoch_us);
 #endif
     if(f.sequence!=foot_observation_sequence && f.frame_us>=measurement_epoch_us && f.timestamp_valid) {
@@ -320,7 +320,7 @@ static bool controlStep(void*) {
     }
   }
   runner.update();
-#if FOOT_EARLY_TRIAL
+#if FOOT_EARLY_TRIAL && !ANGLE_EARLY_TRIAL
   if(measurement && measurement_epoch_us) {earlySyncIdentity();earlyRecordPose(measurement_epoch_us);}
 #endif
   uint32_t done;
@@ -330,7 +330,7 @@ static bool controlStep(void*) {
   control_latency::setActive(runner.status().state == ExperimentState::RUNNING_BATCH_SWEEP);
   if (!measurement_epoch_us && runner.status().state == ExperimentState::RUNNING_BATCH_SWEEP) {
     measurement_epoch_us = esp_timer_get_time() - static_cast<uint64_t>(runner.status().measure_elapsed_ms) * 1000;
-#if FOOT_EARLY_TRIAL
+#if FOOT_EARLY_TRIAL && !ANGLE_EARLY_TRIAL
     runner.setFootEarlyEpoch(measurement_epoch_us);
 #endif
   }
@@ -395,7 +395,7 @@ void setup() {
   RuntimeDiag::result(export_memory_ready && log_export.begin(logger));
   RuntimeDiag::boot(RuntimeDiag::Stage::Web);
   web.begin(server, run_control, feet, log_export);
-#if FOOT_EARLY_TRIAL
+#if FOOT_EARLY_TRIAL && !ANGLE_EARLY_TRIAL
   early_worker_ready=early_worker.begin();
   g_early_diag.worker_ready.store(early_worker_ready);
 #endif

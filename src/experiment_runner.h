@@ -49,6 +49,12 @@
 #ifndef FOOT_EARLY_TRIAL
 #define FOOT_EARLY_TRIAL 0
 #endif
+#ifndef ANGLE_EARLY_TRIAL
+#define ANGLE_EARLY_TRIAL 0
+#endif
+#if ANGLE_EARLY_TRIAL && !FOOT_EARLY_TRIAL
+#error ANGLE_EARLY_TRIAL requires FOOT_EARLY_TRIAL
+#endif
 #include "long_foot_balance.h"
 #include "negative_cap_recovery.h"
 
@@ -863,6 +869,13 @@ private:
   bool optional_early_event_=false;
   bool optional_early_write_uncertain_=false;
 #if FOOT_EARLY_TRIAL
+#if ANGLE_EARLY_TRIAL
+  uint32_t angle_late_blocked_peak_ms_=0,angle_last_check_ms_=0;
+  void RW_HOT_CODE __attribute__((optimize("Os", "no-fast-math"),noinline)) tryAngleEarlyCandidate(
+      uint32_t t_test_ms,uint32_t sample_us,float angle_deg,float rate_dps);
+  void __attribute__((noinline)) decideAngleEarlyCandidate(
+      uint32_t t_test_ms,uint32_t sample_us,float angle_deg,float rate_dps);
+#endif
   early_motion_gate::Gate early_motion_gate_;
   uint64_t early_measurement_epoch_us_=0;
   void RW_HOT_CODE __attribute__((optimize("Os", "no-fast-math"),noinline)) tryEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,

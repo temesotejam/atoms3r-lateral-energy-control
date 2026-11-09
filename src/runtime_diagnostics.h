@@ -3,7 +3,11 @@
 
 #define RUNTIME_VERSION "1.0.99-alternate-foot-trial"
 #if defined(FOOT_EARLY_TRIAL) && FOOT_EARLY_TRIAL
+#if defined(ANGLE_EARLY_TRIAL) && ANGLE_EARLY_TRIAL
+#define RUNTIME_DIAGNOSTIC_BUILD_ID "angle-early-eta-v1"
+#else
 #define RUNTIME_DIAGNOSTIC_BUILD_ID "early-input-geometry-v1"
+#endif
 #endif
 
 namespace RuntimeDiag {

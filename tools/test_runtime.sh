@@ -30,6 +30,8 @@ g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_foot_timing.cpp -o /tm
 python3 tools/test_foot_timing_wiring.py
 python3 tools/test_tilt_priority_integration.py
 python3 tools/test_early_runner_integration.py
+python3 tools/test_angle_runner_integration.py
+python3 tools/test_angle_build_wiring.py
 python3 tools/test_early_reply_integration.py
 python3 tools/test_early_frame_invalidation.py
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_early_motion_gate.cpp -o /tmp/test_early_motion_gate
