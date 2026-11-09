@@ -225,3 +225,10 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_gyro_heading_diagnosti
 /tmp/test_gyro_heading_diagnostic
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_compact_json_table.cpp -o /tmp/test_compact_json_table
 /tmp/test_compact_json_table
+
+# Compile each opt-in camera experiment; default mode remains unchanged.
+for mode in 0 1 2; do
+  g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-format -ffunction-sections -fdata-sections -Itools/host_v46o -DFOOT_FAST_CAPTURE_EXPERIMENT=$mode -c src/foot_observer.cpp -o /tmp/foot_observer_$mode.o
+done
+g++ -std=c++17 -Wall -Wextra -Werror test/test_foot_fast_record_gate.cpp -o /tmp/fast_gate
+/tmp/fast_gate

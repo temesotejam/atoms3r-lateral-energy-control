@@ -6,11 +6,21 @@
 #include "foot_angle_estimator.h"
 #include "esp_timer.h"
 #include <new>
+#include "foot_fast_record_gate.h"
 
 bool FootObserver::begin(OneShotCamera& camera, RunControlWorker& control) {
   camera_ = &camera; control_ = &control;
   frames_ = static_cast<FootFrame*>(ps_malloc(sizeof(FootFrame) * kCapacity));
   if (!frames_ || !camera.snapshot().camera_ok || !control.ready()) return false;
+#if FOOT_FAST_CAPTURE_EXPERIMENT == 1
+  fast_capture_active_ = true;
+#elif FOOT_FAST_CAPTURE_EXPERIMENT == 2
+  fast_frame_copy_ = static_cast<uint8_t*>(ps_malloc(320U * 240U));
+  fast_capture_active_ = fast_frame_copy_ != nullptr; // Allocation failure keeps baseline capture.
+#endif
+#if FOOT_FAST_CAPTURE_EXPERIMENT
+  status_.fast_capture_active = fast_capture_active_;
+#endif
   preview_ = static_cast<uint8_t*>(ps_malloc(kPreviewBytes));
   preview_mutex_ = xSemaphoreCreateMutex();
   portENTER_CRITICAL(&mux_); status_.available = true; portEXIT_CRITICAL(&mux_);
@@ -48,6 +58,11 @@ void FootObserver::beginRun(uint16_t id, uint64_t epoch) {
   portENTER_CRITICAL(&mux_);
   recording_run_id_ = id; log_epoch_us_ = epoch;
   status_.count = 0; status_.overflow = false; status_.recording = true;
+#if FOOT_FAST_CAPTURE_EXPERIMENT
+  next_recording_frame_us_ = 0;
+  status_.fast_copy_max_us = status_.fast_record_skipped = status_.fast_run_frames = 0;
+  status_.fast_run_first_us = status_.fast_run_last_us = 0;
+#endif
   portEXIT_CRITICAL(&mux_);
 }
 void FootObserver::finishRun() {
@@ -90,10 +105,27 @@ void FootObserver::loop() {
       f.timestamp_valid = f.frame_us > 0 && f.frame_us <= f.delivered_us &&
           f.delivered_us - f.frame_us < 500000;
     }
+#if FOOT_FAST_CAPTURE_EXPERIMENT == 2
+    const uint8_t* gray = f.frame_valid ? fb->buf : nullptr;
+    uint32_t fast_copy_us = 0;
+    if (fast_capture_active_ && gray) {
+      const uint32_t copy_start = micros();
+      memcpy(fast_frame_copy_, gray, 320U * 240U);
+      fast_copy_us = static_cast<uint32_t>(micros() - copy_start);
+      gray = fast_frame_copy_;
+      camera_->releaseContinuous(fb);
+      fb = nullptr;
+    }
+#endif
     RuntimeDiag::phase(RuntimeDiag::Lane::Camera, RuntimeDiag::Phase::CameraProcess);
     const uint32_t processing_start = micros();
+#if FOOT_FAST_CAPTURE_EXPERIMENT == 2
+    const auto a = right_.process(gray);
+    const auto b = left_.process(gray);
+#else
     const auto a = right_.process(f.frame_valid ? fb->buf : nullptr);
     const auto b = left_.process(f.frame_valid ? fb->buf : nullptr);
+#endif
     // Check the IMU at BOTH sides of capture; any instability in between changes
     // the epoch. A stale queued image must not contribute to upright zeroing.
     zero_.observe(millis(), run.upright_epoch,
@@ -118,13 +150,25 @@ void FootObserver::loop() {
     f.right_ambiguity = a.ambiguity_ratio; f.left_ambiguity = b.ambiguity_ratio;
     f.zero_reason = zero_.reason;
     f.processing_us = micros() - processing_start;
+#if FOOT_FAST_CAPTURE_EXPERIMENT == 2
+    // The copy happens after delivered_us and must count toward availability.
+    f.processing_us += fast_copy_us;
+#endif
     FootPreviewInfo preview;
     preview.frame = f; preview.right = a; preview.left = b;
     preview.mekf_attitude = run.mekf_attitude; preview.imu_ok = run.imu_ok;
     preview.right_zero = zero_.a_zero; preview.left_zero = zero_.b_zero; preview.zero_samples = zero_.count;
+#if FOOT_FAST_CAPTURE_EXPERIMENT == 2
+    publishPreview(gray, preview, run_before.running || run.running);
+#else
     publishPreview(f.frame_valid ? fb->buf : nullptr, preview,
         run_before.running || run.running);
+#endif
     f.processing_us = micros() - processing_start;
+#if FOOT_FAST_CAPTURE_EXPERIMENT == 2
+    // The copy happens after delivered_us and must count toward availability.
+    f.processing_us += fast_copy_us;
+#endif
     RuntimeDiag::phase(RuntimeDiag::Lane::Camera, RuntimeDiag::Phase::CameraRelease);
     camera_->releaseContinuous(fb);
     float fps = 0;
@@ -141,13 +185,31 @@ void FootObserver::loop() {
       if (!b.valid) ++status_.left_marker_failures;
     }
     if (f.processing_us > status_.processing_max_us) status_.processing_max_us = f.processing_us;
+#if FOOT_FAST_CAPTURE_EXPERIMENT == 2
+    if (fast_copy_us > status_.fast_copy_max_us) status_.fast_copy_max_us = fast_copy_us;
+#endif
     if (status_.recording && f.run_id == recording_run_id_) {
       // Signed offsets retain frame-boundary cases; never label them as zero.
       f.log_time_us = f.timestamp_valid ? static_cast<int64_t>(f.frame_us) - log_epoch_us_ : -1;
       f.measurement_time_us = f.timestamp_valid && run.measurement_epoch_us
           ? static_cast<int64_t>(f.frame_us) - run.measurement_epoch_us : -1;
+#if FOOT_FAST_CAPTURE_EXPERIMENT
+      const uint64_t record_time = f.timestamp_valid ? f.frame_us : f.delivered_us;
+      const bool record = !fast_capture_active_ || fastRecordGate(record_time, next_recording_frame_us_);
+      if (fast_capture_active_ && f.frame_valid && f.timestamp_valid) {
+        if (!status_.fast_run_first_us) status_.fast_run_first_us = f.frame_us;
+        status_.fast_run_last_us = f.frame_us;
+        ++status_.fast_run_frames;
+      }
+      if (!record) ++status_.fast_record_skipped;
+      if (record) {
+        if (status_.count < kCapacity) frames_[status_.count++] = f;
+        else status_.overflow = true;
+      }
+#else
       if (status_.count < kCapacity) frames_[status_.count++] = f;
       else status_.overflow = true;
+#endif
     }
     status_.latest = f; status_.zero_ready = zero_.ready;
     status_.right_zero = zero_.a_zero; status_.left_zero = zero_.b_zero;
@@ -158,7 +220,11 @@ void FootObserver::loop() {
     portEXIT_CRITICAL(&mux_);
     RuntimeDiag::beat(RuntimeDiag::Lane::Camera, seq);
     RuntimeDiag::phase(RuntimeDiag::Lane::Camera, RuntimeDiag::Phase::Wait);
+#if FOOT_FAST_CAPTURE_EXPERIMENT
+    const int64_t remaining = fast_capture_active_ ? 0 : 66667 - (esp_timer_get_time() - begin);
+#else
     const int64_t remaining = 66667 - (esp_timer_get_time() - begin);
+#endif
     if (remaining > 0) vTaskDelay(pdMS_TO_TICKS((remaining + 999) / 1000));
     else vTaskDelay(1);
   }
@@ -185,6 +251,17 @@ void FootObserver::appendMetadata(PsramString& json) const {
   json += "\"frame_timestamp_semantics\":\"camera_driver_frame_timestamp_not_verified_exposure_time\",";
   json += "\"control_context_semantics\":\"latest_control_snapshot_at_frame_delivery_not_exposure\",";
   json += "\"preview_generation\":\"idle_only_last_idle_frame_retained\",";
+#if FOOT_FAST_CAPTURE_EXPERIMENT
+  json += "\"fast_capture_experiment_mode\":" + String(FOOT_FAST_CAPTURE_EXPERIMENT);
+  json += ",\"fast_capture_active\":" + String(s.fast_capture_active ? "true" : "false");
+  json += ",\"fast_record_target_fps\":15,\"fast_pacing_disabled\":" + String(s.fast_capture_active ? "true" : "false");
+  json += ",\"fast_copy_max_us\":" + String(s.fast_copy_max_us);
+  json += ",\"fast_record_skipped\":" + String(s.fast_record_skipped);
+  json += ",\"fast_run_frames\":" + String(s.fast_run_frames);
+  char fast_times[96];
+  snprintf(fast_times, sizeof(fast_times), ",\"fast_run_first_us\":%llu,\"fast_run_last_us\":%llu,", s.fast_run_first_us, s.fast_run_last_us);
+  json += fast_times;
+#endif
   json += "\"target_fps\":15,\"capacity\":" + String(kCapacity);
   json += ",\"count\":" + String(s.count) + ",\"overflow\":" + String(s.overflow ? "true" : "false");
   json += ",\"available\":" + String(s.available ? "true" : "false");
