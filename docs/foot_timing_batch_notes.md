@@ -10,18 +10,24 @@ python tools/batch_foot_timing.py path/to/run305 path/to/run337 path/to/run329 p
 Each run uses its own per-boot pixel and piecewise calibration table to estimate
 its nominal offsets. Those offsets assume a correct boot pose and unchanged
 mounting. Three scenarios add 0/20/50 ms to the optimistic frame availability
-bound; they are sensitivity experiments, not measured publication delays. This
-replay mixes latest sampled IMU pitch and older camera frames and does not
-establish synchronized 3D pose. Output event matching uses recorded future ZERO
+bound; they are sensitivity experiments, not measured publication delays. The
+aligned variant uses the last logged pitch sample at or before the nominal frame
+time, within 25 ms; the unaligned variant uses pitch at control-read time.
+Clock reconstruction and exposure semantics remain approximate, so this is not
+a validated synchronized 3D pose. Output event matching uses recorded future ZERO
 only for scoring and uses no ground-truth contact labels. A diagnostic count
 excludes candidates within 250 ms of the previous recorded ZERO. This is not a
 simulation of the modified controller: an early pulse changes the trajectory,
 and motor, peak and safety state are not reconstructed.
 
-For logs 30581450, 33762516, 32906448, 40418357 respectively, screened
-matches with +0 ms were 21/34, 35/61, 34/81, 34/52; with +50 ms they were
-21/34, 33/61, 26/81, 28/52. These denominators include startup and target
-stages; they are not rates of successful early actuation or foot transfer.
+For logs 30581450, 33762516, 32906448, 40418357 respectively, aligned screened
+matches with +0 ms were 19/34, 26/61, 23/81, 25/52; with +50 ms they were
+16/34, 25/61, 21/81, 19/52. For comparison, the older unaligned +0 ms values
+were 21/34, 35/61, 34/81, 34/52. These denominators include startup and target
+stages; they are not rates of successful early actuation or foot transfer. The
+13772 ms same-side candidate in run305 is also found by the aligned variant,
+but its supporting image follows ambiguous marker frames and its geometric
+threshold has already been passed when the frame becomes available.
 For run305, only two initial candidates follow a logged 8-degree stage peak;
 the rest occur during staged ramp-up. Contact, actual control-observed frame
 time, camera/body synchronization and mechanical calibration remain unknown.

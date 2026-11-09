@@ -28,9 +28,9 @@ def main():
         try:
             left, right = offsets(folder)
             scenarios = []
-            for delay in (0, 20, 50):
-                r = run(folder, left, right, extra_delay_ms=delay)
-                scenarios.append({k:r[k] for k in ('extra_delay_ms','frames','early_events',
+            for delay, aligned in ((0, False),(0, True),(20, True),(50, True)):
+                r = run(folder, left, right, extra_delay_ms=delay,align_frame_pose=aligned)
+                scenarios.append({k:r[k] for k in ('extra_delay_ms','frame_pose_aligned','frames','early_events',
                     'previous_recorded_zero_guard_blocked','screened_events','valid_zeros','matched','screened_matches')})
             output.append({'run':folder.name,'assumed_offsets_deg':[round(left,3),round(right,3)],
                            'scenarios':scenarios})

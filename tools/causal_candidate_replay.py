@@ -41,7 +41,19 @@ def runner_rate(row):
     return (float(row['gy_dps'])-float(row['mekf_bias_y_dps'])) * 0.908911
 
 
-def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0):
+def frame_pose(imu, imu_times, frame_ms, available_ms, max_gap_ms=25.0):
+    """Use a measured pose no later than exposure estimate or availability.
+
+    Timestamp domains and exposure semantics are approximate in legacy logs.
+    """
+    i = bisect.bisect_right(imu_times, min(frame_ms, available_ms)) - 1
+    if i < 0 or frame_ms - imu_times[i] > max_gap_ms:
+        return None
+    return imu[i][3]
+
+
+def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0,
+        align_frame_pose=True):
     if not math.isfinite(extra_delay_ms) or extra_delay_ms < 0:
         raise ValueError('additional delay must be finite and nonnegative')
     meta = json.loads((path/'metadata.json').read_text(encoding='utf8'))
@@ -58,6 +70,7 @@ def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0):
             float(r['roll_mekf_abs_deg'])) for r in raw]
     imu = [r for r in imu if all(math.isfinite(v) for v in r)]
     if not imu: raise ValueError('no finite IMU samples')
+    imu_times = [r[0] for r in imu]
     pitch0=imu[0][3]
     frames=[]
     for f in read(path/'foot_angles.csv'):
@@ -70,7 +83,7 @@ def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0):
         if t<0 or latency<0: continue
         l,r=float(f['left_deg'])+left_offset,float(f['right_deg'])+right_offset
         if not math.isfinite(l) or not math.isfinite(r): continue
-        frames.append((t+latency+extra_delay_ms,l,r))
+        frames.append((t+latency+extra_delay_ms,t,l,r))
     frames.sort()
     # Both streams are stepped forward. Zero events are not loaded until later.
     events=[]; cur=0; target=None; target_expiry=0; side=0; fired=False
@@ -80,9 +93,11 @@ def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0):
         if target is not None and t>target_expiry:
             target=None
         while cur<len(frames) and frames[cur][0] <= t:
-            ft,l,r=frames[cur];cur+=1
+            ft,exposure_ms,l,r=frames[cur];cur+=1
             if t-ft>25 or abs(v)<1 or a*v>=0: continue
-            h=[switch(sign*(p-pitch0),l,r,H) for sign in (-1,1) for H in (55.33,82.83,120.)]
+            pose = frame_pose(imu, imu_times, exposure_ms, ft) if align_frame_pose else p
+            if pose is None: continue
+            h=[switch(sign*(pose-pitch0),l,r,H) for sign in (-1,1) for H in (55.33,82.83,120.)]
             q=threshold(a,h)
             if q is None: continue
             this_side=1 if a>0 else -1
@@ -118,7 +133,8 @@ def run(path, left_offset, right_offset, legacy_rate=False, extra_delay_ms=0.0):
             screened_matches.add(zeros[j][0])
     return {'rate_source':'physical_roll_rate_dps (legacy)' if legacy_rate else '(gy_dps-mekf_bias_y_dps)*0.908911 (quantized logged fields)',
             'frames':len(frames),'early_events':len(events),'valid_zeros':len(zeros),
-            'extra_delay_ms':extra_delay_ms,'previous_recorded_zero_guard_blocked':blocked,
+            'extra_delay_ms':extra_delay_ms,'frame_pose_aligned':align_frame_pose,
+            'previous_recorded_zero_guard_blocked':blocked,
             'screened_events':len(screened),'screened_matches':len(screened_matches),
             'matched':len(matches),'lead_ms':list(matches.values()), 'events':events,
             'warning':'No contact truth. Foot joint coordinates and offsets assumed; camera availability is optimistic. Not a motor controller.'}
