@@ -34,6 +34,15 @@ struct Choice {
 class Controller {
  public:
   void reset() {*this=Controller{};}
+#if defined(RESEARCH_RESCUE_REBOUND) && RESEARCH_RESCUE_REBOUND
+  // Do not compare an unpaired rebound with old alternating-cycle evidence.
+  // Keep target and bounded width limits; require new genuine matched peaks.
+  void invalidateUnpairedCycle() {
+    clearPair();last_pair_side_=0;last_coast_ms_=0;last_coast_side_=0;
+    foot_weak_count_=0;foot_end_=0;
+    for(auto& h:history_) { h.peak_ms=0;h.cross_ms=0;h.paired_ms=0;h.elapsed_ms=0;h.confirmed=false;h.evidence=0; }
+  }
+#endif
   float target()const{return target_deg_;}
   uint16_t widthLimit(int side)const{return history_[index(side)].width_ms;}
   // Absolute trial cap: retain the hardware limit and the previously
