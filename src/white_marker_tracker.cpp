@@ -111,11 +111,17 @@ void WhiteMarker1DTracker::evaluate(const uint8_t* gray, int dy, Candidate* cand
                                    int& count, bool& overflow, WhiteMarkerObservation& weak) const {
     int contrast[kWidth], smooth[kWidth] = {};
     const int* rows = markerRows(); const int* refs = referenceRows();
-    for (int x = 0; x < kWidth; ++x) {
-        int a = 0, b = 0;
-        for (int i = 0; i < appcfg::kWhiteMarkerRowCount; ++i) a += gray[(rows[i] + dy) * kWidth + x];
-        for (int i = 0; i < appcfg::kWhiteReferenceRowCount; ++i) b += gray[(refs[i] + dy) * kWidth + x];
-        contrast[x] = 3 * a - 5 * b;
+    // Visit each scan row contiguously: fewer cache-line switches when the
+    // camera buffer resides in PSRAM. The integer expression remains exact.
+    const uint8_t* line = gray + (rows[0] + dy) * kWidth;
+    for (int x = 0; x < kWidth; ++x) contrast[x] = 3 * line[x];
+    for (int i = 1; i < appcfg::kWhiteMarkerRowCount; ++i) {
+        line = gray + (rows[i] + dy) * kWidth;
+        for (int x = 0; x < kWidth; ++x) contrast[x] += 3 * line[x];
+    }
+    for (int i = 0; i < appcfg::kWhiteReferenceRowCount; ++i) {
+        line = gray + (refs[i] + dy) * kWidth;
+        for (int x = 0; x < kWidth; ++x) contrast[x] -= 5 * line[x];
     }
     int rolling = 0;
     for (int x = 0; x < kWindow; ++x) rolling += contrast[x];
