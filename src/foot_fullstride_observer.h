@@ -28,7 +28,15 @@ class Observer {
   bool frame(uint16_t id,uint32_t ms,bool left_valid,bool right_valid,float left,float right) {
     if(id!=run_id_ || (have_frame_ && ms<=last_frame_ms_))return false;
     have_frame_=true;last_frame_ms_=ms;
-    Frame &f=frames_[next_];f.ms=ms;f.l=left;f.r=right;
+    Frame &f=frames_[next_];
+    // Track valid per-foot data lost to the ring. A remaining first sample
+    // within the usual gap allowance does not prove that the cycle's earlier
+    // samples were retained; it could make its span spuriously small.
+    if(count_==kFrames) {
+      if(f.lv) { have_evicted_left_=true; last_evicted_left_ms_=f.ms; }
+      if(f.rv) { have_evicted_right_=true; last_evicted_right_ms_=f.ms; }
+    }
+    f.ms=ms;f.l=left;f.r=right;
     f.lv=left_valid && std::isfinite(left);f.rv=right_valid && std::isfinite(right);
     next_=(next_+1)%kFrames;if(count_<kFrames)++count_;
     if(pending_ && ms>=end_ && ms-end_>=kDeliveryAllowanceMs)finish();
@@ -154,6 +162,11 @@ class Observer {
     }
     Cycle out;out.sequence=latest_.sequence+1;out.start_ms=start_;out.end_ms=end_;
     out.left=a.done(start_,end_);out.right=b.done(start_,end_);
+    // Timestamps are accepted in increasing order, so an eviction at or
+    // after the start is evidence that data needed by this period was lost.
+    // An evicted invalid reading is not evidence of a missing valid sample.
+    if(have_evicted_left_ && last_evicted_left_ms_>=start_)out.left.valid=false;
+    if(have_evicted_right_ && last_evicted_right_ms_>=start_)out.right.valid=false;
     out.startup=!have_complete_cycle_;have_complete_cycle_=true;
     out.valid=!out.startup && out.left.valid && out.right.valid;
     // This flag checks temporal adjacency and sample quality only. It does not
@@ -163,6 +176,8 @@ class Observer {
   }
   Frame frames_[kFrames];unsigned next_=0,count_=0;
   uint16_t run_id_=0;uint32_t last_frame_ms_=0,last_peak_ms_=0,boundary_=0,start_=0,end_=0;
+  uint32_t last_evicted_left_ms_=0,last_evicted_right_ms_=0;
+  bool have_evicted_left_=false,have_evicted_right_=false;
   bool have_frame_=false,have_peak_=false,have_boundary_=false,have_positive_=false,pending_=false,have_complete_cycle_=false;
   Cycle latest_;
 };

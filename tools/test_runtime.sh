@@ -225,3 +225,7 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_gyro_heading_diagnosti
 /tmp/test_gyro_heading_diagnostic
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_compact_json_table.cpp -o /tmp/test_compact_json_table
 /tmp/test_compact_json_table
+
+# Reject foot periods whose camera samples were evicted from the ring.
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_foot_fullstride_overwrite.cpp -o /tmp/test_foot_fullstride_overwrite
+/tmp/test_foot_fullstride_overwrite
