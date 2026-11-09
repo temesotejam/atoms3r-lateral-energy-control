@@ -44,6 +44,17 @@ FootSnapshot FootObserver::snapshot() const {
   portENTER_CRITICAL(&mux_); const auto copy = status_; portEXIT_CRITICAL(&mux_);
   return copy;
 }
+void FootObserver::recordControlObservation(uint16_t run_id, uint32_t sequence, uint64_t observed_us) {
+  // The camera may publish another frame after snapshot(). Only update a
+  // matching last recorded frame; otherwise leave the timestamp unavailable.
+  portENTER_CRITICAL(&mux_);
+  if (status_.recording && run_id == recording_run_id_ && status_.count && frames_) {
+    auto& f = frames_[status_.count - 1];
+    if (f.run_id == run_id && f.sequence == sequence && !f.control_observed_us &&
+        observed_us >= f.delivered_us) f.control_observed_us = observed_us;
+  }
+  portEXIT_CRITICAL(&mux_);
+}
 void FootObserver::beginRun(uint16_t id, uint64_t epoch) {
   portENTER_CRITICAL(&mux_);
   recording_run_id_ = id; log_epoch_us_ = epoch;
@@ -232,5 +243,38 @@ void FootObserver::appendMetadata(PsramString& json) const {
     row += ",\"zero_reason\":\"" + String(footZeroReasonName(f.zero_reason)) + "\"}";
     if (!table.append(row)) { json.fail(); return; }
   }
-  if (!table.finish()) json.fail();
+  if (!table.finish()) { json.fail(); return; }
+  // Sparse supplemental table: [foot_frames row index, observed-delivered us].
+  // Keep the existing 80% metadata headroom even in a maximum-size log.
+  // A truncated table is explicit; omitted rows always mean unavailable.
+  String observed_rows;
+  bool any_observed = false, truncated = false;
+  uint32_t total_observed = 0, stored_observed = 0;
+  constexpr uint32_t kMaxStoredObservations = 64;
+  constexpr size_t kSoftEnd = 640U * 1024U * 8U / 10U;
+  constexpr size_t kTailReserve = 256U; // table wrapper and metadata final-size suffix
+  for (uint32_t i = 0; i < s.count; ++i) {
+    const auto& f = frames_[i];
+    if (!f.control_observed_us) continue;
+    any_observed = true;
+    ++total_observed;
+    if (f.control_observed_us < f.delivered_us) { truncated = true; continue; }
+    if (stored_observed >= kMaxStoredObservations) { truncated = true; continue; }
+    char entry[64];
+    snprintf(entry, sizeof(entry), "%s[%lu,%llu]", observed_rows.length() ? "," : "",
+        static_cast<unsigned long>(i), f.control_observed_us - f.delivered_us);
+    if (json.length() + observed_rows.length() + strlen(entry) + kTailReserve >= kSoftEnd) {
+      truncated = true; continue;
+    }
+    const size_t old_length = observed_rows.length();
+    observed_rows += entry;
+    if (observed_rows.length() != old_length + strlen(entry)) { truncated = true; break; }
+    ++stored_observed;
+  }
+  if (any_observed) {
+    json += ",\"foot_control_observations\":{\"version\":1,\"truncated\":";
+    json += truncated ? "true" : "false";
+    json += ",\"total\":" + String(total_observed) + ",\"stored\":" + String(stored_observed);
+    json += ",\"rows\":["; json += observed_rows; json += "]}";
+  }
 }

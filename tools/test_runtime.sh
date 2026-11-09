@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 tools/embed_runtime_web.py --check
+python3 test/test_contact_geometry_probe.py
 python3 tools/test_foot_log_version_mapping.py
 python3 tools/test_positive_sway_log.py
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc test/test_positive_sway_probe.cpp -o /tmp/test_positive_sway_probe
@@ -225,3 +226,10 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_gyro_heading_diagnosti
 /tmp/test_gyro_heading_diagnostic
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_compact_json_table.cpp -o /tmp/test_compact_json_table
 /tmp/test_compact_json_table
+
+python tools/test_foot_observation_timestamp.py
+
+python3 test/test_late_candidate_replay.py
+
+g++ -std=c++11 -O2 -Wall -Wextra -Werror tools/test_rescue_rebound.cpp -o /tmp/test_rescue_rebound
+/tmp/test_rescue_rebound

@@ -967,14 +967,29 @@ function saveBlob(blob, name) {
   const url = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-function expandFootTable(value) {
-  if (value == null || Array.isArray(value)) return value;
+function expandFootTable(value, observations = null) {
+  if (value == null) return value;
+  if (Array.isArray(value)) return value;
   const {fields, rows} = value;
   if (!Array.isArray(fields) || !fields.every(f => typeof f === 'string') ||
       new Set(fields).size !== fields.length || !Array.isArray(rows) ||
       rows.some(row => !Array.isArray(row) || row.length !== fields.length))
     throw new Error('足角度テーブルの形式が不正です');
-  return rows.map(row => Object.fromEntries(fields.map((field,i) => [field,row[i]])));
+  const frames = rows.map(row => Object.fromEntries(fields.map((field,i) => [field,row[i]])));
+  if (observations != null) {
+    if (observations.version !== 1 || !Array.isArray(observations.rows)) throw Error('Invalid foot observations');
+    for (const f of frames) f.control_observed_us = null;
+    const seen = new Set();
+    for (const row of observations.rows) {
+      if (!Array.isArray(row) || row.length !== 2 || !Number.isSafeInteger(row[0]) ||
+          row[0] < 0 || row[0] >= frames.length || seen.has(row[0]) ||
+          !Number.isSafeInteger(row[1]) || row[1] < 0 || !Number.isSafeInteger(frames[row[0]].delivered_us) ||
+          !Number.isSafeInteger(frames[row[0]].delivered_us + row[1])) throw Error('Invalid foot observation row');
+      frames[row[0]].control_observed_us = frames[row[0]].delivered_us + row[1];
+      seen.add(row[0]);
+    }
+  }
+  return frames;
 }
 async function download() {
   transferRunning = true; cancelTransfer = false; controls();
@@ -1016,7 +1031,7 @@ async function download() {
     const headerSize = v.getUint16(10, true), metadataLength = v.getUint32(24, true);
     if (headerSize !== 110 || metadataLength > file.length - headerSize - 4) throw new Error('RWLOGヘッダー不一致');
     const metadata = JSON.parse(new TextDecoder().decode(file.subarray(headerSize, headerSize + metadataLength)));
-    completedFoot = expandFootTable(metadata.foot_frames ?? null); completedFile = file; completedName = m.filename;
+    completedFoot = expandFootTable(metadata.foot_frames ?? null, metadata.foot_control_observations ?? null); completedFile = file; completedName = m.filename;
     saveBlob(new Blob([file], {type: 'application/octet-stream'}), m.filename);
     $('transfer').textContent = `CRC検証完了 · ${m.bytes} bytes · 足角度 ${completedFoot?.length ?? 0}行`;
     calculateWheelWork();

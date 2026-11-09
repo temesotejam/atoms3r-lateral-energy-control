@@ -1,0 +1,64 @@
+# Foot geometry early-timing retrospective: multi-run sensitivity
+
+Research only; does not command the motor, establish support transfer, or validate
+the 3D transforms. Run from the repository root after converting each RWLOG:
+
+```
+python tools/batch_foot_timing.py path/to/run305 path/to/run337 path/to/run329 path/to/run404
+```
+
+Each run uses its own per-boot pixel and piecewise calibration table to estimate
+its nominal offsets. Those offsets assume a correct boot pose and unchanged
+mounting. Three scenarios add 0/20/50 ms to the optimistic frame availability
+bound; they are sensitivity experiments, not measured publication delays. The
+aligned variant uses the last logged pitch sample at or before the nominal frame
+time, within 25 ms; the unaligned variant uses pitch at control-read time.
+Clock reconstruction and exposure semantics remain approximate, so this is not
+a validated synchronized 3D pose. Output event matching uses recorded future ZERO
+only for scoring and uses no ground-truth contact labels. A diagnostic count
+excludes candidates within 250 ms of the previous recorded ZERO. This is not a
+simulation of the modified controller: an early pulse changes the trajectory,
+and motor, peak and safety state are not reconstructed.
+
+For logs 30581450, 33762516, 32906448, 40418357 respectively, aligned screened
+matches with +0 ms were 19/34, 26/61, 23/81, 25/52; with +50 ms they were
+16/34, 25/61, 21/81, 19/52. For comparison, the older unaligned +0 ms values
+were 21/34, 35/61, 34/81, 34/52. These denominators include startup and target
+stages; they are not rates of successful early actuation or foot transfer. The
+13772 ms same-side candidate in run305 is also found by the aligned variant,
+but its supporting image follows ambiguous marker frames and its geometric
+threshold has already been passed when the frame becomes available.
+For run305, only two initial candidates follow a logged 8-degree stage peak;
+the rest occur during staged ramp-up. Contact, actual control-observed frame
+time, camera/body synchronization and mechanical calibration remain unknown.
+
+For real hardware, first measure control-observed frame timing with matching
+sequence IDs; evaluate pose at the frame time and reject stale or ambiguous
+states. A potential early-input controller needs existing motor and minimum
+half-cycle gates, no duplicate pulse, and ordinary ZERO reevaluation on a
+definite no-send result. Hardware communication/faults preclude guaranteeing
+physical current by ZERO. No experimental early motor command is enabled here.
+
+## Run 64408990 diagnostic
+
+CRC valid, 8-degree configured goal, 0% timing; all recorded peak stage
+targets were 4.5 degrees. 64 of 298 observed frames were retained, with zero
+unmatched observations reported. Camera driver frame timestamp to control
+snapshot was median 77.88 ms, range 63.99–87.05 ms on the 64 stored samples.
+The camera driver's frame timestamp is not validated optical exposure time.
+
+The replay can use recorded `control_observed_us` with `use_control_observed`
+and can restrict both variants to precisely those frames with `observed_subset`.
+On the 50 of 64 samples passing marker/range gates, both the optimistic and
+recorded-availability runs matched eight later ZERO events out of 78; the
+individual events differ. This is sparse sampling, not a detection rate or a
+motor-command test. Frame IMU alignment is approximate and the 3D model remains
+unverified. Neither the 25 ms control polling phase nor a queued motor command
+guarantees physical actuation before ZERO.
+
+`assess_candidate_robustness.py` compares the same sparse, observed frames
+over simultaneous -1/0/+1 degree foot reference offsets. The common later
+ZERO events occur at 2011 and 3491 ms; tentative lead times are respectively
+[5, 1, 1] and [3, 3, 3] ms. Neither meets an illustrative 10 ms comparison
+margin. This margin is not a validated communication or physical-current
+deadline. Other reference errors and frame gaps remain untested.
