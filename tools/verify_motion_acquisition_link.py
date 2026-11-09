@@ -23,7 +23,8 @@ REQUIRED = tuple('ExperimentRunner::'+n+'(' for n in MOTION_METHODS if n not in 
     'ImuManager::'+n+'(' for n in ACQUISITION_METHODS) + (
     'imu_i2c::read(', 'lateral_energy::potential(')
 PREFIXES = REQUIRED + tuple('ExperimentRunner::'+n+'(' for n in INLINE_HELPERS) + (
-    'direct_q::target(', 'direct_q::width(', 'ImuPollProfile::record(')
+    'direct_q::target(', 'direct_q::width(', 'ImuPollProfile::record(',
+    'ExperimentRunner::tryEarlyFootCandidate(')
 # 1.0.23 adds a bounded one-peak work dispatch at accepted ZERO crossings.
 # Its fitted candidate scan is a separate flash routine; the audited IRAM
 # motion/acquisition bodies use 24,717 bytes.  Reserve 25 KiB for these bodies

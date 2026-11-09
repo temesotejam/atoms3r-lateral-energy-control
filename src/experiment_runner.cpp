@@ -1,3 +1,7 @@
+#if FOOT_EARLY_TRIAL
+#include "early_clock.h"
+#include "esp_timer.h"
+#endif
 #include "control_angle_reference.h"
 #include "experiment_runner.h"
 #include "log_quantization.h"
@@ -1420,6 +1424,10 @@ void ExperimentRunner::recordV59StateGateEvent(uint32_t crossing_ms, float hprev
 
 void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   stall_rescue_detector_.reset();stall_rescue_attempted_peak_ms_=0;stall_rescue_event_=false;
+  optional_early_event_=false;optional_early_write_uncertain_=false;optional_early_attempted_peak_ms_=0;
+#if FOOT_EARLY_TRIAL
+  early_motion_gate_.clear();early_measurement_epoch_us_=0;
+#endif
   // Amplitude only: relative heading is a diagnostic, never a target.
   energy_control_autonomous_pending_target_deg_ = NAN;
   status_.steering = steering::disabledSnapshot();
@@ -2742,6 +2750,8 @@ bool ExperimentRunner::beginEnergyControlAutonomousPulse(uint32_t now_ms, uint32
   const bool set_current_ok = roller_->setCurrentMa(command_current_mA);
   const uint32_t set_current_us = static_cast<uint32_t>(micros() - set_current_t0_us);
   if (!set_current_ok) {
+    // A failed transport write does not prove that the actuator saw nothing.
+    if(optional_early_event_)optional_early_write_uncertain_=true;
     energy_control_autonomous_pulse_authorized_ = false;
     stopMotor();
     return false;
@@ -3235,6 +3245,73 @@ __attribute__((noinline)) void ExperimentRunner::acceptMotionCrossing(bool rescu
   stall_rescue_detector_.reset();
 }
 
+#if FOOT_EARLY_TRIAL
+void ExperimentRunner::setFootEarlyEpoch(uint64_t epoch_us) {
+  early_motion_gate_.clear();
+  early_measurement_epoch_us_=early_clock::epochSupported(epoch_us)?epoch_us:0;
+}
+uint32_t ExperimentRunner::footEarlyPeakIdentity() const {
+  return energy_control_autonomous_half_cycle_state_ == EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS &&
+      energy_control_autonomous_last_peak_valid_ && !energy_control_autonomous_zero_cross_consumed_for_peak_
+      ? energy_control_autonomous_last_peak_ms_ : 0;
+}
+int8_t ExperimentRunner::footEarlyPeakSide() const {
+  return footEarlyPeakIdentity() ? energy_control_autonomous_last_peak_side_ : 0;
+}
+bool ExperimentRunner::offerFootEarlyCandidate(uint16_t run_id,uint32_t peak_id,uint32_t frame_ms,
+    uint32_t ready_ms,float threshold_deg) {
+  uint32_t now=0;
+  if(!early_clock::relativeMs(esp_timer_get_time(),early_measurement_epoch_us_,now) ||
+      run_id!=status_.run_id || peak_id!=footEarlyPeakIdentity() || status_.emergency_stop ||
+      status_.state!=ExperimentState::RUNNING_BATCH_SWEEP ||
+      threshold_deg*energy_control_autonomous_last_peak_side_<=0.f) {
+    early_motion_gate_.clear();return false;
+  }
+  return early_motion_gate_.offer(run_id,peak_id,frame_ms,ready_ms,threshold_deg,now);
+}
+void ExperimentRunner::tryEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
+    float angle_deg,float rate_dps) {
+  uint32_t now=0;
+  if(!early_clock::relativeMs(esp_timer_get_time(),early_measurement_epoch_us_,now) ||
+      (now>t_test_ms ? now-t_test_ms : t_test_ms-now)>5 ||
+      static_cast<uint32_t>(micros()-sample_us)>10000 ||
+      energy_control_autonomous_half_cycle_state_!=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS ||
+      !early_motion_gate_.fire(status_.run_id,footEarlyPeakIdentity(),now,angle_deg,rate_dps)) return;
+  acceptOptionalEarlyMotion(t_test_ms,rate_dps,angle_deg);
+  if(optional_early_attempted_peak_ms_==energy_control_autonomous_last_peak_ms_ ||
+     status_.emergency_stop) early_motion_gate_.clear();
+}
+#endif
+
+__attribute__((noinline)) void ExperimentRunner::acceptOptionalEarlyMotion(
+    uint32_t t_test_ms,float rate_dps,float angle_deg) {
+  // Deliberately uncalled. The future detector must first establish that its
+  // own input is fresh; this wrapper provides no contact claim or prediction.
+  const int8_t side=energy_control_autonomous_last_peak_side_;
+  if(!wheelWorkMode() || energy_control_autonomous_target_peak_deg_!=8.f ||
+     energy_control_autonomous_input_peak_percent_!=0 ||
+     status_.emergency_stop || status_.pulse_active ||
+     energy_control_autonomous_half_cycle_state_!=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS ||
+     !energy_control_autonomous_last_peak_valid_ ||
+     energy_control_autonomous_zero_cross_consumed_for_peak_ ||
+     !energy_control_autonomous_last_peak_ms_ ||
+     t_test_ms<=energy_control_autonomous_last_peak_ms_ ||
+     t_test_ms-energy_control_autonomous_last_peak_ms_>1500 ||
+     (energy_control_autonomous_last_accepted_zero_cross_valid_ &&
+      (t_test_ms<=energy_control_autonomous_last_accepted_zero_cross_ms_ ||
+       t_test_ms-energy_control_autonomous_last_accepted_zero_cross_ms_ <
+           Config::ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS)) ||
+     optional_early_attempted_peak_ms_==energy_control_autonomous_last_peak_ms_ ||
+     (side!=1 && side!=-1) || !isfinite(rate_dps) || !isfinite(angle_deg) ||
+     rate_dps*side>=0.f || angle_deg*side<=0.f) return;
+  optional_early_attempted_peak_ms_=energy_control_autonomous_last_peak_ms_;
+  optional_early_write_uncertain_=false;
+  optional_early_event_=true;
+  acceptMotionCrossing(false,t_test_ms,rate_dps,angle_deg,angle_deg,1.f,
+                       static_cast<float>(t_test_ms));
+  optional_early_event_=false;
+}
+
 void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   if (!energy_control_autonomous_mode_ ||
       energy_control_autonomous_phase_ == EnergyControlAutonomousPhase::IDLE ||
@@ -3318,6 +3395,11 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
     acceptMotionCrossing(rescue,t_test_ms,interpolated_rate_dps,before_deg,
         detector_relative_angle_deg,alpha,interpolated_time_ms);
   }
+#if FOOT_EARLY_TRIAL
+  // Normal crossing takes precedence; the gate runs outside this IRAM body.
+  if(!physical_event_suppressed && !crossing && !confirmation_input && !rescue)
+    tryEarlyFootCandidate(t_test_ms,sample_us,detector_relative_angle_deg,rate_dps);
+#endif
   const bool passed_centre_inward = rate_dps * peak_side < 0.0f &&
       ((peak_side < 0 && before_deg < 0 && detector_relative_angle_deg >= 0) ||
        (peak_side > 0 && before_deg > 0 && detector_relative_angle_deg <= 0));
@@ -3646,8 +3728,32 @@ bool ExperimentRunner::prepareUnmodeledWalkCoast(
 
 bool ExperimentRunner::tryTiltPriority(
     PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms) {
+  if(optional_early_event_)return tryTiltPriorityOptionalEarly(event,t_test_ms);
   if(!stall_rescue_event_)return tryTiltPriorityImpl(event,t_test_ms,nullptr);
   return tryTiltPriorityRescue(event,t_test_ms);
+}
+
+bool ExperimentRunner::tryTiltPriorityOptionalEarly(
+    PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms) {
+  // Do not overlap a speculative timing change with an independent foot or
+  // sway experiment; the ordinary zero opportunity can still handle it.
+  if(!long_foot_balance_.idleForNegativeTrial() || positive_sway_probe_.active() ||
+     negative_cap_recovery_.active())return false;
+  const auto old_tilt=tilt_priority_;
+  const auto old_wheel=wheel_cycle_guard_;
+  const auto old_negative=negative_cap_recovery_;
+  const uint32_t old_foot_ms=foot_trial_pending_ms_,old_foot_generation=foot_trial_pending_generation_;
+  const bool old_foot_effective=foot_trial_pending_effective_;
+  const float old_q=status_.current_audit_q_target_mA_s,old_pred=status_.current_audit_q_pred_mA_s;
+  bool healthy=false;
+  const bool selected=tryTiltPriorityImpl(event,t_test_ms,&healthy);
+  if(healthy && !event.output_executed) {
+    tilt_priority_=old_tilt;wheel_cycle_guard_=old_wheel;negative_cap_recovery_=old_negative;
+    foot_trial_pending_ms_=old_foot_ms;foot_trial_pending_generation_=old_foot_generation;
+    foot_trial_pending_effective_=old_foot_effective;
+    status_.current_audit_q_target_mA_s=old_q;status_.current_audit_q_pred_mA_s=old_pred;
+  }
+  return selected;
 }
 
 bool ExperimentRunner::tryTiltPriorityRescue(
@@ -3672,7 +3778,9 @@ bool ExperimentRunner::tryTiltPriorityImpl(
   in.now_ms=t_test_ms;in.preset_deg=event.target_peak_deg;
   in.target_deg=tilt_priority_.target();in.next_side=event.physical_next_peak_side;
   in.crossing_rate_dps=event.zero_cross_abs_rate_dps;
-  in.hardware_cap_ms=stall_rescue_event_ ? stall_rescue::kMaxPulseMs : Config::WALKING_TARGET8_MAX_PULSE_MS;
+  // Early geometry trial shares the rescue's 15 ms cap; normal ZERO is unchanged.
+  in.hardware_cap_ms=(stall_rescue_event_ || optional_early_event_) ?
+      stall_rescue::kMaxPulseMs : Config::WALKING_TARGET8_MAX_PULSE_MS;
   in.hardware_healthy=wheelWorkMode() && !status_.emergency_stop &&
       status_.state==ExperimentState::RUNNING_BATCH_SWEEP && !status_.pulse_active &&
       roller_ && roller_->ok() && imu_ && imu_->acquisitionHealthy() && !imu_->stale(millis()) &&
@@ -3692,7 +3800,7 @@ bool ExperimentRunner::tryTiltPriorityImpl(
       negative_cap_recovery_.extraCap(t_test_ms,in.hardware_healthy) : 0;
   auto choice=tilt_priority_.propose(in);
   if(stall_rescue_event_)negative_cap_recovery_.interrupt();
-  if(stall_rescue_event_ && (!choice.selected || choice.coast))return false;
+  if((stall_rescue_event_ || optional_early_event_) && (!choice.selected || choice.coast))return false;
   // Record every accepted healthy crossing, even when ordinary control is
   // selected. It will be paired with the corresponding measured peak.
   if(in.hardware_healthy)tilt_priority_.crossing(in.next_side,t_test_ms);
@@ -3700,7 +3808,7 @@ bool ExperimentRunner::tryTiltPriorityImpl(
   if(choice.coast && negative_cap_recovery_.active())negative_cap_recovery_.interrupt();
   // Preserve one owner for positive-width feedback. Evaluate its currently
   // applied setting and new proposal against the identical guard history.
-  if(!stall_rescue_event_)weak_side_assist_.interrupt();
+  if(!stall_rescue_event_ && !optional_early_event_)weak_side_assist_.interrupt();
   bool foot_adjusted=false;
   bool foot_candidate_eligible=false;
   bool foot_path_active=false;
@@ -3711,9 +3819,9 @@ bool ExperimentRunner::tryTiltPriorityImpl(
   uint16_t negative_guarded_baseline=0,negative_guarded_candidate=0;
   bool sway_probe_path=false,sway_probe_start=false,sway_probe_selected=false;
   uint16_t sway_guarded_baseline=0,sway_guarded_candidate=0;
-  const bool sway_eligible=!stall_rescue_event_ && !choice.coast && in.next_side>0 &&
+  const bool sway_eligible=!stall_rescue_event_ && !optional_early_event_ && !choice.coast && in.next_side>0 &&
       in.target_deg==8.f && !negative_cap_recovery_.active() && long_foot_balance_.idleForNegativeTrial();
-  if(in.next_side>0) {
+  if(in.next_side>0 && !optional_early_event_) {
     sway_probe_start=!positive_sway_probe_.active() && positive_sway_probe_.candidate(t_test_ms,in.hardware_healthy,sway_eligible);
     sway_probe_path=positive_sway_probe_.request(t_test_ms,in.hardware_healthy,sway_eligible) && sway_eligible;
   }
@@ -3734,7 +3842,7 @@ bool ExperimentRunner::tryTiltPriorityImpl(
     event.setFootSpanFlag(PsramLogger::EnergyControlAutonomousZeroCrossEvent::PositiveSwayProbe,true);
     event.weak_probe_baseline_ms=static_cast<uint8_t>(sway_guarded_baseline);
     event.weak_probe_requested_ms=static_cast<uint8_t>(sway_guarded_candidate);
-  } else if(!stall_rescue_event_ && !choice.coast && in.next_side>0 &&
+  } else if(!stall_rescue_event_ && !optional_early_event_ && !choice.coast && in.next_side>0 &&
       choice.width_ms<=100 && tilt_priority_.target()>=6.f && !negative_cap_recovery_.active()) {
     foot_path_active=true;
     const uint16_t baseline=choice.width_ms;
@@ -3767,7 +3875,7 @@ bool ExperimentRunner::tryTiltPriorityImpl(
       choice.width_ms=foot_guarded_current;wheel_cycle_guard_=current_guard;
       foot_adjusted=foot_guarded_current!=ordinary_guarded;
     }
-  } else if(!stall_rescue_event_ && !choice.coast && in.next_side<0) {
+  } else if(!stall_rescue_event_ && !optional_early_event_ && !choice.coast && in.next_side<0) {
     negative_probe_start=negative_recovery_enabled && negative_cap_recovery_.candidate(t_test_ms,in.target_deg,
         tilt_priority_.widthLimit(-1),long_foot_balance_.idleForNegativeTrial(),in.hardware_healthy);
     negative_probe_path=negative_recovery_enabled && (negative_probe_start || (negative_cap_recovery_.active() && active_negative_extra>0));
@@ -3836,9 +3944,9 @@ bool ExperimentRunner::tryTiltPriorityImpl(
     event.reason=Config::ENERGY_CONTROL_AUTONOMOUS_REASON_CURRENT_WRITE_FAILED;
     return true;
   }
-  if(stall_rescue_event_ && !choice.coast)weak_side_assist_.interrupt();
-  tilt_priority_.confirm(in.next_side,t_test_ms,choice,true,negative_probe_selected || sway_probe_selected,
-      !sway_probe_path && !negative_probe_path && !foot_adjusted &&
+  if((stall_rescue_event_ || optional_early_event_) && !choice.coast)weak_side_assist_.interrupt();
+  tilt_priority_.confirm(in.next_side,t_test_ms,choice,true,negative_probe_selected || sway_probe_selected || optional_early_event_,
+      !optional_early_event_ && !sway_probe_path && !negative_probe_path && !foot_adjusted &&
       !(foot_candidate_eligible && foot_guarded_candidate!=foot_guarded_current) && !long_foot_balance_.trialActive());
   if(sway_probe_path)positive_sway_probe_.confirm(t_test_ms,sway_guarded_baseline,choice.width_ms,
       !choice.coast && sway_probe_selected,sway_probe_start);
@@ -4281,7 +4389,13 @@ __attribute__((noinline)) bool ExperimentRunner::dispatchTiltPriority(
     PsramLogger::EnergyControlAutonomousZeroCrossEvent& event,uint32_t t_test_ms,
     bool previous_accepted_valid,uint32_t previous_accepted_ms) {
   if(event.target_peak_deg==8.f && wheelWorkMode() && tryTiltPriority(event,t_test_ms)) {
-    if(stall_rescue_event_ && !event.output_executed) {
+    if(optional_early_event_ && optional_early_write_uncertain_) {
+      // The write may have reached the roller: do not reopen this half-cycle.
+      logger_->addEnergyControlAutonomousZeroCrossEvent(event);
+      requestEmergencyStop("optional_early_write_unresolved");
+      return true;
+    }
+    if((stall_rescue_event_ || optional_early_event_) && !event.output_executed) {
       restoreUnsentStallRescue(event,previous_accepted_valid,previous_accepted_ms);
       return true;
     }
@@ -4292,7 +4406,7 @@ __attribute__((noinline)) bool ExperimentRunner::dispatchTiltPriority(
     }
     return true;
   }
-  if(stall_rescue_event_) {
+  if(stall_rescue_event_ || optional_early_event_) {
     event.valid=false;
     event.reason=Config::ENERGY_CONTROL_AUTONOMOUS_REASON_VALID_NO_OUTPUT;
     restoreUnsentStallRescue(event,previous_accepted_valid,previous_accepted_ms);
@@ -4365,7 +4479,7 @@ void ExperimentRunner::updateEnergyControlAutonomousAtZeroCross(uint32_t t_test_
   const uint32_t v46l_decision_t0_us = micros();
   control_latency::mark(control_latency::Decision);
   PsramLogger::EnergyControlAutonomousZeroCrossEvent event;
-  event.event_kind=stall_rescue_event_ ? 2 : 0;
+  event.event_kind=stall_rescue_event_ ? 2 : (optional_early_event_ ? 3 : 0);
   // V46s audit begin
   solver_audit::Record audit;
   audit.t_test_ms = t_test_ms;

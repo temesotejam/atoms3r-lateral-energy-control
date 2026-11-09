@@ -10,6 +10,9 @@ extern ImuManager imu;
 extern RunControlWorker run_control;
 #include "roller485_manager.h"
 extern Roller485Manager roller;
+#if defined(FOOT_EARLY_TRIAL) && FOOT_EARLY_TRIAL
+#include "early_geometry_diagnostics.h"
+#endif
 #include "foot_observer.h"
 extern FootObserver feet;
 
@@ -450,6 +453,20 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
       (q_ident_mode_ ? "rwlog_q_ident_fixed_schedule" :
        (passive_capture_ ? "rwlog_passive_absolute_roll_free_decay" : "rwlog_dynamic_beta_vbat_hold_time_compare")))) + "\",";
   json += "\"firmware_revision\":\"" RUNTIME_VERSION "\",";
+#if defined(FOOT_EARLY_TRIAL) && FOOT_EARLY_TRIAL
+  json += "\"diagnostic_build_id\":\"" RUNTIME_DIAGNOSTIC_BUILD_ID "\",";
+  const auto early = g_early_diag.snapshot();
+  json += "\"foot_early_trial\":{\"exposure\":\"unverified_frame_timestamp_plus_minus_20ms\",\"geometry\":\"discrete_hypotheses_not_contact_ground_truth\",";
+  json += "\"run\":" + String(early.run) + ",\"frames\":" + String(early.frames) + ",\"invalid_frames\":" + String(early.invalid_frames);
+  json += ",\"submitted\":" + String(early.submitted) + ",\"submit_failed\":" + String(early.submit_failed) + ",\"pose_dropped\":" + String(early.pose_dropped);
+  json += ",\"replies\":" + String(early.replies) + ",\"valid\":" + String(early.valid) + ",\"armed\":" + String(early.armed) + ",\"stale_replies\":" + String(early.stale_replies);
+  json += ",\"worker_ready\":" + String(early.worker_ready) + ",\"max_compute_us\":" + String(early.max_compute_us) + ",\"max_step_us\":" + String(early.max_step_us) + ",\"min_stack_raw\":" + String(early.min_stack_raw);
+  json += ",\"reason_codes\":[";
+  for (unsigned i=0;i<early_diag::kReasonCount;++i) { if(i)json+=","; json+=String(early.reason[i]); }
+  json += "],\"reason_names\":[\"none\",\"unknown_exposure\",\"provisional_disabled\",\"bad_exposure_interval\",\"pose_unavailable\",\"bad_identity\",\"bad_time\",\"bad_input\",\"stale_generation\",\"expired\",\"no_root\",\"disagree\"],\"async_reason_codes\":[";
+  for (unsigned i=0;i<early_diag::kAsyncReasonCount;++i) { if(i)json+=","; json+=String(early.async_reason[i]); }
+  json += "],\"async_reason_names\":[\"none\",\"pose_timeout\",\"replaced\",\"generation_changed\",\"calculation_rejected\",\"cpu_budget\"]},";
+#endif
   json += "\"wheel_cycle_trial\":{\"policy\":\"branch15_midpoint_guard;four_fresh_matched_alternating_peaks_at_least_4p5deg_with_pair_gap_at_most_2deg;no_extra_shortening_on_weaker_or_declining_side;above_100rpm_at_most_5ms_extra;no_reverse_or_added_torque;15ms_startup_recovery\",\"hardware_validated\":false},";
   json += "\"foot_camera_required_for_autonomous_start\":false,";
   json += "\"steering\":{\"revision\":\"amplitude_only_04730\",\"enabled\":false,\"profile\":\"disabled\",\"feedback_enabled\":false,\"heading_enabled\":false,\"response_check_enabled\":false,\"targets\":\"selected_target_for_both_sides;command_target_latched_until_response_peak\",\"previous_peak_target_gate\":\"disabled_in_04731;retired_8deg_residual\",\"v53_fields\":\"gyro_heading_diagnostic_only;difference_unavailable;delta_and_cycles_zero\",\"gyro_heading_diagnostic\":\"relative_from_start_sync;startup_bias;3_axis;no_magnetometer;drifts;rows_lag_one_sample;invalid_on_gap_over_10ms;never_control\",\"reason_codes\":{\"8\":\"disabled\"}},";
@@ -1623,7 +1640,7 @@ bool PsramLogger::buildMetadataJson(PsramString& json) const {
   for (uint16_t i = 0; i < energy_control_autonomous_zero_cross_event_count_; ++i) {
     const EnergyControlAutonomousZeroCrossEvent& e = events_->energy_control_autonomous_zero_cross_events_[i];
     String detail = "{\"event_index\":" + String(e.event_index);
-    detail += ",\"event_kind\":\"" + String(e.event_kind == 1 ? "strong_start_kick" : e.event_kind == 2 ? "inward_stall_rescue" : "energy_control_zero_cross") + "\"";
+    detail += ",\"event_kind\":\"" + String(e.event_kind == 1 ? "strong_start_kick" : e.event_kind == 2 ? "inward_stall_rescue" : e.event_kind == 3 ? "foot_geometry_early_trial" : "energy_control_zero_cross") + "\"";
     detail += ",\"zero_cross_time_ms\":" + String(e.zero_cross_time_ms);
     auto appendAutonomousNullable = [&detail](const char* name, float value, uint8_t decimals) {
       detail += ",\""; detail += name; detail += "\":";

@@ -130,8 +130,10 @@ int main(int argc,char** argv){
     f.right_reason=f.left_reason=MarkerDetectionReason::Detected;f.right_templates=f.left_templates=17;
     f.right_candidates=1;f.left_candidates=2;f.left_ambiguity=0.4f;f.zero_reason=FootZeroReason::Ready;
     if(i==1){f.right_valid=false;f.right_deg=NAN;f.right_scan_y=NAN;f.right_reason=MarkerDetectionReason::LowContrast;}
+    f.control_observed_us=f.delivered_us+125000;
     feet.frames_[i]=f;
   }
+  feet.control_observation_attempts_=FootObserver::kCapacity;
   logger.markMeasurementDone();assert(!logger.rwlogDownloadable());
   logger.seal();assert(logger.rwlogDownloadable());
   assert(!logger.addSample(row));logger.addTimingProbeEvent({});assert(logger.timing_probe_event_count_==256);
@@ -142,6 +144,13 @@ int main(int argc,char** argv){
   std::cerr<<"metadata bytes="<<exportFile.metadata_.length()<<" phase="<<int(status.phase)<<" error="<<status.error<<"\n";
   assert(status.phase==ImmutableExport::Phase::Ready);
   const std::string metadata(exportFile.metadata_.c_str());
+#if defined(FOOT_EARLY_TRIAL) && FOOT_EARLY_TRIAL
+  assert(metadata.find("\"diagnostic_build_id\":\"early-input-geometry-v1\"")!=std::string::npos);
+#else
+  assert(metadata.find("\"diagnostic_build_id\"")==std::string::npos);
+#endif
+  assert(metadata.find("\"stored\":64")!=std::string::npos);
+  assert(metadata.find("\"truncated\":true")!=std::string::npos);
   assert(metadata.find("\"long_foot_counterfactual_ms\",\"long_foot_actual_ms\",\"long_foot_effective\"")!=std::string::npos);
   assert(metadata.find(",145,150,true,")!=std::string::npos);
   assert(metadata.find(",28,33,true,")!=std::string::npos);

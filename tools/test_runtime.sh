@@ -29,6 +29,14 @@ g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_foot_timing.cpp -o /tm
 /tmp/test_foot_timing
 python3 tools/test_foot_timing_wiring.py
 python3 tools/test_tilt_priority_integration.py
+python3 tools/test_early_runner_integration.py
+python3 tools/test_early_reply_integration.py
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_early_motion_gate.cpp -o /tmp/test_early_motion_gate
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_early_clock.cpp -o /tmp/test_early_clock
+/tmp/test_early_clock
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_early_diagnostics.cpp -o /tmp/test_early_diagnostics
+/tmp/test_early_diagnostics
+/tmp/test_early_motion_gate
 g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_positive_left_boost.cpp -o /tmp/test_positive_left_boost
 /tmp/test_positive_left_boost
 
@@ -225,3 +233,13 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tools/test_gyro_heading_diagnosti
 /tmp/test_gyro_heading_diagnostic
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Itools/host_v46o -Isrc tools/test_compact_json_table.cpp -o /tmp/test_compact_json_table
 /tmp/test_compact_json_table
+
+python3 tools/test_foot_observation_timestamp.py
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-format -ffunction-sections -fdata-sections -Itools/host_v46o tools/test_observation_sampling.cpp src/foot_observer.cpp src/foot_angle_estimator.cpp src/white_marker_tracker.cpp -Wl,--gc-sections -o /tmp/test_observation_sampling
+/tmp/test_observation_sampling | python3 tools/check_observation_sampling.py
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Isrc tools/test_foot_geometry_worker.cpp -o /tmp/test_geometry_default
+/tmp/test_geometry_default
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -DFOOT_GEOMETRY_PROVISIONAL_EXPOSURE=1 -Isrc tools/test_foot_geometry_worker.cpp -o /tmp/test_geometry_trial
+/tmp/test_geometry_trial
+g++ -std=c++11 -O2 -Wall -Wextra -Werror -Itools/host_early -Isrc tools/test_async_init.cpp -o /tmp/test_geometry_init
+/tmp/test_geometry_init
