@@ -1427,6 +1427,9 @@ void ExperimentRunner::beginStartSync(uint32_t now_ms) {
   optional_early_event_=false;optional_early_write_uncertain_=false;optional_early_attempted_peak_ms_=0;
 #if FOOT_EARLY_TRIAL
   early_motion_gate_.clear();early_measurement_epoch_us_=0;
+#if ANGLE_EARLY_TRIAL
+  angle_late_blocked_peak_ms_=0;angle_last_check_ms_=0;
+#endif
 #endif
   // Amplitude only: relative heading is a diagnostic, never a target.
   energy_control_autonomous_pending_target_deg_ = NAN;
@@ -3304,6 +3307,39 @@ void ExperimentRunner::decideEarlyFootCandidate(uint32_t t_test_ms,uint32_t samp
   early_motion_gate_.clear();
 }
 
+#if ANGLE_EARLY_TRIAL
+void ExperimentRunner::tryAngleEarlyCandidate(uint32_t t_test_ms,uint32_t sample_us,
+    float angle_deg,float rate_dps) {
+  // Configured target 8 includes the staged 4.5-to-8-degree startup ramp.
+  // Cold eligibility is checked at most every 5 ms near centre. Normal ZERO
+  // detection remains live on every fresh sample and always takes priority.
+  if(energy_control_autonomous_half_cycle_state_!=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS ||
+     optional_early_attempted_peak_ms_==energy_control_autonomous_last_peak_ms_ ||
+     angle_late_blocked_peak_ms_==energy_control_autonomous_last_peak_ms_ ||
+     angle_deg>1.5f || angle_deg< -1.5f ||
+     (angle_last_check_ms_ && (t_test_ms<angle_last_check_ms_ ||
+       t_test_ms-angle_last_check_ms_<5)))return;
+  angle_last_check_ms_=t_test_ms;
+  decideAngleEarlyCandidate(t_test_ms,sample_us,angle_deg,rate_dps);
+}
+void ExperimentRunner::decideAngleEarlyCandidate(uint32_t t_test_ms,uint32_t sample_us,
+    float angle_deg,float rate_dps) {
+  const int8_t side=energy_control_autonomous_last_peak_side_;
+  const float distance=angle_deg*side, speed=-rate_dps*side;
+  if((side!=1 && side!=-1) || !std::isfinite(angle_deg) || !std::isfinite(rate_dps) ||
+     static_cast<uint32_t>(micros()-sample_us)>10000 ||
+     energy_control_autonomous_half_cycle_state_!=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS ||
+     energy_control_autonomous_zero_cross_consumed_for_peak_ || distance<=.3f || distance>1.5f ||
+     speed<=5.f || distance*100.f>speed*3.f)return;
+  // At most 30 ms and strictly more than 20 ms estimated lead under a
+  // constant-rate assumption. This is not physical ZERO/deadline proof.
+  if(distance*50.f*.999999f<=speed) {
+    angle_late_blocked_peak_ms_=energy_control_autonomous_last_peak_ms_;
+    return;
+  }
+  acceptOptionalEarlyMotion(t_test_ms,rate_dps,angle_deg);
+}
+#endif
 #endif
 
 __attribute__((noinline)) void ExperimentRunner::acceptOptionalEarlyMotion(
@@ -3419,8 +3455,13 @@ void ExperimentRunner::updateEnergyControlAutonomousMotion(uint32_t now_ms) {
   }
 #if FOOT_EARLY_TRIAL
   // Normal crossing takes precedence; the gate runs outside this IRAM body.
-  if(!physical_event_suppressed && !crossing && !confirmation_input && !rescue)
+  if(!physical_event_suppressed && !crossing && !confirmation_input && !rescue) {
+#if ANGLE_EARLY_TRIAL
+    tryAngleEarlyCandidate(t_test_ms,sample_us,detector_relative_angle_deg,rate_dps);
+#else
     tryEarlyFootCandidate(t_test_ms,sample_us,detector_relative_angle_deg,rate_dps);
+#endif
+  }
 #endif
   const bool passed_centre_inward = rate_dps * peak_side < 0.0f &&
       ((peak_side < 0 && before_deg < 0 && detector_relative_angle_deg >= 0) ||

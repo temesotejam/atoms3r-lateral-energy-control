@@ -25,13 +25,16 @@ REQUIRED = tuple('ExperimentRunner::'+n+'(' for n in MOTION_METHODS if n not in 
     'imu_i2c::read(', 'lateral_energy::potential(')
 PREFIXES = REQUIRED + tuple('ExperimentRunner::'+n+'(' for n in INLINE_HELPERS) + (
     'direct_q::target(', 'direct_q::width(', 'ImuPollProfile::record(',
-    'ExperimentRunner::tryEarlyFootCandidate(')
+    'ExperimentRunner::tryEarlyFootCandidate(', 'ExperimentRunner::tryAngleEarlyCandidate(')
 # 1.0.23 adds a bounded one-peak work dispatch at accepted ZERO crossings.
 # Its fitted candidate scan is a separate flash routine; the audited IRAM
 # motion/acquisition bodies use 24,717 bytes.  Reserve 25 KiB for these bodies
 # while continuing to enforce placement and a finite headroom (~0.9 KiB).
 LIMIT = 25600
-COLD_PREFIX = "ExperimentRunner::decideEarlyFootCandidate("
+COLD_BY_HOT = {
+    "ExperimentRunner::tryEarlyFootCandidate(": "ExperimentRunner::decideEarlyFootCandidate(",
+    "ExperimentRunner::tryAngleEarlyCandidate(": "ExperimentRunner::decideAngleEarlyCandidate(",
+}
 
 
 def audit(table):
@@ -42,7 +45,7 @@ def audit(table):
         if not m:
             continue
         address, section, size, name = m.groups()
-        if name.startswith(COLD_PREFIX):
+        if name.startswith(tuple(COLD_BY_HOT.values())):
             if not section.startswith('.flash') or int(size, 16) <= 0:
                 raise ValueError('Early cold routine must be in flash: '+name+' in '+section)
             cold_symbols[name] = dict(address='0x'+address, section=section, bytes=int(size,16))
@@ -55,8 +58,9 @@ def audit(table):
     for prefix in REQUIRED:
         if not any(n.startswith(prefix) and '::{lambda' not in n for n in symbols):
             raise ValueError('Missing required routine: '+prefix)
-    if any(n.startswith('ExperimentRunner::tryEarlyFootCandidate(') for n in symbols) and not cold_symbols:
-        raise ValueError('Missing early threshold-reached cold routine')
+    for hot,cold in COLD_BY_HOT.items():
+        if any(n.startswith(hot) for n in symbols) and not any(n.startswith(cold) for n in cold_symbols):
+            raise ValueError('Missing early threshold-reached cold routine: '+cold)
     size = sum(s['bytes'] for s in symbols.values())
     if size > LIMIT:
         print(json.dumps({'measured_symbols': symbols, 'function_code_bytes': size,
