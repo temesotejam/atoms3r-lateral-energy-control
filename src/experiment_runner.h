@@ -864,7 +864,7 @@ private:
 #if FOOT_EARLY_TRIAL
   early_motion_gate::Gate early_motion_gate_;
   uint64_t early_measurement_epoch_us_=0;
-  void RW_SPEED_CODE __attribute__((noinline)) tryEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
+  void RW_HOT_CODE __attribute__((optimize("Os", "no-fast-math"),noinline)) tryEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
       float angle_deg,float rate_dps);
 #endif
   uint32_t optional_early_attempted_peak_ms_=0;

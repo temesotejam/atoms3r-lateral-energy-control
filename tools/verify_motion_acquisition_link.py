@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 MOTION_METHODS = '''resetEnergyControlAutonomousPeakTracker updateEnergyControlAutonomousMotion
 updateEnergyControlAutonomousPeakTracker recordEnergyControlAutonomousPeak
@@ -49,6 +50,8 @@ def audit(table):
             raise ValueError('Missing required routine: '+prefix)
     size = sum(s['bytes'] for s in symbols.values())
     if size > LIMIT:
+        print(json.dumps({'measured_symbols': symbols, 'function_code_bytes': size,
+                          'function_code_limit_bytes': LIMIT}, indent=2), file=sys.stderr)
         raise ValueError('Motion/acquisition code exceeds 25 KiB: '+str(size))
     return dict(revision='lateral_energy_motion_link_v2_work_control', symbols=symbols,
                 function_code_bytes=size, function_code_limit_bytes=LIMIT,
