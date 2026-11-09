@@ -31,15 +31,22 @@ PREFIXES = REQUIRED + tuple('ExperimentRunner::'+n+'(' for n in INLINE_HELPERS) 
 # motion/acquisition bodies use 24,717 bytes.  Reserve 25 KiB for these bodies
 # while continuing to enforce placement and a finite headroom (~0.9 KiB).
 LIMIT = 25600
+COLD_PREFIX = "ExperimentRunner::decideEarlyFootCandidate("
 
 
 def audit(table):
     symbols = {}
+    cold_symbols = {}
     for line in table.splitlines():
         m = re.match(r'^([0-9a-fA-F]+)\s+.*?\bF\s+(\S+)\s+([0-9a-fA-F]+)\s+(.+)$', line)
         if not m:
             continue
         address, section, size, name = m.groups()
+        if name.startswith(COLD_PREFIX):
+            if not section.startswith('.flash') or int(size, 16) <= 0:
+                raise ValueError('Early cold routine must be in flash: '+name+' in '+section)
+            cold_symbols[name] = dict(address='0x'+address, section=section, bytes=int(size,16))
+            continue
         if not name.startswith(PREFIXES):
             continue
         if not section.startswith('.iram') or int(size, 16) <= 0:
@@ -48,12 +55,15 @@ def audit(table):
     for prefix in REQUIRED:
         if not any(n.startswith(prefix) and '::{lambda' not in n for n in symbols):
             raise ValueError('Missing required routine: '+prefix)
+    if any(n.startswith('ExperimentRunner::tryEarlyFootCandidate(') for n in symbols) and not cold_symbols:
+        raise ValueError('Missing early threshold-reached cold routine')
     size = sum(s['bytes'] for s in symbols.values())
     if size > LIMIT:
         print(json.dumps({'measured_symbols': symbols, 'function_code_bytes': size,
-                          'function_code_limit_bytes': LIMIT}, indent=2), file=sys.stderr)
+                          'function_code_limit_bytes': LIMIT, 'cold_symbols': cold_symbols}, indent=2), file=sys.stderr)
         raise ValueError('Motion/acquisition code exceeds 25 KiB: '+str(size))
     return dict(revision='lateral_energy_motion_link_v2_work_control', symbols=symbols,
+                cold_symbols=cold_symbols,
                 function_code_bytes=size, function_code_limit_bytes=LIMIT,
                 scope='function bodies, including emitted lambdas; excludes literals and total IRAM',
                 external_calls_and_data_may_use_flash=True, hardware_timing_verified=False)

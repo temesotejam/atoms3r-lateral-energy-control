@@ -3271,26 +3271,44 @@ bool ExperimentRunner::offerFootEarlyCandidate(uint16_t run_id,uint32_t peak_id,
 }
 void ExperimentRunner::tryEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
     float angle_deg,float rate_dps) {
+  // Keep the ordinary fresh-sample path short. All actual authorization is
+  // rechecked by decideEarlyFootCandidate after this threshold precheck.
+  if(!early_motion_gate_.valid) return;
+  const float threshold=early_motion_gate_.threshold;
+  if(threshold>0.f ? angle_deg>threshold : angle_deg<threshold) return;
+  if(energy_control_autonomous_last_accepted_zero_cross_valid_ &&
+     (t_test_ms<=energy_control_autonomous_last_accepted_zero_cross_ms_ ||
+      t_test_ms-energy_control_autonomous_last_accepted_zero_cross_ms_<
+          Config::ENERGY_CONTROL_AUTONOMOUS_MIN_HALF_CYCLE_MS)) return;
+  decideEarlyFootCandidate(t_test_ms,sample_us,angle_deg,rate_dps);
+}
+void ExperimentRunner::decideEarlyFootCandidate(uint32_t t_test_ms,uint32_t sample_us,
+    float angle_deg,float rate_dps) {
   const uint32_t sample_now_us=micros();
   // Unsigned subtraction handles micros rollover for the bounded run. The
   // independent run clock rejects a wrapped or mismatched epoch.
   const uint32_t elapsed_us=sample_now_us-static_cast<uint32_t>(early_measurement_epoch_us_);
-  if(!early_measurement_epoch_us_ || elapsed_us>600000000u) return;
+  if(!early_measurement_epoch_us_ || elapsed_us>600000000u) {early_motion_gate_.clear();return;}
   const uint32_t now=elapsed_us/1000u;
   if((now>t_test_ms ? now-t_test_ms : t_test_ms-now)>5 ||
       static_cast<uint32_t>(sample_now_us-sample_us)>10000 ||
       energy_control_autonomous_half_cycle_state_!=EnergyControlAutonomousHalfCycleState::WAIT_ZERO_CROSS ||
-      !early_motion_gate_.fire(status_.run_id,footEarlyPeakIdentity(),now,angle_deg,rate_dps)) return;
+      !early_motion_gate_.fire(status_.run_id,footEarlyPeakIdentity(),now,angle_deg,rate_dps)) {
+    // A new observation may propose a new candidate; don't retry stale,
+    // wrong-phase or insufficient-lead data at every later IMU sample.
+    early_motion_gate_.clear();return;
+  }
   acceptOptionalEarlyMotion(t_test_ms,rate_dps,angle_deg);
-  if(optional_early_attempted_peak_ms_==energy_control_autonomous_last_peak_ms_ ||
-     status_.emergency_stop) early_motion_gate_.clear();
+  // In this phase the minimum half-cycle has already passed; any no-send
+  // or ambiguous write must not repeatedly retry this same camera result.
+  early_motion_gate_.clear();
 }
+
 #endif
 
 __attribute__((noinline)) void ExperimentRunner::acceptOptionalEarlyMotion(
     uint32_t t_test_ms,float rate_dps,float angle_deg) {
-  // Deliberately uncalled. The future detector must first establish that its
-  // own input is fresh; this wrapper provides no contact claim or prediction.
+  // The caller must establish fresh input; this wrapper does not prove contact.
   const int8_t side=energy_control_autonomous_last_peak_side_;
   if(!wheelWorkMode() || energy_control_autonomous_target_peak_deg_!=8.f ||
      energy_control_autonomous_input_peak_percent_!=0 ||
